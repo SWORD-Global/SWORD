@@ -228,3 +228,7 @@ DrainageAreaFix/
 *.duckdb
 !tests/sword_duckdb/fixtures/sword_test_minimal.duckdb
 .dmux/
+
+# Dev tooling (per-developer)
+.claude/
+.dmux-hooks/

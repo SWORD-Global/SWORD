@@ -1,8 +1,0 @@
-# Minimal dependencies for running the SWORD Reviewer UI
-# Install with: pip install -r requirements-reviewer.txt
-streamlit>=1.30
-streamlit-folium>=0.18
-folium>=0.15
-pydeck>=0.8
-duckdb>=0.9
-pandas>=1.5

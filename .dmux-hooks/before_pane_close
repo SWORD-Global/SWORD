@@ -1,7 +1,0 @@
-#!/bin/bash
-# Warn if there are uncommitted changes before closing a pane
-
-if git -C "$DMUX_WORKTREE_PATH" status --porcelain 2>/dev/null | grep -q .; then
-  echo "[Hook] WARNING: Uncommitted changes in $DMUX_SLUG" >&2
-  git -C "$DMUX_WORKTREE_PATH" status --short >&2
-fi
