@@ -217,6 +217,7 @@ models/
 # Session files
 HANDOVER.md
 SCRATCHPAD.md
+.worktrees/
 
 # Output artifacts
 output/
