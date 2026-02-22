@@ -254,10 +254,6 @@ CREATE TABLE reaches (
     rch_id_up_4 BIGINT,
     rch_id_dn_4 BIGINT,
 
-    -- GRADES discharge parameters
-    h_variance DOUBLE PRECISION,
-    w_variance DOUBLE PRECISION,
-
     -- v17c columns
     best_headwater BIGINT,
     best_outlet BIGINT,

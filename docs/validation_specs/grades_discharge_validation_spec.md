@@ -1,17 +1,10 @@
 # Validation Spec: GRADES Discharge Variables
 
+> **Status: REMOVED in v17c.** `h_variance` and `w_variance` were dropped from the reaches table. The remaining 19 GRADES columns were never populated and were never included in DuckDB. This spec is retained for historical reference only.
+
 ## Summary
 
-| Variable Category | Count | Coverage | Status |
-|-------------------|-------|----------|--------|
-| Breakpoints (h_break_*, w_break_*) | 8 | 0% | **EMPTY** |
-| Variance (h_variance, w_variance) | 2 | 100% | Populated |
-| Covariance/Error (hw_covariance, h_err_stdev, w_err_stdev) | 3 | 0% | **EMPTY** |
-| Observation count (h_w_nobs) | 1 | 0% | **EMPTY** |
-| Flow area (med_flow_area) | 1 | 0% | **EMPTY** |
-| Fit coefficients (fit_coeffs_*) | 6 | 0% | **EMPTY** |
-
-**CRITICAL FINDING:** 19 of 21 GRADES-related columns are completely empty (0% coverage). Only `h_variance` and `w_variance` contain data.
+All 21 GRADES-related columns from the original NetCDF schema have been removed or were never imported into DuckDB. The two that were populated (`h_variance`, `w_variance`) were dropped in v17c as they duplicated `wse_var` and `width_var` respectively and were not used by any pipeline code.
 
 ## Variables
 

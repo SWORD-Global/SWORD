@@ -262,7 +262,7 @@ workflow.close()
 | flags | iceflag, low_slope_flag, add_flag, edit_flag |
 | channel_count | n_chan_max, n_chan_mod |
 | swot_observations | swot_obs, *_obs_mean/median/std/range, n_obs |
-| grades_discharge | h_variance, w_variance |
+| grades_discharge | ~~h_variance, w_variance~~ (removed in v17c) |
 | v17c_mainstem | hydro_dist_out/hw, best_headwater/outlet, pathlen_*, is_mainstem_edge |
 | v17c_path_topology | main_path_id, dist_out_short, rch_id_up/dn_main |
 | v17c_sections | v17c_sections table, section_slope_validation |

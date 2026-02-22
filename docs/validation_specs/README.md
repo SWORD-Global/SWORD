@@ -20,7 +20,7 @@
 | `channel_count_validation_spec` | n_chan_max, n_chan_mod, n_nodes | GRWL nchan | Braiding detection |
 | `flags_validation_spec` | swot_obs, iceflag, low_slope_flag, edit_flag, add_flag | Mixed sources | swot_obs max=31 passes/21-day cycle |
 | `river_name_validation_spec` | river_name | GRWL + KDTree nearest neighbor | Multiple names joined with '; ' |
-| `grades_discharge_validation_spec` | h_variance, w_variance, fit_coeffs_*, h_break_*, w_break_* | GRADES/SWOT | **19/21 columns empty** |
+| `grades_discharge_validation_spec` | ~~h_variance, w_variance~~, fit_coeffs_*, h_break_*, w_break_* | GRADES/SWOT | **All GRADES columns removed from v17c** |
 | `identifier_metadata_validation_spec` | reach_id, region, version | CBBBBBRRRRT Pfafstetter encoding | 11-digit reach_id, 6 regions |
 | `geometry_metadata_validation_spec` | x, y, x_min/max, y_min/max, cl_id_min/max | Computed from geom + centerlines | Spatial indexing metadata |
 | `geom_validation_spec` | geom (LINESTRING) | GRWL centerlines ordered by cl_id | WGS84 EPSG:4326 |
