@@ -39,31 +39,13 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     "cl_id_max",
     "dn_node_id",
     "up_node_id",
-    # WSE (prior + observed)
+    # Prior measurements
     "wse",
     "wse_var",
-    "wse_obs_mean",
-    "wse_obs_median",
-    "wse_obs_std",
-    "wse_obs_range",
-    # Width (prior + observed)
     "width",
     "width_var",
     "max_width",
-    "width_obs_mean",
-    "width_obs_median",
-    "width_obs_std",
-    "width_obs_range",
-    # Slope (prior + observed)
     "slope",
-    "slope_obs_mean",
-    "slope_obs_median",
-    "slope_obs_std",
-    "slope_obs_range",
-    "slope_obs_adj",
-    "slope_obs_slopeF",
-    "slope_obs_reliable",
-    "slope_obs_quality",
     # Hydrology & Distance
     "facc",
     "dist_out",
@@ -90,6 +72,48 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     "best_outlet",
     "pathlen_hw",
     "pathlen_out",
+    # SWOT WSE observed (percentiles)
+    "wse_obs_p10",
+    "wse_obs_p20",
+    "wse_obs_p30",
+    "wse_obs_p40",
+    "wse_obs_p50",
+    "wse_obs_p60",
+    "wse_obs_p70",
+    "wse_obs_p80",
+    "wse_obs_p90",
+    "wse_obs_range",
+    "wse_obs_mad",
+    # SWOT width observed (percentiles)
+    "width_obs_p10",
+    "width_obs_p20",
+    "width_obs_p30",
+    "width_obs_p40",
+    "width_obs_p50",
+    "width_obs_p60",
+    "width_obs_p70",
+    "width_obs_p80",
+    "width_obs_p90",
+    "width_obs_range",
+    "width_obs_mad",
+    # SWOT slope observed (percentiles + derived)
+    "slope_obs_p10",
+    "slope_obs_p20",
+    "slope_obs_p30",
+    "slope_obs_p40",
+    "slope_obs_p50",
+    "slope_obs_p60",
+    "slope_obs_p70",
+    "slope_obs_p80",
+    "slope_obs_p90",
+    "slope_obs_range",
+    "slope_obs_mad",
+    "slope_obs_adj",
+    "slope_obs_slopeF",
+    "slope_obs_reliable",
+    "slope_obs_quality",
+    # Observation count
+    "n_obs",
     # Classification & Flags
     "lakeflag",
     "n_chan_max",
@@ -106,8 +130,6 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     "river_name",
     "river_name_en",
     "river_name_local",
-    # Observation count
-    "n_obs",
     # Metadata
     "version",
 )
@@ -128,21 +150,12 @@ NODES_COLUMN_ORDER: tuple[str, ...] = (
     "reach_id",
     "node_order",
     "node_length",
-    # WSE (prior + observed)
+    # Prior measurements
     "wse",
     "wse_var",
-    "wse_obs_mean",
-    "wse_obs_median",
-    "wse_obs_std",
-    "wse_obs_range",
-    # Width (prior + observed)
     "width",
     "width_var",
     "max_width",
-    "width_obs_mean",
-    "width_obs_median",
-    "width_obs_std",
-    "width_obs_range",
     # Hydrology & Distance
     "facc",
     "dist_out",
@@ -164,6 +177,32 @@ NODES_COLUMN_ORDER: tuple[str, ...] = (
     "best_outlet",
     "pathlen_hw",
     "pathlen_out",
+    # SWOT WSE observed (percentiles)
+    "wse_obs_p10",
+    "wse_obs_p20",
+    "wse_obs_p30",
+    "wse_obs_p40",
+    "wse_obs_p50",
+    "wse_obs_p60",
+    "wse_obs_p70",
+    "wse_obs_p80",
+    "wse_obs_p90",
+    "wse_obs_range",
+    "wse_obs_mad",
+    # SWOT width observed (percentiles)
+    "width_obs_p10",
+    "width_obs_p20",
+    "width_obs_p30",
+    "width_obs_p40",
+    "width_obs_p50",
+    "width_obs_p60",
+    "width_obs_p70",
+    "width_obs_p80",
+    "width_obs_p90",
+    "width_obs_range",
+    "width_obs_mad",
+    # Observation count
+    "n_obs",
     # Classification & Flags
     "lakeflag",
     "n_chan_max",
@@ -177,8 +216,6 @@ NODES_COLUMN_ORDER: tuple[str, ...] = (
     "add_flag",
     # Names
     "river_name",
-    # Observation count
-    "n_obs",
     # Metadata
     "version",
 )
