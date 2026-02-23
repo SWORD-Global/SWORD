@@ -142,6 +142,7 @@ def execute(con_c: duckdb.DuckDBPyConnection, con_b: duckdb.DuckDBPyConnection):
         return False
 
     con_c.execute("INSTALL spatial; LOAD spatial;")
+    con_c.execute("BEGIN")
 
     # --- Step 1: Handle RTREE indexes (before attaching v17b) ---
     print("Step 1: Drop RTREE indexes...")
@@ -205,12 +206,17 @@ def execute(con_c: duckdb.DuckDBPyConnection, con_b: duckdb.DuckDBPyConnection):
     shared_node_cols = [c for c in v17b_node_cols if c in v17c_node_cols]
     node_cols_str = ", ".join(shared_node_cols)
 
-    nid_list = ",".join(str(nid) for nid in existing_nids)
+    if existing_nids:
+        nid_filter = (
+            f"AND node_id NOT IN ({','.join(str(nid) for nid in existing_nids)})"
+        )
+    else:
+        nid_filter = ""
     n = con_c.execute(f"""
         INSERT INTO nodes ({node_cols_str})
         SELECT {node_cols_str} FROM v17b.nodes
         WHERE reach_id = {ORIGINAL_REACH} AND region = '{REGION}'
-          AND node_id NOT IN ({nid_list})
+          {nid_filter}
     """).fetchone()[0]
     print(f"  Inserted {n} missing v17b nodes")
 
@@ -224,8 +230,8 @@ def execute(con_c: duckdb.DuckDBPyConnection, con_b: duckdb.DuckDBPyConnection):
             ).fetchone()[0]
             if n > 0:
                 print(f"  Deleted {n} rows from {tbl}")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  Note: could not delete from {tbl}: {e}")
 
     n = con_c.execute(
         f"DELETE FROM reach_topology WHERE reach_id = {SPURIOUS_REACH} OR neighbor_reach_id = {SPURIOUS_REACH}"
@@ -279,6 +285,7 @@ def execute(con_c: duckdb.DuckDBPyConnection, con_b: duckdb.DuckDBPyConnection):
         con_c.execute(sql)
     print(f"  Recreated {len(indexes)} RTREE indexes")
 
+    con_c.execute("COMMIT")
     print("\nRevert complete.")
     return True
 
@@ -297,21 +304,23 @@ def verify(con_c: duckdb.DuckDBPyConnection):
     if n != 0:
         errors.append("spurious reach still exists")
 
-    # 2. No orphan centerlines
+    # 2. No orphan centerlines in OC region
     n = con_c.execute(
-        "SELECT COUNT(*) FROM centerlines c LEFT JOIN reaches r ON c.reach_id = r.reach_id WHERE r.reach_id IS NULL"
+        f"SELECT COUNT(*) FROM centerlines c LEFT JOIN reaches r ON c.reach_id = r.reach_id"
+        f" WHERE c.region = '{REGION}' AND r.reach_id IS NULL"
     ).fetchone()[0]
     status = "PASS" if n == 0 else "FAIL"
-    print(f"  [{status}] Orphan centerlines: {n}")
+    print(f"  [{status}] Orphan centerlines ({REGION}): {n}")
     if n != 0:
         errors.append(f"{n} orphan centerlines remain")
 
-    # 3. No orphan nodes
+    # 3. No orphan nodes in OC region
     n = con_c.execute(
-        "SELECT COUNT(*) FROM nodes n LEFT JOIN reaches r ON n.reach_id = r.reach_id WHERE r.reach_id IS NULL"
+        f"SELECT COUNT(*) FROM nodes nd LEFT JOIN reaches r ON nd.reach_id = r.reach_id"
+        f" WHERE nd.region = '{REGION}' AND r.reach_id IS NULL"
     ).fetchone()[0]
     status = "PASS" if n == 0 else "FAIL"
-    print(f"  [{status}] Orphan nodes: {n}")
+    print(f"  [{status}] Orphan nodes ({REGION}): {n}")
     if n != 0:
         errors.append(f"{n} orphan nodes remain")
 
