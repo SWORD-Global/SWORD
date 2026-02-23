@@ -129,7 +129,7 @@ By cleaning MERIT's D8 noise from the baseline, A4 ensures that when Stage B pro
 A4 adjusts ~12,662 reaches globally (though most get superseded by Stage B propagation — the final `baseline_isotonic` count in the output is 5,407 reaches whose A4 adjustment was the only correction they received).
 
 ![Fig 4: Isotonic Regression (PAVA) Example](figures/report_fig4.png)
-*Figure 4. PAVA in action on a 15-reach 1:1 chain in South America. The red line (Stage A baseline) has a clear violation zone where facc decreases from R8 to R14. PAVA (blue) creates a flat "pool" through the drop — the closest non-decreasing fit — then rises to meet the downstream values. The shaded regions mark where facc was decreasing (violations). PAVA adjusts values both up and down to minimize total distortion while guaranteeing monotonicity.*
+*Figure 4. PAVA on a synthetic 15-reach 1:1 chain. The red line (Stage A baseline) has a violation zone where facc decreases from R8 to R14. PAVA (blue) merges R7–R14 into a single flat pool at ~6,625 km² — the weighted mean that minimizes total squared distortion while guaranteeing a non-decreasing sequence. R7 is pulled down from 7,000 to join the pool because the backward-merging step detects that the initial pool mean (from R8–R14 alone) would fall below R7, violating monotonicity. The shaded regions mark where facc was decreasing in the original data.*
 
 ### 3.4 Stage B — Propagation + Refinement
 
@@ -185,20 +185,21 @@ Our junction rule `corrected = sum(corrected_upstream) + max(base - sum(base_ups
 
 ### Willamette Basin Case Study (Basin 7822)
 
-To illustrate the pipeline's behavior on a well-understood basin, we applied it to the Willamette River basin: 55 reaches (52 dependent, 3 independent headwaters).
+To compare both approaches on the same basin, we applied the biphase pipeline and the CVXPY integrator to the Willamette River: 55 reaches (52 dependent, 3 independent headwaters). The integrator uses two hard anchors (reaches 78220000031 and 78220000401) and iterative Tukey outlier downweighting.
 
 ![Fig 5: Willamette Comparison](figures/report_fig5.png)
-*Figure 5. Left: v17b vs biphase pipeline corrected facc (log-log scatter) for the 55 Willamette River basin reaches. Blue = unchanged, orange = corrected. Right: Per-reach % changes for the 17 corrected reaches.*
+*Figure 5. Left: log-log scatter of v17b facc (x) vs corrected facc (y) for both methods. Orange diamonds = integrator (CVXPY), blue circles = biphase pipeline, dashed line = no change. Right: paired per-reach % change bars sorted by original facc (ascending), showing how each method adjusts the same reaches.*
 
 **Key results:**
 
-| Metric | Biphase Pipeline |
-|--------|-------------|
-| Reaches modified | 17 / 55 |
-| Correction types | Lateral propagation (16), junction floor (1) |
-| Median % change | +22% (on changed reaches) |
+| Metric | Biphase Pipeline | Integrator (CVXPY) |
+|--------|------------------|--------------------|
+| Reaches modified | 17 / 55 | 49 / 55 |
+| % change range | 0% to +34% | -50% to +37% |
+| Direction | Raises only | Raises and lowers |
+| Correction types | Lateral propagation (16), junction floor (1) | QP redistribution (all) |
 
-The biphase pipeline modifies 17 of 55 Willamette reaches that violate specific rules — primarily lateral propagation from upstream bifurcation corrections. The remaining 38 reaches already satisfy conservation and monotonicity constraints and are left unchanged.
+The two methods produce highly correlated results (r = 0.996) but differ in philosophy. The integrator redistributes incremental area across all 52 dependent reaches via QP minimization, lowering some reaches to raise others. The biphase pipeline only modifies reaches that violate specific rules (conservation, monotonicity, bifurcation cloning) and leaves the remaining 38 reaches at their v17b values. Both enforce non-negative incremental area and junction conservation.
 
 ---
 

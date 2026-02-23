@@ -393,17 +393,24 @@ def fig4_pava_example(out: Path) -> None:
         dtype=float,
     )
 
-    # PAVA: pool adjacent violators (non-decreasing)
-    pava = base.copy()
-    i = 0
-    while i < n:
-        j = i
-        while j < n - 1 and pava[j + 1] < pava[j]:
-            j += 1
-        if j > i:
-            pool_val = np.mean(pava[i : j + 1])
-            pava[i : j + 1] = pool_val
-        i = j + 1
+    # PAVA: pool adjacent violators (non-decreasing) — stack-based with
+    # backward merging, matching the production implementation in
+    # src/sword_duckdb/facc_detection/correct_facc_denoise.py
+    blocks: list[list] = []  # [sum_val, count, start, end]
+    for i in range(n):
+        blocks.append([base[i], 1, i, i])
+        while len(blocks) > 1:
+            curr = blocks[-1]
+            prev = blocks[-2]
+            if prev[0] / prev[1] <= curr[0] / curr[1]:
+                break
+            prev[0] += curr[0]
+            prev[1] += curr[1]
+            prev[3] = curr[3]
+            blocks.pop()
+    pava = np.empty(n)
+    for s, cnt, start, end in blocks:
+        pava[start : end + 1] = s / cnt
 
     fig, ax = plt.subplots(figsize=(10, 5))
     x = np.arange(1, n + 1)
@@ -441,83 +448,121 @@ def fig4_pava_example(out: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Fig 5: Willamette basin original vs corrected scatter
+# Fig 5: Willamette basin — biphase pipeline vs integrator comparison
 # ---------------------------------------------------------------------------
 
 
 def fig5_willamette(
-    db_path: str, v17b_path: str, csvs: dict[str, pd.DataFrame], out: Path
+    db_path: str,
+    v17b_path: str,
+    csvs: dict[str, pd.DataFrame],
+    input_dir: Path,
+    out: Path,
 ) -> None:
-    """Scatter of original vs corrected facc for Willamette basin (7822*)."""
-    # Get all Willamette reaches from v17b
+    """Compare biphase pipeline and CVXPY integrator on Willamette basin."""
+    # --- Load v17b original facc ---
     conn = duckdb.connect(v17b_path, read_only=True)
     wil_df = conn.execute(
         "SELECT reach_id, facc FROM reaches "
         "WHERE region = 'NA' AND CAST(reach_id AS VARCHAR) LIKE '7822%'"
     ).fetchdf()
     conn.close()
-
     v17b_facc = dict(zip(wil_df["reach_id"].astype(int), wil_df["facc"].astype(float)))
 
-    # Build corrected values
-    corrected = dict(v17b_facc)
+    # --- Load biphase pipeline corrections ---
+    biphase = dict(v17b_facc)
     csv_na = csvs["NA"]
     wil_csv = csv_na[csv_na["reach_id"].astype(str).str.startswith("7822")]
     for _, row in wil_csv.iterrows():
-        corrected[int(row["reach_id"])] = float(row["corrected_facc"])
+        biphase[int(row["reach_id"])] = float(row["corrected_facc"])
 
+    # --- Load integrator (CVXPY) reference ---
+    ref_path = input_dir / "willamette_integrator_reference.json"
+    with open(ref_path) as f:
+        integrator_raw = json.load(f)
+    integrator = {int(k): v["integrator"] for k, v in integrator_raw.items()}
+
+    # --- Build aligned arrays sorted by v17b facc ---
     rids = sorted(v17b_facc.keys())
     orig = np.array([v17b_facc[r] for r in rids])
-    corr = np.array([corrected[r] for r in rids])
-    changed = np.array([r in set(wil_csv["reach_id"].astype(int)) for r in rids])
+    bi = np.array([biphase[r] for r in rids])
+    integ = np.array([integrator[r] for r in rids])
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    bi_pct = 100 * (bi - orig) / orig
+    integ_pct = 100 * (integ - orig) / orig
 
-    # Left: log-log scatter
+    # Sort by original facc (ascending) for the bar chart
+    sort_idx = np.argsort(orig)
+    rids_sorted = [rids[i] for i in sort_idx]
+    orig_sorted = orig[sort_idx]
+    bi_pct_sorted = bi_pct[sort_idx]
+    integ_pct_sorted = integ_pct[sort_idx]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 6))
+
+    # --- Left: log-log scatter, both methods vs v17b ---
     ax1.scatter(
-        orig[~changed],
-        corr[~changed],
-        c="#90caf9",
-        s=40,
+        orig,
+        integ,
+        c="#ff9800",
+        s=45,
         zorder=3,
-        label="Unchanged",
+        label="Integrator (CVXPY)",
         edgecolors="k",
         linewidths=0.3,
+        marker="D",
     )
     ax1.scatter(
-        orig[changed],
-        corr[changed],
-        c="#ff5722",
-        s=50,
+        orig,
+        bi,
+        c="#2196f3",
+        s=45,
         zorder=4,
-        label="Corrected",
+        label="Biphase pipeline",
         edgecolors="k",
         linewidths=0.3,
+        marker="o",
     )
-    lims = [min(orig.min(), corr.min()) * 0.8, max(orig.max(), corr.max()) * 1.2]
-    ax1.plot(lims, lims, "k--", lw=1, alpha=0.5, label="1:1 line")
+    all_vals = np.concatenate([orig, bi, integ])
+    lims = [all_vals.min() * 0.7, all_vals.max() * 1.3]
+    ax1.plot(lims, lims, "k--", lw=1, alpha=0.4, label="1:1 (no change)")
     ax1.set_xscale("log")
     ax1.set_yscale("log")
     ax1.set_xlim(lims)
     ax1.set_ylim(lims)
     ax1.set_xlabel("v17b facc (km²)")
-    ax1.set_ylabel("v17c corrected facc (km²)")
-    ax1.set_title("Willamette Basin: Original vs Corrected")
-    ax1.legend(fontsize=8)
+    ax1.set_ylabel("Corrected facc (km²)")
+    ax1.set_title("Original vs Corrected (both methods)")
+    ax1.legend(fontsize=8, loc="upper left")
     ax1.grid(True, alpha=0.3)
 
-    # Right: % change for modified reaches
-    pct_changes = 100 * (corr[changed] - orig[changed]) / orig[changed]
+    # --- Right: paired % change bars, sorted by original facc ---
+    y = np.arange(len(rids_sorted))
+    bar_h = 0.35
     ax2.barh(
-        range(len(pct_changes)),
-        sorted(pct_changes),
-        color="#ff5722",
+        y + bar_h / 2,
+        integ_pct_sorted,
+        bar_h,
+        color="#ff9800",
         edgecolor="k",
         linewidth=0.3,
+        label="Integrator",
     )
+    ax2.barh(
+        y - bar_h / 2,
+        bi_pct_sorted,
+        bar_h,
+        color="#2196f3",
+        edgecolor="k",
+        linewidth=0.3,
+        label="Biphase",
+    )
+    ax2.axvline(0, color="k", lw=0.8, alpha=0.5)
     ax2.set_xlabel("% Change from v17b")
-    ax2.set_ylabel("Reach index (sorted)")
-    ax2.set_title(f"Per-Reach % Changes ({changed.sum()}/{len(rids)} modified)")
+    ax2.set_ylabel("Reaches (sorted by original facc →)")
+    ax2.set_title("Per-Reach Corrections: Both Methods")
+    ax2.set_yticks([])
+    ax2.legend(fontsize=8, loc="lower right")
     ax2.grid(True, alpha=0.3, axis="x")
 
     fig.suptitle("Willamette River Basin (7822*): 55 Reaches", fontsize=13)
@@ -562,7 +607,7 @@ def main() -> None:
     fig2_correction_breakdown(summaries, out)
     fig3_scalability(summaries, out)
     fig4_pava_example(out)
-    fig5_willamette(args.db, args.v17b, csvs, out)
+    fig5_willamette(args.db, args.v17b, csvs, input_dir, out)
 
     print(f"\nAll figures saved to {out}/")
 
