@@ -919,18 +919,14 @@ def add_v17c_columns(db) -> bool:
         pass
 
     # Propagate facc_quality from reaches to nodes (nodes inherit reach-level flag)
-    try:
-        db.execute("""
-            UPDATE nodes
-            SET facc_quality = r.facc_quality
-            FROM reaches r
-            WHERE nodes.reach_id = r.reach_id
-              AND nodes.region = r.region
-              AND r.facc_quality IS NOT NULL
-        """)
-    except Exception:
-        # Tables may not exist or have no data yet
-        pass
+    db.execute("""
+        UPDATE nodes
+        SET facc_quality = r.facc_quality
+        FROM reaches r
+        WHERE nodes.reach_id = r.reach_id
+          AND nodes.region = r.region
+          AND r.facc_quality IS NOT NULL
+    """)
 
     return added
 

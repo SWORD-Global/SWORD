@@ -266,7 +266,11 @@ class TestSWORDDatabaseSchema:
         db.close()
 
     def test_add_v17c_columns_adds_subnetwork_and_facc_quality(self, tmp_path):
-        """add_v17c_columns() adds subnetwork_id and facc_quality to existing DB."""
+        """add_v17c_columns() adds subnetwork_id and facc_quality to existing DB.
+
+        Uses a raw duckdb connection (not SWORDDatabase) to simulate migrating
+        a pre-existing database not created through the SWORD schema layer.
+        """
         import duckdb
         from src.sword_duckdb.schema import add_v17c_columns
 
