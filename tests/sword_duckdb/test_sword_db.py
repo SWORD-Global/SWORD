@@ -265,6 +265,46 @@ class TestSWORDDatabaseSchema:
         assert "facc_quality" in cols
         db.close()
 
+    def test_add_v17c_columns_adds_subnetwork_and_facc_quality(self, tmp_path):
+        """add_v17c_columns() adds subnetwork_id and facc_quality to existing DB."""
+        import duckdb
+        from src.sword_duckdb.schema import add_v17c_columns
+
+        db_path = tmp_path / "old.duckdb"
+        con = duckdb.connect(str(db_path))
+
+        # Simulate an old DB: minimal reaches and nodes without the new columns
+        con.execute("""
+            CREATE TABLE reaches (
+                reach_id BIGINT NOT NULL,
+                region VARCHAR(2) NOT NULL,
+                reach_length DOUBLE,
+                dist_out DOUBLE,
+                PRIMARY KEY (reach_id, region)
+            )
+        """)
+        con.execute("""
+            CREATE TABLE nodes (
+                node_id BIGINT NOT NULL,
+                region VARCHAR(2) NOT NULL,
+                reach_id BIGINT NOT NULL,
+                dist_out DOUBLE,
+                PRIMARY KEY (node_id, region)
+            )
+        """)
+
+        add_v17c_columns(con)
+
+        for table in ("reaches", "nodes"):
+            result = con.execute(
+                f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table}'"
+            ).fetchall()
+            cols = {r[0] for r in result}
+            assert "subnetwork_id" in cols, f"subnetwork_id missing from {table}"
+            assert "facc_quality" in cols, f"facc_quality missing from {table}"
+
+        con.close()
+
 
 class TestSWORDDatabaseInfo:
     """Tests for information retrieval methods."""
