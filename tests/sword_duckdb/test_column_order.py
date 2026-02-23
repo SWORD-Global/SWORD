@@ -67,6 +67,20 @@ class TestCanonicalLists:
             "subnetwork_id should immediately follow network in reaches"
         )
 
+    def test_facc_quality_after_facc_nodes(self):
+        idx_facc = NODES_COLUMN_ORDER.index("facc")
+        idx_fq = NODES_COLUMN_ORDER.index("facc_quality")
+        assert idx_fq == idx_facc + 1, (
+            "facc_quality should immediately follow facc in nodes"
+        )
+
+    def test_subnetwork_id_after_network_nodes(self):
+        idx_net = NODES_COLUMN_ORDER.index("network")
+        idx_sub = NODES_COLUMN_ORDER.index("subnetwork_id")
+        assert idx_sub == idx_net + 1, (
+            "subnetwork_id should immediately follow network in nodes"
+        )
+
 
 @pytest.mark.unit
 class TestGetColumnOrder:
