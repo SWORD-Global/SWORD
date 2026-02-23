@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 
     -- Hydrology & Distance
     facc DOUBLE,                 -- flow accumulation (km^2)
+    facc_quality VARCHAR,        -- facc correction status flag (v17c)
     dist_out DOUBLE,             -- distance from outlet (m)
 
     -- SWOT search parameters
@@ -134,6 +135,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 
     -- Network & Path Analysis
     network INTEGER,             -- connected network ID
+    subnetwork_id INTEGER,       -- weakly connected component ID (v17c)
     stream_order INTEGER,        -- strm_order (log scale of path_freq)
     path_freq BIGINT,            -- traversal count
     path_order BIGINT,           -- 1=longest to N=shortest
@@ -229,6 +231,7 @@ CREATE TABLE IF NOT EXISTS reaches (
 
     -- Hydrology & Distance
     facc DOUBLE,                 -- flow accumulation (km^2)
+    facc_quality VARCHAR,        -- facc correction status flag (v17c)
     dist_out DOUBLE,             -- distance from outlet (m)
     hydro_dist_out DOUBLE,       -- hydrologic distance to outlet (via main channel)
     hydro_dist_hw DOUBLE,        -- hydrologic distance to headwater (via main channel)
@@ -244,6 +247,7 @@ CREATE TABLE IF NOT EXISTS reaches (
 
     -- Network & Path Analysis
     network INTEGER,             -- connected network ID
+    subnetwork_id INTEGER,       -- weakly connected component ID (v17c)
     stream_order INTEGER,        -- strm_order
     path_freq BIGINT,            -- traversal count
     path_order BIGINT,           -- 1=longest to N=shortest
