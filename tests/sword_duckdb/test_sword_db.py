@@ -232,6 +232,7 @@ class TestSWORDDatabaseSchema:
         db.close()
 
     def test_reaches_has_subnetwork_id_and_facc_quality(self, tmp_path):
+        """Test that reaches table includes subnetwork_id and facc_quality columns."""
         from src.sword_duckdb.sword_db import SWORDDatabase
 
         db_path = tmp_path / "new.duckdb"
@@ -248,6 +249,7 @@ class TestSWORDDatabaseSchema:
         db.close()
 
     def test_nodes_has_subnetwork_id_and_facc_quality(self, tmp_path):
+        """Test that nodes table includes subnetwork_id and facc_quality columns."""
         from src.sword_duckdb.sword_db import SWORDDatabase
 
         db_path = tmp_path / "new.duckdb"
