@@ -231,6 +231,38 @@ class TestSWORDDatabaseSchema:
 
         db.close()
 
+    def test_reaches_has_subnetwork_id_and_facc_quality(self, tmp_path):
+        from src.sword_duckdb.sword_db import SWORDDatabase
+
+        db_path = tmp_path / "new.duckdb"
+        db = SWORDDatabase(db_path)
+        db.init_schema()
+
+        result = db.query(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'reaches'"
+        )
+        cols = result["column_name"].tolist()
+        assert "subnetwork_id" in cols
+        assert "facc_quality" in cols
+        db.close()
+
+    def test_nodes_has_subnetwork_id_and_facc_quality(self, tmp_path):
+        from src.sword_duckdb.sword_db import SWORDDatabase
+
+        db_path = tmp_path / "new.duckdb"
+        db = SWORDDatabase(db_path)
+        db.init_schema()
+
+        result = db.query(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'nodes'"
+        )
+        cols = result["column_name"].tolist()
+        assert "subnetwork_id" in cols
+        assert "facc_quality" in cols
+        db.close()
+
 
 class TestSWORDDatabaseInfo:
     """Tests for information retrieval methods."""
