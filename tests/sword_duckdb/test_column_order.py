@@ -41,6 +41,32 @@ class TestCanonicalLists:
     def test_no_duplicates_centerlines(self):
         assert len(CENTERLINES_COLUMN_ORDER) == len(set(CENTERLINES_COLUMN_ORDER))
 
+    def test_reaches_has_subnetwork_id(self):
+        assert "subnetwork_id" in REACHES_COLUMN_ORDER
+
+    def test_reaches_has_facc_quality(self):
+        assert "facc_quality" in REACHES_COLUMN_ORDER
+
+    def test_nodes_has_subnetwork_id(self):
+        assert "subnetwork_id" in NODES_COLUMN_ORDER
+
+    def test_nodes_has_facc_quality(self):
+        assert "facc_quality" in NODES_COLUMN_ORDER
+
+    def test_facc_quality_after_facc_reaches(self):
+        idx_facc = REACHES_COLUMN_ORDER.index("facc")
+        idx_fq = REACHES_COLUMN_ORDER.index("facc_quality")
+        assert idx_fq == idx_facc + 1, (
+            "facc_quality should immediately follow facc in reaches"
+        )
+
+    def test_subnetwork_id_after_network_reaches(self):
+        idx_net = REACHES_COLUMN_ORDER.index("network")
+        idx_sub = REACHES_COLUMN_ORDER.index("subnetwork_id")
+        assert idx_sub == idx_net + 1, (
+            "subnetwork_id should immediately follow network in reaches"
+        )
+
 
 @pytest.mark.unit
 class TestGetColumnOrder:
