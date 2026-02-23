@@ -48,6 +48,7 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     "slope",
     # Hydrology & Distance
     "facc",
+    "facc_quality",
     "dist_out",
     "hydro_dist_out",
     "hydro_dist_hw",
@@ -61,6 +62,7 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     "trib_flag",
     # Network & Path Analysis
     "network",
+    "subnetwork_id",
     "stream_order",
     "path_freq",
     "path_order",
@@ -158,6 +160,7 @@ NODES_COLUMN_ORDER: tuple[str, ...] = (
     "max_width",
     # Hydrology & Distance
     "facc",
+    "facc_quality",
     "dist_out",
     # SWOT Search Parameters
     "wth_coef",
@@ -167,6 +170,7 @@ NODES_COLUMN_ORDER: tuple[str, ...] = (
     "sinuosity",
     # Network & Path Analysis
     "network",
+    "subnetwork_id",
     "stream_order",
     "path_freq",
     "path_order",

@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 
     -- Hydrology & Distance
     facc DOUBLE,                 -- flow accumulation (km^2)
+    facc_quality VARCHAR,        -- facc correction status flag (v17c)
     dist_out DOUBLE,             -- distance from outlet (m)
 
     -- SWOT search parameters
@@ -134,6 +135,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 
     -- Network & Path Analysis
     network INTEGER,             -- connected network ID
+    subnetwork_id INTEGER,       -- weakly connected component ID (v17c)
     stream_order INTEGER,        -- strm_order (log scale of path_freq)
     path_freq BIGINT,            -- traversal count
     path_order BIGINT,           -- 1=longest to N=shortest
@@ -229,6 +231,7 @@ CREATE TABLE IF NOT EXISTS reaches (
 
     -- Hydrology & Distance
     facc DOUBLE,                 -- flow accumulation (km^2)
+    facc_quality VARCHAR,        -- facc correction status flag (v17c)
     dist_out DOUBLE,             -- distance from outlet (m)
     hydro_dist_out DOUBLE,       -- hydrologic distance to outlet (via main channel)
     hydro_dist_hw DOUBLE,        -- hydrologic distance to headwater (via main channel)
@@ -244,6 +247,7 @@ CREATE TABLE IF NOT EXISTS reaches (
 
     -- Network & Path Analysis
     network INTEGER,             -- connected network ID
+    subnetwork_id INTEGER,       -- weakly connected component ID (v17c)
     stream_order INTEGER,        -- strm_order
     path_freq BIGINT,            -- traversal count
     path_order BIGINT,           -- 1=longest to N=shortest
@@ -862,6 +866,8 @@ def add_v17c_columns(db) -> bool:
         ("best_outlet", "BIGINT"),
         ("pathlen_hw", "DOUBLE"),
         ("pathlen_out", "DOUBLE"),
+        ("subnetwork_id", "INTEGER"),  # weakly connected component ID
+        ("facc_quality", "VARCHAR"),  # facc correction status flag
     ]
 
     # v17c columns for reaches table
@@ -878,6 +884,8 @@ def add_v17c_columns(db) -> bool:
         ("rch_id_up_main", "BIGINT"),
         ("rch_id_dn_main", "BIGINT"),
         # NOTE: swot_slope columns removed - pipeline incomplete (Issue #117)
+        ("subnetwork_id", "INTEGER"),  # weakly connected component ID
+        ("facc_quality", "VARCHAR"),  # facc correction status flag
     ]
 
     def _add_columns_to_table(table_name: str, columns: list) -> bool:
@@ -909,6 +917,16 @@ def add_v17c_columns(db) -> bool:
     except Exception:
         # Table may not exist yet
         pass
+
+    # Propagate facc_quality from reaches to nodes (nodes inherit reach-level flag)
+    db.execute("""
+        UPDATE nodes
+        SET facc_quality = r.facc_quality
+        FROM reaches r
+        WHERE nodes.reach_id = r.reach_id
+          AND nodes.region = r.region
+          AND r.facc_quality IS NOT NULL
+    """)
 
     return added
 
