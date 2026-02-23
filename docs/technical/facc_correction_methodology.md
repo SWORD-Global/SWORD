@@ -93,9 +93,9 @@ stateDiagram-v2
 
     state "Stage B: Propagation + Refinement" as StageB {
         state "Pass 1: Topology propagation" as P1
-        state "Pass 2: Consistency enforcement" as P2
+        state "Safety nets (B2, B3, Pass 2) — 0 adj." as SN
 
-        P1 --> P2 : gaps from blocked raises
+        P1 --> SN : corrected values
     }
 
     state "Validation" as Validation {
@@ -133,7 +133,7 @@ A4 adjusts ~12,662 reaches globally (though most get superseded by Stage B propa
 
 ### 3.4 Stage B — Propagation + Refinement
 
-Stage B takes the clean baseline from Stage A and propagates topology-aware corrections through the network in two topological passes.
+Stage B takes the clean baseline from Stage A and propagates topology-aware corrections through the network. Pass 1 does all the work; three subsequent safety-net steps (B2, B3, Pass 2) made 0 adjustments globally.
 
 #### Pass 1 — Topology propagation
 
@@ -145,15 +145,13 @@ Process all reaches in topological order (headwaters first, outlets last). This 
 | **Junctions** (2+ upstream) | `corrected = sum(corrected_upstream) + lateral` | `lateral = max(baseline - sum(baseline_upstream), 0)`. The max-0 clamp catches D8 cloning inflation (negative lateral = physically impossible). Tradeoff: real lateral drainage is zeroed alongside inflation in clone cases. |
 | **Bifurcation children** | `corrected = corrected_parent * (width / sum_sibling_widths)` | Width-proportional split instead of D8's full-clone. Equal-split fallback when width data is missing. |
 | **1:1 links in bifurcation channels** | `corrected = corrected_parent` (zero lateral) | D8 assigns full parent UPA to every reach in both branches; allowing lateral here would re-inject the pre-split value. Channel membership tracked by pre-pass. |
-| **1:1 links where parent was lowered** | `corrected = corrected_parent + lateral` | `lateral = max(baseline - baseline_parent, 0)`, with 10x cap to block D8 re-injection. This propagates bifurcation splits downstream through 1:1 chains. Dominant correction type (60,288 reaches globally). |
+| **Normal 1:1 links** | `corrected = corrected_parent + lateral` | `lateral = max(baseline - baseline_parent, 0)`, with 10x cap to block D8 re-injection. This propagates bifurcation splits downstream through 1:1 chains. Dominant correction type (60,288 reaches globally). |
 
-**Raises do not cascade in Pass 1.** If a junction floor raised the parent, downstream 1:1 links keep their baseline. Without this block, junction raises would compound at every downstream junction — the exponential inflation that produced 1.65 billion km^2 on the Lena delta in our v1 attempt.
+**Lateral inflation is structurally prevented.** Because laterals are computed from baselines (`max(baseline - baseline_parent, 0)`), a junction floor raise to the parent does not inflate the lateral term — only genuine baseline drainage increments propagate. The 10x cap (`lateral > 10 * baseline_parent` → zero) blocks D8 re-injection, and bifurcation channel membership (`corrected = corrected_parent`, zero lateral) prevents re-injection of pre-split UPA values. Together these prevent the exponential compounding that produced 1.65 billion km^2 on the Lena delta in our v1 attempt, where junction raises cascaded unchecked through nested bifurcation-junction pairs.
 
-#### Pass 2 — Consistency enforcement
+#### Safety nets (B2, B3, Pass 2)
 
-Pass 1's raise-blocking leaves gaps: when a junction floor raises a reach, downstream 1:1 reaches still hold their (lower) baselines. Pass 2 fills these gaps with a raise-only topological walk: for each reach, ensure `corrected >= sum(corrected_upstream)`. This propagates raises through 1:1 chains but does **not** compound at junctions, because Pass 1 already set all junction values.
-
-In the current run, Pass 2 adjusts **0 reaches globally** — Stage A and Pass 1 already produce a fully consistent result. Pass 2 is retained as a safety net.
+Three additional steps follow Pass 1, all retained as safety nets: **B2** runs PAVA on 1:1 chains in the corrected values with bifurcation children pinned as high-weight anchors; **B3** re-enforces junction conservation after B2; **Pass 2** recomputes all correction rules in a final topological pass (junction floors raise-only, bifurcation shares unconditional, 1:1 lateral raise-only). In the current run, all three are **no-ops** (0 adjustments globally) — Pass 1 already produces a fully monotonic, conservation-consistent result.
 
 ### 3.5 Scalability
 
