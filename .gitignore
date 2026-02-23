@@ -207,6 +207,7 @@ src/_legacy/updates/delta_updates/testing.py
 
 # Project-specific ignores
 *.png
+!docs/technical/figures/*.png
 outputs/
 test_*.py
 !tests/**/test_*.py
