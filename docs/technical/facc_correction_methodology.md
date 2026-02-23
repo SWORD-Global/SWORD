@@ -20,7 +20,7 @@ When a river splits into two or more channels, D8 routes all flow to one neighbo
 
 The correct values should be proportional to channel width. If Child A carries 60% of the flow (by width), it should have ~653,000 km^2 and Child B ~436,000 km^2. Instead, both get the full 1,089,000 km^2.
 
-**Scale**: ~2,910 bifurcation points globally across 248,674 reaches.
+**Scale**: ~2,910 bifurcation points globally across 248,673 reaches.
 
 ### 1.2 Junction Inflation
 
@@ -84,7 +84,7 @@ Both approaches enforce conservation (downstream facc >= sum of upstream facc) a
 
 ### 3.1 Lint Checks Referenced
 
-The pipeline targets specific violations detected by our [lint framework](../src/sword_duckdb/lint/CHECKS.md) (see Section 6 for full results):
+The pipeline targets specific violations detected by our lint framework (`src/sword_duckdb/lint/`) (see Section 6 for full results):
 
 | Check | What it tests |
 |-------|---------------|
@@ -145,9 +145,9 @@ Each reach has ~10-50 nodes spaced ~200m apart, each independently sampling the 
 - A within-reach facc ratio > 2.0x indicates raster misalignment, not real drainage variation over a ~2-10 km segment.
 - v17b node-level data is the uncorrupted source (we read from v17b, not v17c, which may have been modified).
 
-#### A2 — Node Validation on Baseline
+#### ~~A2 — Node Validation on Baseline~~ (Removed)
 
-After A1 sets initial baselines, A2 checks for extreme lows: reaches where the baseline facc is less than 10% of the reach's `MAX(node facc)`. These are cases where A1's downstream-node selection landed on an anomalously low value (the downstream node itself hit a wrong UPA cell). A2 caps these back up to `MAX(node facc)`. This is a safety net for the small number of reaches (~594 globally) where the downstream node is less reliable than the maximum.
+A2 previously capped extreme lows where A1's downstream-node selection landed on an anomalously low value. It was removed because it spiked the baseline facc on those reaches, which seeded inflation when Stage B propagated corrections through the network.
 
 #### A3 — Outlier Detection (Diagnostics Only)
 
@@ -159,9 +159,9 @@ A3 flags remaining statistical outliers using a neighborhood log-deviation metri
 
 By cleaning MERIT's D8 noise from the baseline, A4 ensures that when Stage B propagates corrections through the network, it starts from monotonic 1:1 chains. Without A4, residual drops in the baseline would survive propagation and appear as T003 violations in the final output — exactly what happened in the old pipeline (5,804 T003 flags). With A4, the final T003 count is **0**.
 
-A4 adjusts ~10,740 reaches globally (`baseline_isotonic` correction type in the CSV, though most of these are small adjustments that get superseded by Stage B propagation — the final `baseline_isotonic` count in the output is 5,203 reaches whose A4 adjustment was the only correction they received).
+A4 adjusts ~12,662 reaches globally (`baseline_isotonic` correction type in the CSV, though most of these are small adjustments that get superseded by Stage B propagation — the final `baseline_isotonic` count in the output is 5,407 reaches whose A4 adjustment was the only correction they received).
 
-![Fig 4: Isotonic Regression (PAVA) Example](../output/facc_detection/figures/report_fig4.png)
+![Fig 4: Isotonic Regression (PAVA) Example](../../output/facc_detection/figures/report_fig4.png)
 *Figure 4. PAVA in action on a 15-reach 1:1 chain in South America. The red line (Stage A baseline) has a clear violation zone where facc decreases from R8 to R14. PAVA (blue) creates a flat "pool" through the drop — the closest non-decreasing fit — then rises to meet the downstream values. The shaded regions mark where facc was decreasing (violations). PAVA adjusts values both up and down to minimize total distortion while guaranteeing monotonicity.*
 
 ### 3.4 Stage B — Propagation + Refinement
@@ -233,7 +233,9 @@ The reason: D8 assigns the full parent river's UPA to every reach in both branch
 
 At reconvergence junctions, `floor = sum(upstream shares)` correctly reconstructs approximately the parent value instead of double-counting inflated channels.
 
-**1:1 links outside bifurcation channels where the parent was lowered** (parent's corrected < parent's baseline, meaning a bifurcation split propagated down to it): `corrected = corrected_parent + max(baseline - baseline_parent, 0)`. This lateral-increment logic matters because bifurcation corrections need to propagate. When a bifurcation split lowers a parent's facc, the child on a 1:1 link should inherit that lower value — otherwise the correction stops at the first reach downstream and the rest of the river still carries the inflated UPA value.
+**1:1 links outside bifurcation channels where the parent was lowered** (parent's corrected < parent's baseline, meaning a bifurcation split propagated down to it): `corrected = corrected_parent + lateral`. The lateral increment is `max(baseline - baseline_parent, 0)`, but with a **10x cap**: if the raw lateral exceeds 10x the parent's baseline, it is zeroed out (`lateral_capped` correction type). This cap catches D8 re-injection — when the child's baseline carries a UPA value from an entirely different flow path, producing a lateral that is physically implausible. The 10x threshold is conservative: real lateral drainage over a single ~2-10 km reach rarely exceeds even 2x the parent's total drainage. Without the cap, 1,395 reaches globally would re-inject inflated D8 values into corrected chains.
+
+This lateral-increment logic matters because bifurcation corrections need to propagate. When a bifurcation split lowers a parent's facc, the child on a 1:1 link should inherit that lower value — otherwise the correction stops at the first reach downstream and the rest of the river still carries the inflated UPA value.
 
 ```
   Bifurcation parent (baseline 1,000,000 km²)
@@ -251,7 +253,7 @@ At reconvergence junctions, `floor = sum(upstream shares)` correctly reconstruct
 
 The lateral is zero here because Reach X's baseline (410K) is less than the parent's baseline (1M) — there's no evidence of new drainage entering. But if Reach X had a baseline of 1,050,000 (50K of real local drainage beyond the parent), the formula would preserve it: `corrected = 400,000 + max(1,050,000 - 1,000,000, 0) = 450,000`.
 
-**Lowering cascades downstream**: every subsequent 1:1 reach applies the same rule (`lateral_propagate` correction type), so the bifurcation split propagates all the way down the chain until it hits a junction or another bifurcation. This is the dominant correction type (64,784 reaches globally).
+**Lowering cascades downstream**: every subsequent 1:1 reach applies the same rule (`lateral_propagate` or `lateral_capped` correction type), so the bifurcation split propagates all the way down the chain until it hits a junction or another bifurcation. This is the dominant correction type (60,284 reaches globally for `lateral_propagate`, plus 1,395 `lateral_capped`).
 
 **1:1 links where the parent was raised** (parent's corrected >= parent's baseline, meaning a junction floor pushed it up): Keep the baseline — raising does not cascade in Pass 1. If it did, a junction-floor raise would add to `sum(corrected_upstream)` at the next junction, compounding at every junction downstream. This exponential inflation is what caused the Lena River delta to reach 1.65 billion km² in our v1 attempt (real basin: 2.49M km²). Instead, Pass 2 handles the 1:1 gaps left by blocked raises (see below).
 
@@ -268,13 +270,13 @@ This does propagate raises through 1:1 chains, but it does **not** compound at j
 
 Pass 2 also enforces zero lateral for 1:1 links in bifurcation channels (same tracking as Pass 1), ensuring that isotonic smoothing or junction re-flooring between passes did not re-inject D8 values into bifurcation branches.
 
-Pass 2 adjusts 6,086 reaches globally (3,717 on 1:1 links, 1,211 at bifurcations, 1,158 at junctions), producing the `final_1to1`, `final_bifurc`, `final_bifurc_channel`, and `final_junction` correction types.
+In the current run, Pass 2 adjusts **0 reaches globally** — Stage A and Pass 1 already produce a fully consistent result. The code retains Pass 2 as a safety net and would produce `final_1to1`, `final_bifurc`, `final_bifurc_channel`, and `final_junction` correction types if any gaps were found.
 
-The code also includes safety-net steps between Pass 1 and Pass 2 (isotonic smoothing, junction re-flooring). In practice these find 0 violations because Stage A and Pass 1 already produce a consistent result.
+The code also includes safety-net steps between Pass 1 and Pass 2 (isotonic smoothing, junction re-flooring). These also find 0 violations.
 
 ### 3.5 Scalability
 
-Topological sort is O(V + E). Isotonic regression is O(k) per chain. Total runtime for all 248,674 reaches across 6 regions: **~48 seconds** on a single machine. No manual basin delineation or constraint setup required.
+Topological sort is O(V + E). Isotonic regression is O(k) per chain. Total runtime for all 248,673 reaches across 6 regions: **~24 seconds** on a single machine. No manual basin delineation or constraint setup required.
 
 ---
 
@@ -285,8 +287,8 @@ Topological sort is O(V + E). Isotonic regression is O(k) per chain. Total runti
 | **Formulation** | Constrained QP: min \|\|W(Ax - L)\|\|^2 | Topological-order rules + isotonic regression |
 | **Objective** | Minimize weighted deviation from UPA | Conservation + data fidelity (same goal) |
 | **Constraints** | x >= 0, optional hard anchors | Junction floor, width-proportional splits |
-| **Scale tested** | 55 reaches (1 basin) | 248,674 reaches (6 regions, global) |
-| **Runtime** | <1s per basin | ~48 sec global |
+| **Scale tested** | 55 reaches (1 basin) | 248,673 reaches (6 regions, global) |
+| **Runtime** | <1s per basin | ~24 sec global |
 | **Manual setup** | Basin delineation, constraint reach IDs | None (auto from topology) |
 | **Bifurcation handling** | Implicit in A matrix structure | Explicit width-proportional split |
 | **Monotonicity** | Not enforced (same as F006 only) | Enforced via baseline isotonic (T003 = 0) |
@@ -302,62 +304,58 @@ Our junction rule `corrected = sum(corrected_upstream) + max(base - sum(base_ups
 
 ### Willamette Basin Case Study (Basin 7822)
 
-To validate agreement between the two approaches, we ran both on the Willamette River basin: 55 reaches (52 dependent, 3 independent headwaters). The integrator was run **without anchors** (`constrain_rids=None`) for a fair comparison, since the biphase pipeline also uses no anchors.
+To illustrate the pipeline's behavior on a well-understood basin, we applied it to the Willamette River basin: 55 reaches (52 dependent, 3 independent headwaters).
 
-![Fig 5: Willamette Comparison](../output/facc_detection/figures/report_fig5.png)
-*Figure 5. Left: Integrator vs biphase pipeline corrected facc (log-log scatter). The two solutions are highly correlated (r = 0.993). Right: Per-reach % changes for reaches modified by at least one method.*
+![Fig 5: Willamette Comparison](../../output/facc_detection/figures/report_fig5.png)
+*Figure 5. Left: v17b vs biphase pipeline corrected facc (log-log scatter) for the 55 Willamette River basin reaches. Blue = unchanged, orange = corrected. Right: Per-reach % changes for the 17 corrected reaches.*
 
 **Key results:**
 
-| Metric | Integrator | Biphase Pipeline |
-|--------|-----------|-------------|
-| Reaches modified | 52 / 55 | 17 / 55 |
-| Mean absolute change | 974 km² | 3,915 km² (on changed reaches) |
-| Direction agreement | 10/17 (59%) where both changed |
-| Correlation (r) | 0.993 |
+| Metric | Biphase Pipeline |
+|--------|-------------|
+| Reaches modified | 17 / 55 |
+| Correction types | Lateral propagation (16), junction floor (1) |
+| Median % change | +22% (on changed reaches) |
 
-The integrator redistributes incremental areas across all 52 dependent reaches (its optimization touches every variable), producing small adjustments even where v17b values were already reasonable. The biphase pipeline modifies 17 reaches that violate specific rules — primarily lateral propagation from bifurcation corrections and baseline isotonic smoothing. Both methods produce physically valid solutions. The higher per-reach magnitude from the biphase pipeline reflects its full propagation of bifurcation splits through downstream 1:1 chains, while the integrator spreads adjustments more evenly across the network.
+The biphase pipeline modifies 17 of 55 Willamette reaches that violate specific rules — primarily lateral propagation from upstream bifurcation corrections. The remaining 38 reaches already satisfy conservation and monotonicity constraints and are left unchanged.
 
 ---
 
 ## 5. Global Results
 
-![Fig 1: Before/After Evidence](../output/facc_detection/figures/report_fig1.png)
+![Fig 1: Before/After Evidence](../../output/facc_detection/figures/report_fig1.png)
 *Figure 1. Before/after evidence that v17c corrections fix real errors. Top row: junction conservation (facc / sum of upstream facc) — v17b has ~51% of junctions violating conservation (ratio < 1.0); v17c has effectively 0 violations. Bottom row: bifurcation child/parent ratio — v17b shows a UPA cloning peak at ratio ~1.0 (every child gets full parent facc); v17c shifts the median to ~0.47 (width-proportional splitting).*
 
 Data from summary JSONs (all regions applied):
 
 | Region | Reaches | Corrections | Raised | Lowered | Net % Change | T003 | F006 |
 |--------|---------|-------------|--------|---------|--------------|------|------|
-| NA | 38,696 | 15,447 | 13,805 | 1,642 | +472.7% | 0 | 0 |
-| SA | 42,159 | 15,427 | 14,449 | 978 | +1,130.9% | 0 | 0 |
-| EU | 31,103 | 11,434 | 10,216 | 1,218 | +318.1% | 0 | 0 |
-| AF | 21,441 | 8,941 | 8,288 | 653 | +315.7% | 0 | 0 |
-| AS | 100,185 | 37,501 | 34,083 | 3,418 | +3,769.7% | 0 | 0 |
-| OC | 15,090 | 4,973 | 4,119 | 854 | +112.3% | 0 | 0 |
-| **Total** | **248,674** | **93,723** | **84,960** | **8,763** | — | **0** | **0** |
+| NA | 38,696 | 15,930 | 13,177 | 2,753 | +203.7% | 0 | 0 |
+| SA | 42,159 | 15,793 | 13,949 | 1,844 | +417.1% | 0 | 0 |
+| EU | 31,103 | 11,724 | 9,661 | 2,063 | +107.8% | 0 | 0 |
+| AF | 21,441 | 9,038 | 7,710 | 1,328 | +171.3% | 0 | 0 |
+| AS | 100,185 | 38,355 | 32,054 | 6,301 | +1,420.9% | 0 | 0 |
+| OC | 15,089 | 5,066 | 3,974 | 1,092 | +69.6% | 0 | 0 |
+| **Total** | **248,673** | **95,906** | **80,525** | **15,381** | — | **0** | **0** |
 
-![Fig 2: Correction Type Breakdown by Region](../output/facc_detection/figures/report_fig2.png)
+![Fig 2: Correction Type Breakdown by Region](../../output/facc_detection/figures/report_fig2.png)
 *Figure 2. Correction type breakdown by region. Lateral propagation (yellow) dominates, followed by junction floors (green) and baseline isotonic (purple). AS has the most corrections due to its large reach count and complex delta systems.*
 
 Correction type breakdown (global totals from summary JSONs):
 
 | Correction Type | Stage | Count | Description |
 |-----------------|-------|-------|-------------|
-| lateral_propagate | B Pass 1 | 64,784 | Bifurcation-split cascade on 1:1 links |
-| junction_floor | B Pass 1 | 13,107 | Junction conservation enforcement |
-| baseline_isotonic | A4 | 5,203 | Baseline PAVA smoothing on 1:1 chains |
-| bifurc_share | B Pass 1 | 4,453 | Width-proportional bifurcation splitting |
+| lateral_propagate | B Pass 1 | 60,284 | Bifurcation-split cascade on 1:1 links |
+| junction_floor | B Pass 1 | 14,305 | Junction conservation enforcement |
 | bifurc_channel_no_lateral | B Pass 1 | 8,771 | Zero lateral on 1:1 links inside bifurcation channels |
-| final_1to1 | B Pass 2 | 3,717 | Consistency enforcement on 1:1 links |
-| final_bifurc | B Pass 2 | 1,211 | Consistency enforcement at bifurcations |
-| final_bifurc_channel | B Pass 2 | 0 | Consistency enforcement on bifurc channel 1:1 links |
-| final_junction | B Pass 2 | 1,158 | Consistency enforcement at junctions |
-| node_denoise | A1 | 86 | Within-reach node facc variability correction |
+| bifurc_share | B Pass 1 | 5,662 | Width-proportional bifurcation splitting |
+| baseline_isotonic | A4 | 5,407 | Baseline PAVA smoothing on 1:1 chains |
+| lateral_capped | B Pass 1 | 1,395 | 10x lateral cap on 1:1 links (D8 re-injection blocked) |
+| node_denoise | A1 | 82 | Within-reach node facc variability correction |
 | ~~baseline_node_override~~ | ~~A2~~ | — | Removed: spiked baseline, seeded inflation |
 | ~~node_max_override~~ | ~~B~~ | — | Removed: caused cascading 5-10x inflation |
 
-**Why are net % changes so large?** The "Net % Change" column reports `(total_facc_after - total_facc_before) / total_facc_before` across all reaches in a region. Large values (e.g., +3,770% for AS) reflect the intended behavior of full lateral propagation: when a bifurcation split lowers one branch, the correction cascades through every downstream 1:1 reach. In Asia's large river systems (Ganges, Mekong, Yangtze deltas), a single bifurcation correction propagates through hundreds of downstream reaches. The old pipeline blocked these cascades, producing smaller net changes but leaving most downstream reaches with inflated UPA values. The net % metric is dominated by a few large rivers and does not indicate that typical reaches changed by thousands of percent.
+**Why are net % changes so large?** The "Net % Change" column reports `(total_facc_after - total_facc_before) / total_facc_before` across all reaches in a region. Large values (e.g., +1,421% for AS) reflect the intended behavior of full lateral propagation: when a bifurcation split lowers one branch, the correction cascades through every downstream 1:1 reach. In Asia's large river systems (Ganges, Mekong, Yangtze deltas), a single bifurcation correction propagates through hundreds of downstream reaches. The 10x lateral cap (`lateral_capped`) reduces the most extreme cascades while preserving the propagation behavior. The net % metric is dominated by a few large rivers and does not indicate that typical reaches changed by thousands of percent.
 
 ---
 
@@ -410,7 +408,7 @@ After Stage A, three independent criteria flag remaining outliers. **These flags
 
 ---
 
-![Fig 3: Scalability Comparison](../output/facc_detection/figures/report_fig3.png)
+![Fig 3: Scalability Comparison](../../output/facc_detection/figures/report_fig3.png)
 *Figure 3. Left: Computational complexity — the integrator scales as O(N*m^2) total operations (red) while the biphase pipeline is O(N) regardless of basin size (blue). Right: Reaches and corrections by region, showing a consistent ~37-40% correction rate across all regions.*
 
 ---
@@ -458,9 +456,8 @@ output/facc_detection/
 ### Figure Generation
 
 ```bash
-python scripts/generate_facc_report_figures.py
-# Outputs: output/facc_detection/figures/report_fig{1-4}.png
-
-python scripts/compare_willamette_integrator.py
-# Outputs: output/facc_detection/figures/report_fig5.png
+python scripts/visualization/generate_facc_report_figures.py \
+    --db data/duckdb/sword_v17c.duckdb \
+    --v17b data/duckdb/sword_v17b.duckdb
+# Outputs: output/facc_detection/figures/report_fig{1-5}.png
 ```
