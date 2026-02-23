@@ -150,15 +150,34 @@ CREATE TABLE nodes (
     pathlen_out DOUBLE PRECISION,
 
     -- SWOT observation statistics
-    wse_obs_mean DOUBLE PRECISION,
-    wse_obs_median DOUBLE PRECISION,
-    wse_obs_std DOUBLE PRECISION,
     wse_obs_range DOUBLE PRECISION,
-    width_obs_mean DOUBLE PRECISION,
-    width_obs_median DOUBLE PRECISION,
-    width_obs_std DOUBLE PRECISION,
     width_obs_range DOUBLE PRECISION,
     n_obs INTEGER,
+
+    -- Node ordering within reach (1=downstream, n=upstream)
+    node_order INTEGER,
+
+    -- SWOT percentile-based observations
+    wse_obs_p10 DOUBLE PRECISION,
+    wse_obs_p20 DOUBLE PRECISION,
+    wse_obs_p30 DOUBLE PRECISION,
+    wse_obs_p40 DOUBLE PRECISION,
+    wse_obs_p50 DOUBLE PRECISION,
+    wse_obs_p60 DOUBLE PRECISION,
+    wse_obs_p70 DOUBLE PRECISION,
+    wse_obs_p80 DOUBLE PRECISION,
+    wse_obs_p90 DOUBLE PRECISION,
+    wse_obs_mad DOUBLE PRECISION,
+    width_obs_p10 DOUBLE PRECISION,
+    width_obs_p20 DOUBLE PRECISION,
+    width_obs_p30 DOUBLE PRECISION,
+    width_obs_p40 DOUBLE PRECISION,
+    width_obs_p50 DOUBLE PRECISION,
+    width_obs_p60 DOUBLE PRECISION,
+    width_obs_p70 DOUBLE PRECISION,
+    width_obs_p80 DOUBLE PRECISION,
+    width_obs_p90 DOUBLE PRECISION,
+    width_obs_mad DOUBLE PRECISION,
 
     PRIMARY KEY (node_id, region)
 );
@@ -267,18 +286,9 @@ CREATE TABLE reaches (
     rch_id_up_main BIGINT,
     rch_id_dn_main BIGINT,
 
-    -- SWOT observation statistics
-    wse_obs_mean DOUBLE PRECISION,
-    wse_obs_median DOUBLE PRECISION,
-    wse_obs_std DOUBLE PRECISION,
+    -- SWOT observation statistics (range + n_obs)
     wse_obs_range DOUBLE PRECISION,
-    width_obs_mean DOUBLE PRECISION,
-    width_obs_median DOUBLE PRECISION,
-    width_obs_std DOUBLE PRECISION,
     width_obs_range DOUBLE PRECISION,
-    slope_obs_mean DOUBLE PRECISION,
-    slope_obs_median DOUBLE PRECISION,
-    slope_obs_std DOUBLE PRECISION,
     slope_obs_range DOUBLE PRECISION,
     n_obs INTEGER,
 
@@ -297,6 +307,46 @@ CREATE TABLE reaches (
     slope_obs_slopeF DOUBLE PRECISION,
     swot_obs_source VARCHAR,
 
+    -- River name variants
+    river_name_local VARCHAR,
+    river_name_en VARCHAR,
+
+    -- Boundary node IDs
+    dn_node_id BIGINT,
+    up_node_id BIGINT,
+
+    -- SWOT percentile-based observations
+    wse_obs_p10 DOUBLE PRECISION,
+    wse_obs_p20 DOUBLE PRECISION,
+    wse_obs_p30 DOUBLE PRECISION,
+    wse_obs_p40 DOUBLE PRECISION,
+    wse_obs_p50 DOUBLE PRECISION,
+    wse_obs_p60 DOUBLE PRECISION,
+    wse_obs_p70 DOUBLE PRECISION,
+    wse_obs_p80 DOUBLE PRECISION,
+    wse_obs_p90 DOUBLE PRECISION,
+    wse_obs_mad DOUBLE PRECISION,
+    width_obs_p10 DOUBLE PRECISION,
+    width_obs_p20 DOUBLE PRECISION,
+    width_obs_p30 DOUBLE PRECISION,
+    width_obs_p40 DOUBLE PRECISION,
+    width_obs_p50 DOUBLE PRECISION,
+    width_obs_p60 DOUBLE PRECISION,
+    width_obs_p70 DOUBLE PRECISION,
+    width_obs_p80 DOUBLE PRECISION,
+    width_obs_p90 DOUBLE PRECISION,
+    width_obs_mad DOUBLE PRECISION,
+    slope_obs_p10 DOUBLE PRECISION,
+    slope_obs_p20 DOUBLE PRECISION,
+    slope_obs_p30 DOUBLE PRECISION,
+    slope_obs_p40 DOUBLE PRECISION,
+    slope_obs_p50 DOUBLE PRECISION,
+    slope_obs_p60 DOUBLE PRECISION,
+    slope_obs_p70 DOUBLE PRECISION,
+    slope_obs_p80 DOUBLE PRECISION,
+    slope_obs_p90 DOUBLE PRECISION,
+    slope_obs_mad DOUBLE PRECISION,
+
     PRIMARY KEY (reach_id, region)
 );
 
@@ -309,6 +359,10 @@ CREATE TABLE reach_topology (
     neighbor_rank SMALLINT NOT NULL,     -- 0-3
 
     neighbor_reach_id BIGINT NOT NULL,
+
+    -- Review workflow flags
+    topology_suspect BOOLEAN DEFAULT FALSE,
+    topology_approved BOOLEAN DEFAULT FALSE,
 
     PRIMARY KEY (reach_id, region, direction, neighbor_rank)
 );
@@ -489,6 +543,35 @@ CREATE TABLE v17c_section_slope_validation (
     PRIMARY KEY (section_id, region)
 );
 
+-- facc corrections: Applied corrections
+DROP TABLE IF EXISTS facc_corrections CASCADE;
+CREATE TABLE facc_corrections (
+    correction_id INTEGER PRIMARY KEY,
+    reach_id BIGINT,
+    old_facc DOUBLE PRECISION,
+    new_facc DOUBLE PRECISION,
+    predicted_facc DOUBLE PRECISION,
+    correction_type VARCHAR,
+    applied_at TIMESTAMP,
+    batch_id INTEGER
+);
+
+-- v17c flow corrections: Section flow direction corrections
+DROP TABLE IF EXISTS v17c_flow_corrections CASCADE;
+CREATE TABLE v17c_flow_corrections (
+    run_id VARCHAR,
+    region VARCHAR(2),
+    section_id INTEGER,
+    iteration INTEGER,
+    tier VARCHAR,
+    action VARCHAR,
+    slope_from_upstream DOUBLE PRECISION,
+    slope_from_downstream DOUBLE PRECISION,
+    n_reaches_flipped INTEGER,
+    reach_ids_flipped VARCHAR,
+    created_at TIMESTAMP
+);
+
 -- -----------------------------------------------------------------------------
 -- OPERATIONAL TABLES
 -- -----------------------------------------------------------------------------
@@ -496,7 +579,7 @@ CREATE TABLE v17c_section_slope_validation (
 -- facc fix log: Tracks flow accumulation corrections
 DROP TABLE IF EXISTS facc_fix_log CASCADE;
 CREATE TABLE facc_fix_log (
-    fix_id SERIAL PRIMARY KEY,
+    fix_id INTEGER,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     reach_id BIGINT,
     region VARCHAR(2),
@@ -506,7 +589,10 @@ CREATE TABLE facc_fix_log (
     old_edit_flag VARCHAR,
     new_edit_flag VARCHAR,
     notes VARCHAR,
-    source VARCHAR
+    source VARCHAR,
+    batch_id VARCHAR,
+    model_used VARCHAR,
+    facc_corrected DOUBLE PRECISION
 );
 
 -- Lint fix log: Tracks lint corrections
@@ -682,7 +768,7 @@ CREATE OR REPLACE VIEW as_reaches AS SELECT * FROM reaches WHERE region = 'AS';
 -- -----------------------------------------------------------------------------
 
 INSERT INTO sword_versions (version, schema_version, notes)
-VALUES ('schema', '1.6.0', 'Add SWOT slope obs quality columns to reaches')
+VALUES ('schema', '1.7.0', 'Add percentile obs, node_order, dn/up_node_id, river_name variants')
 ON CONFLICT (version) DO UPDATE
 SET schema_version = EXCLUDED.schema_version,
     notes = EXCLUDED.notes,

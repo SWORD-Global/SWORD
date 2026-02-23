@@ -582,6 +582,8 @@ Examples:
         "sword_snapshots",
         "v17c_sections",
         "v17c_section_slope_validation",
+        "facc_corrections",
+        "v17c_flow_corrections",
         "facc_fix_log",
         "lint_fix_log",
         "imagery_acquisitions",
