@@ -7,7 +7,6 @@ Validates topology consistency and flow direction properties.
 from typing import Optional
 
 import duckdb
-import pandas as pd
 
 from ..core import (
     register_check,
@@ -77,7 +76,7 @@ def check_dist_out_monotonicity(
     total_query = f"""
     SELECT COUNT(*) FROM reaches r1
     WHERE dist_out > 0 AND dist_out != -9999
-    {where_clause.replace('r1.', '')}
+    {where_clause.replace("r1.", "")}
     """
     total = conn.execute(total_query).fetchone()[0]
 
@@ -110,6 +109,13 @@ def check_path_freq_monotonicity(
     Check that path_freq increases toward outlets.
 
     At confluences, downstream path_freq should be >= max(upstream path_freqs).
+
+    Side-channel and secondary-outlet reaches (main_side=1 or 2) that rejoin
+    the main channel at a confluence are expected to carry high path_freq from
+    the bifurcation point where they branched off. When they merge back, the
+    main channel's path_freq at the rejoin point is often lower — this is
+    structurally correct, not a data error. These edges are tagged as
+    'side_rejoin' in the details and excluded from the issue count.
     """
     where_clause = f"AND r1.region = '{region}'" if region else ""
 
@@ -121,7 +127,9 @@ def check_path_freq_monotonicity(
             r1.path_freq as pf_up,
             r2.path_freq as pf_down,
             r1.river_name,
-            r1.x, r1.y
+            r1.x, r1.y,
+            r1.main_side as up_main_side,
+            r2.main_side as dn_main_side
         FROM reaches r1
         JOIN reach_topology rt ON r1.reach_id = rt.reach_id AND r1.region = rt.region
         JOIN reaches r2 ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
@@ -133,31 +141,56 @@ def check_path_freq_monotonicity(
     SELECT
         reach_id, region, river_name, x, y,
         pf_up, pf_down,
-        (pf_up - pf_down) as pf_decrease
+        (pf_up - pf_down) as pf_decrease,
+        up_main_side, dn_main_side,
+        -- Side/secondary-outlet reaches rejoining main channel: expected drop
+        CASE WHEN up_main_side IN (1, 2) THEN 'side_rejoin'
+             ELSE 'unexpected'
+        END as violation_type
     FROM downstream_freqs
     WHERE pf_down < pf_up
-    ORDER BY pf_decrease DESC
+    ORDER BY
+        CASE WHEN up_main_side IN (1, 2) THEN 1 ELSE 0 END,
+        pf_decrease DESC
     """
 
-    issues = conn.execute(query).fetchdf()
+    all_violations = conn.execute(query).fetchdf()
+
+    # Split: true issues vs expected side-channel rejoin drops
+    if len(all_violations) > 0:
+        unexpected = all_violations[all_violations["violation_type"] == "unexpected"]
+        side_rejoin = all_violations[all_violations["violation_type"] == "side_rejoin"]
+    else:
+        unexpected = all_violations
+        side_rejoin = all_violations
 
     total_query = f"""
     SELECT COUNT(*) FROM reaches r1
     WHERE path_freq > 0 AND path_freq != -9999
-    {where_clause.replace('r1.', '')}
+    {where_clause.replace("r1.", "")}
     """
     total = conn.execute(total_query).fetchone()[0]
+
+    n_unexpected = len(unexpected)
+    n_side_rejoin = len(side_rejoin)
+
+    desc = f"path_freq decreases downstream: {n_unexpected} unexpected"
+    if n_side_rejoin > 0:
+        desc += (
+            f", {n_side_rejoin} expected (side/secondary-outlet rejoin — "
+            f"main_side IN (1,2) carrying high path_freq from bifurcation)"
+        )
 
     return CheckResult(
         check_id="T002",
         name="path_freq_monotonicity",
         severity=Severity.WARNING,
-        passed=len(issues) == 0,
+        passed=n_unexpected == 0,
         total_checked=total,
-        issues_found=len(issues),
-        issue_pct=100 * len(issues) / total if total > 0 else 0,
-        details=issues,
-        description="Reaches where path_freq decreases downstream",
+        issues_found=n_unexpected,
+        issue_pct=100 * n_unexpected / total if total > 0 else 0,
+        details=all_violations,
+        description=desc,
     )
 
 
@@ -213,7 +246,7 @@ def check_facc_monotonicity(
     total_query = f"""
     SELECT COUNT(*) FROM reaches r1
     WHERE facc > 0 AND facc != -9999
-    {where_clause.replace('r1.', '')}
+    {where_clause.replace("r1.", "")}
     """
     total = conn.execute(total_query).fetchone()[0]
 
