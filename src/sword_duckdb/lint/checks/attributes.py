@@ -698,8 +698,9 @@ def check_width_obs_vs_width(
 @register_check(
     "A026",
     Category.ATTRIBUTES,
-    Severity.ERROR,
-    "slope_obs_p50 must be non-negative",
+    Severity.WARNING,
+    "slope_obs_p50 should be non-negative",
+    default_threshold=-0.01,  # m/km — slopes more negative than this are flagged
 )
 def check_slope_obs_nonneg(
     conn: duckdb.DuckDBPyConnection,
@@ -709,18 +710,35 @@ def check_slope_obs_nonneg(
     """
     Check that SWOT-observed slope p50 (median) is non-negative.
 
-    Negative observed slopes indicate measurement artifacts or processing
-    errors in SWOT data aggregation.
+    ~10% of observed reaches have slightly negative slope_obs_p50. This is
+    expected SWOT measurement noise near zero slope — the median of the
+    negative values is -0.00004 m/km (40 micrometers/km). It affects all
+    regions uniformly (10-13%) and is most common on tidal, lake, and flat
+    river reaches where true slope is near zero.
+
+    The slope_obs_quality column already classifies these as 'negative' or
+    'below_ref_uncertainty', and slope_obs_reliable flags them accordingly.
+
+    Only reaches with slope_obs_p50 below the threshold (default -0.01 m/km)
+    are counted as issues — these are rare (~200 globally) and may indicate
+    real problems. Near-zero negatives are reported in the description but
+    don't fail the check.
     """
     if not _column_exists(conn, "slope_obs_p50"):
-        return _skip_result("A026", "slope_obs_nonneg", Severity.ERROR, "slope_obs_p50")
+        return _skip_result(
+            "A026", "slope_obs_nonneg", Severity.WARNING, "slope_obs_p50"
+        )
 
+    cutoff = threshold if threshold is not None else -0.01
     where_clause = f"AND r.region = '{region}'" if region else ""
 
     query = f"""
     SELECT
         r.reach_id, r.region, r.river_name, r.x, r.y,
-        r.slope_obs_p50, r.slope, r.wse, r.lakeflag
+        r.slope_obs_p50, r.slope, r.wse, r.lakeflag,
+        CASE WHEN r.slope_obs_p50 < {cutoff} THEN 'significant'
+             ELSE 'measurement_noise'
+        END as negative_type
     FROM reaches r
     WHERE r.slope_obs_p50 IS NOT NULL
         AND r.slope_obs_p50 != -9999
@@ -729,7 +747,14 @@ def check_slope_obs_nonneg(
     ORDER BY r.slope_obs_p50 ASC
     """
 
-    issues = conn.execute(query).fetchdf()
+    all_negatives = conn.execute(query).fetchdf()
+
+    if len(all_negatives) > 0:
+        significant = all_negatives[all_negatives["negative_type"] == "significant"]
+        noise = all_negatives[all_negatives["negative_type"] == "measurement_noise"]
+    else:
+        significant = all_negatives
+        noise = all_negatives
 
     total_query = f"""
     SELECT COUNT(*) FROM reaches r
@@ -738,16 +763,27 @@ def check_slope_obs_nonneg(
     """
     total = conn.execute(total_query).fetchone()[0]
 
+    n_sig = len(significant)
+    n_noise = len(noise)
+
+    desc = f"Negative slope_obs_p50: {n_sig} significant (< {cutoff} m/km)"
+    if n_noise > 0:
+        desc += (
+            f", {n_noise} measurement noise (near-zero negatives, "
+            f"expected ~10% of observed reaches from SWOT precision limits)"
+        )
+
     return CheckResult(
         check_id="A026",
         name="slope_obs_nonneg",
-        severity=Severity.ERROR,
-        passed=len(issues) == 0,
+        severity=Severity.WARNING,
+        passed=n_sig == 0,
         total_checked=total,
-        issues_found=len(issues),
-        issue_pct=100 * len(issues) / total if total > 0 else 0,
-        details=issues,
-        description="Reaches with negative slope_obs_p50",
+        issues_found=n_sig,
+        issue_pct=100 * n_sig / total if total > 0 else 0,
+        details=all_negatives,
+        description=desc,
+        threshold=cutoff,
     )
 
 
