@@ -27,6 +27,7 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+import requests
 
 # Import lint checks
 from lint.checks.classification import (
@@ -40,6 +41,54 @@ from lint.checks.attributes import check_slope_reasonableness
 # =============================================================================
 FIXES_DIR = Path(os.environ.get("FIXES_DIR", "output/lint_fixes"))
 FIXES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@st.cache_data(ttl=3600)
+def get_planet_quarterly_mosaics(api_key: str):
+    """Query Planet API for latest 4 quarterly visual basemap mosaics."""
+    if not api_key:
+        return []
+    try:
+        resp = requests.get(
+            "https://api.planet.com/basemaps/v1/mosaics",
+            params={"name__contains": "global_quarterly", "_page_size": 20},
+            auth=(api_key, ""),
+            timeout=10,
+        )
+    except requests.RequestException:
+        return []
+    if resp.status_code != 200:
+        return []
+    mosaics = resp.json().get("mosaics", [])
+    quarterly = sorted(
+        [
+            m
+            for m in mosaics
+            if "quarterly" in m["name"] and "visual" in m["name"].lower()
+        ],
+        key=lambda m: m["name"],
+        reverse=True,
+    )[:4]
+    return [m["name"] for m in quarterly]
+
+
+def _add_planet_tile_layer(m):
+    """Add Planet quarterly basemap tile layer to a folium map if configured."""
+    planet_mosaic = st.session_state.get("planet_mosaic")
+    planet_key = os.environ.get("PLANET_API_KEY")
+    if planet_mosaic and planet_key:
+        folium.TileLayer(
+            tiles=(
+                f"https://tiles.planet.com/basemaps/v1/planet-tiles/"
+                f"{planet_mosaic}/gmap/{{z}}/{{x}}/{{y}}.png?api_key={planet_key}"
+            ),
+            attr="Planet Labs",
+            name=f"Planet ({planet_mosaic})",
+            overlay=False,
+            control=True,
+            show=False,
+            max_zoom=18,
+        ).add_to(m)
 
 
 def get_session_file(region: str, check_id: str = "all") -> Path:
@@ -906,6 +955,9 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
         show=False,
     ).add_to(m)
 
+    # Add Planet quarterly basemap if configured
+    _add_planet_tile_layer(m)
+
     # Add layer control to toggle between basemaps
     folium.LayerControl().add_to(m)
 
@@ -1499,6 +1551,14 @@ st.session_state.map_hops = 30
 st.session_state.map_radius = 4.0  # ~444km
 st.session_state.max_reaches = 15000
 st.session_state.show_all_reaches = True
+
+# Planet quarterly basemap selector
+planet_mosaics = get_planet_quarterly_mosaics(os.environ.get("PLANET_API_KEY", ""))
+if planet_mosaics:
+    st.sidebar.divider()
+    st.sidebar.subheader("Planet Basemap")
+    selected_quarter = st.sidebar.selectbox("Quarter", planet_mosaics)
+    st.session_state["planet_mosaic"] = selected_quarter
 
 # Tabs for different issue types
 # NOTE: Tabs 1-2 (Ratio Violations, Monotonicity) hidden until facc strategy decided
@@ -2668,6 +2728,8 @@ with tab10:
                     attr="Esri",
                     name="Satellite",
                 ).add_to(m)
+                _add_planet_tile_layer(m)
+                folium.LayerControl().add_to(m)
 
                 # Draw connected reach (upstream) in orange
                 conn_coords = [[c[1], c[0]] for c in connected_geom]

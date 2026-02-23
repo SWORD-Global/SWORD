@@ -6,3 +6,4 @@ folium>=0.15
 pydeck>=0.8
 duckdb>=0.9
 pandas>=1.5
+requests>=2.28
