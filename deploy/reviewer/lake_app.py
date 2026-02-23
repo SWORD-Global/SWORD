@@ -114,10 +114,11 @@ def replay_persisted_fixes(conn):
                     pass
             conn.execute(
                 """INSERT INTO lint_fix_log
-                   (fix_id, check_id, reach_id, region, action, column_changed, old_value, new_value, notes, undone)
-                   VALUES (?, ?, ?, ?, 'fix', ?, ?, ?, ?, ?)""",
+                   (fix_id, timestamp, check_id, reach_id, region, action, column_changed, old_value, new_value, notes, undone)
+                   VALUES (?, ?::TIMESTAMP, ?, ?, ?, 'fix', ?, ?, ?, ?, ?)""",
                 [
                     fix.get("fix_id", 0),
+                    fix.get("timestamp", datetime.now().isoformat()),
                     fix.get("check_id"),
                     rid,
                     rgn,
@@ -134,10 +135,11 @@ def replay_persisted_fixes(conn):
                 continue
             conn.execute(
                 """INSERT INTO lint_fix_log
-                   (fix_id, check_id, reach_id, region, action, column_changed, old_value, new_value, notes, undone)
-                   VALUES (?, ?, ?, ?, 'skip', NULL, NULL, NULL, ?, ?)""",
+                   (fix_id, timestamp, check_id, reach_id, region, action, column_changed, old_value, new_value, notes, undone)
+                   VALUES (?, ?::TIMESTAMP, ?, ?, ?, 'skip', NULL, NULL, NULL, ?, ?)""",
                 [
                     skip.get("fix_id", 0),
+                    skip.get("timestamp", datetime.now().isoformat()),
                     skip.get("check_id"),
                     skip.get("reach_id"),
                     skip.get("region"),
@@ -362,10 +364,10 @@ def apply_lakeflag_fix(conn, reach_id, region, new_lakeflag):
     timestamp = datetime.now().isoformat()
     conn.execute(
         """
-        INSERT INTO lint_fix_log (fix_id, check_id, reach_id, region, action, column_changed, old_value, new_value, notes)
-        VALUES (?, 'C001', ?, ?, 'fix', 'lakeflag', ?, ?, '')
+        INSERT INTO lint_fix_log (fix_id, timestamp, check_id, reach_id, region, action, column_changed, old_value, new_value, notes)
+        VALUES (?, ?::TIMESTAMP, 'C001', ?, ?, 'fix', 'lakeflag', ?, ?, '')
     """,
-        [new_id, reach_id, region, str(old_lakeflag), str(new_lakeflag)],
+        [new_id, timestamp, reach_id, region, str(old_lakeflag), str(new_lakeflag)],
     )
     conn.execute(
         "UPDATE reaches SET lakeflag = ? WHERE reach_id = ? AND region = ?",
@@ -407,11 +409,12 @@ def apply_column_fix(conn, reach_id, region, check_id, column, new_value, notes=
     )
     conn.execute(
         """
-        INSERT INTO lint_fix_log (fix_id, check_id, reach_id, region, action, column_changed, old_value, new_value, notes)
-        VALUES (?, ?, ?, ?, 'fix', ?, ?, ?, ?)
+        INSERT INTO lint_fix_log (fix_id, timestamp, check_id, reach_id, region, action, column_changed, old_value, new_value, notes)
+        VALUES (?, ?::TIMESTAMP, ?, ?, ?, 'fix', ?, ?, ?, ?)
     """,
         [
             new_id,
+            timestamp,
             check_id,
             reach_id,
             region,
@@ -448,10 +451,10 @@ def log_skip(conn, reach_id, region, check_id, notes):
     timestamp = datetime.now().isoformat()
     conn.execute(
         """
-        INSERT INTO lint_fix_log (fix_id, check_id, reach_id, region, action, column_changed, old_value, new_value, notes)
-        VALUES (?, ?, ?, ?, 'skip', NULL, NULL, NULL, ?)
+        INSERT INTO lint_fix_log (fix_id, timestamp, check_id, reach_id, region, action, column_changed, old_value, new_value, notes)
+        VALUES (?, ?::TIMESTAMP, ?, ?, ?, 'skip', NULL, NULL, NULL, ?)
     """,
-        [new_id, check_id, reach_id, region, notes],
+        [new_id, timestamp, check_id, reach_id, region, notes],
     )
     conn.commit()
     append_skip_to_session(
@@ -502,11 +505,12 @@ def undo_last_fix(conn, region, check_id=None):
     ).fetchone()[0]
     conn.execute(
         """
-        INSERT INTO lint_fix_log (fix_id, check_id, reach_id, region, action, column_changed, old_value, new_value, notes)
-        VALUES (?, ?, ?, ?, 'undo', ?, NULL, ?, ?)
+        INSERT INTO lint_fix_log (fix_id, timestamp, check_id, reach_id, region, action, column_changed, old_value, new_value, notes)
+        VALUES (?, ?::TIMESTAMP, ?, ?, ?, 'undo', ?, NULL, ?, ?)
     """,
         [
             max_id + 1,
+            datetime.now().isoformat(),
             orig_check_id,
             reach_id,
             region,
