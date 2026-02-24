@@ -66,8 +66,8 @@ The pipeline targets specific violations detected by our lint framework (`src/sw
 
 | Check | What it tests |
 |-------|---------------|
-| **T003** | Facc monotonicity — downstream facc < upstream facc on non-bifurcation edges |
-| **F006** | Junction conservation — facc < sum(upstream facc) at junctions with 2+ inputs |
+| **T003** | Facc monotonicity — downstream facc < 95% of upstream facc on non-bifurcation edges (5% tolerance, excludes reaches with 2+ downstream neighbors) |
+| **F006** | Junction conservation — facc < sum(upstream facc) at junctions with 2+ inputs (1 km^2 tolerance) |
 
 ### 3.2 Pipeline Architecture Overview
 
@@ -92,8 +92,8 @@ stateDiagram-v2
     }
 
     state "Stage B: Propagation + Refinement" as StageB {
-        state "Pass 1: Topology propagation" as P1
-        state "Safety nets (B2, B3, Pass 2) — 0 adj." as SN
+        state "B1: Topology propagation" as P1
+        state "Safety nets (B2, B3, B5) — 0 adj." as SN
 
         P1 --> SN : corrected values
     }
@@ -133,9 +133,9 @@ A4 adjusts ~12,662 reaches globally (though most get superseded by Stage B propa
 
 ### 3.4 Stage B — Propagation + Refinement
 
-Stage B takes the clean baseline from Stage A and propagates topology-aware corrections through the network. Pass 1 does all the work; three subsequent safety-net steps (B2, B3, Pass 2) made 0 adjustments globally.
+Stage B takes the clean baseline from Stage A and propagates topology-aware corrections through the network. B1 does all the work; three subsequent safety-net steps (B2, B3, B5) made 0 adjustments globally. (B4 was removed during development — it caused cascading inflation.)
 
-#### Pass 1 — Topology propagation
+#### B1 — Topology propagation
 
 Process all reaches in topological order (headwaters first, outlets last). This guarantees that every reach's upstream neighbors are already corrected before we visit it. Five cases, each with a closed-form rule:
 
@@ -149,9 +149,9 @@ Process all reaches in topological order (headwaters first, outlets last). This 
 
 **Lateral inflation is structurally prevented.** Because laterals are computed from baselines (`max(baseline - baseline_parent, 0)`), a junction floor raise to the parent does not inflate the lateral term — only genuine baseline drainage increments propagate. The 10x cap (`lateral > 10 * baseline_parent` → zero) blocks D8 re-injection, and bifurcation channel membership (`corrected = corrected_parent`, zero lateral) prevents re-injection of pre-split UPA values. Together these prevent the exponential compounding that produced 1.65 billion km^2 on the Lena delta in our v1 attempt, where junction raises cascaded unchecked through nested bifurcation-junction pairs.
 
-#### Safety nets (B2, B3, Pass 2)
+#### Safety nets (B2, B3, B5)
 
-Three additional steps follow Pass 1, all retained as safety nets: **B2** runs PAVA on 1:1 chains in the corrected values with bifurcation children pinned as high-weight anchors; **B3** re-enforces junction conservation after B2; **Pass 2** recomputes all correction rules in a final topological pass (junction floors raise-only, bifurcation shares unconditional, 1:1 lateral raise-only). In the current run, all three are **no-ops** (0 adjustments globally) — Pass 1 already produces a fully monotonic, conservation-consistent result.
+Three additional steps follow B1, all retained as safety nets: **B2** runs PAVA on 1:1 chains in the corrected values with bifurcation children pinned as high-weight anchors; **B3** re-enforces junction conservation after B2; **B5** recomputes all correction rules in a final topological pass (junction floors raise-only, bifurcation shares unconditional, 1:1 lateral raise-only). In the current run, all three are **no-ops** (0 adjustments globally) — B1 already produces a fully monotonic, conservation-consistent result.
 
 ### 3.5 Scalability
 
@@ -225,13 +225,13 @@ Correction type breakdown (global totals from summary JSONs):
 
 | Correction Type | Stage | Count | Description |
 |-----------------|-------|-------|-------------|
-| lateral_propagate | B Pass 1 | 60,288 | Bifurcation-split cascade on 1:1 links |
-| junction_floor | B Pass 1 | 14,306 | Junction conservation enforcement |
-| bifurc_channel_no_lateral | B Pass 1 | 8,771 | Zero lateral on 1:1 links inside bifurcation channels |
-| bifurc_share | B Pass 1 | 5,664 | Width-proportional bifurcation splitting |
+| lateral_propagate | B1 | 60,288 | Bifurcation-split cascade on 1:1 links |
+| junction_floor | B1 | 14,306 | Junction conservation enforcement |
+| bifurc_channel_no_lateral | B1 | 8,771 | Zero lateral on 1:1 links inside bifurcation channels |
+| bifurc_share | B1 | 5,664 | Width-proportional bifurcation splitting |
 | baseline_isotonic | A4 | 5,407 | Baseline PAVA smoothing on 1:1 chains |
-| lateral_capped | B Pass 1 | 1,395 | 10x lateral cap on 1:1 links (D8 re-injection blocked) |
-| node_denoise | A1 | 82 | Within-reach node facc variability correction |
+| lateral_capped | B1 | 1,395 | 10x lateral cap on 1:1 links (D8 re-injection blocked) |
+| node_denoise | A1 | 82 | Within-reach node facc variability correction (82 where A1 was the sole final correction; ~7,345 baselines were initially adjusted by A1 but most were superseded by Stage B propagation) |
 
 **Why are net % changes so large?** The "Net % Change" column reports `(total_facc_after - total_facc_before) / total_facc_before` across all reaches in a region. Large values (e.g., +1,421% for AS) reflect the intended behavior of full lateral propagation: when a bifurcation split lowers one branch, the correction cascades through every downstream 1:1 reach. In Asia's large river systems (Ganges, Mekong, Yangtze deltas), a single bifurcation correction propagates through hundreds of downstream reaches. The net % metric is dominated by a few large rivers and does not indicate that typical reaches changed by thousands of percent.
 
@@ -253,10 +253,10 @@ Both issues are separate from facc correction and have been resolved in v17c via
 
 | Constraint | Status | Count | Enforced by |
 |------------|--------|-------|-------------|
-| **Junction conservation** (F006): facc >= sum(upstream) at every junction | **Fully enforced** | 0 violations | Stage B Pass 1 + Pass 2 |
-| **Non-negative incremental area**: facc >= sum(upstream) | **Fully enforced** | 0 violations | Stage B Pass 1 lateral clamp + Pass 2 |
-| **1:1 monotonicity** (T003): downstream facc >= upstream on non-bifurcation edges | **Fully enforced** | 0 violations | Stage A4 baseline isotonic + Stage B propagation |
-| **Bifurcation partitioning**: children sum to parent facc | **Enforced** (width-proportional) | ~246 residual (missing width data, <0.1%) | Stage B Pass 1 bifurc split |
+| **Junction conservation** (F006): facc >= sum(upstream) at every junction | **Fully enforced** | 0 violations | Stage B (B1 + B5) |
+| **Non-negative incremental area**: facc >= sum(upstream) | **Fully enforced** | 0 violations | Stage B (B1 lateral clamp + B5) |
+| **1:1 monotonicity** (T003): downstream facc >= 95% of upstream on non-bifurcation edges | **Fully enforced** | 0 violations | Stage A4 baseline isotonic + Stage B propagation |
+| **Bifurcation partitioning**: children sum to parent facc | **Enforced** (width-proportional) | ~246 residual (missing width data, <0.1%) | Stage B1 bifurc split |
 
 ### 6.3 T003 = 0 Globally
 
@@ -264,17 +264,19 @@ The previous pipeline left 5,804 T003 violations (2.3% of reaches) as residual M
 
 This is a structural improvement, not a force-correction hack. The old pipeline ran isotonic regression **after** propagation, so MERIT noise in the baseline survived through the topology pass and reappeared as violations in the output. By cleaning first, we prevent noise from entering the propagation in the first place.
 
+**Note on tolerances:** The T003 lint check uses a 5% tolerance (`facc_down < facc_up * 0.95`) to avoid flagging trivial rounding differences. The pipeline's internal validation uses a stricter 1 km^2 absolute tolerance. Both report 0 violations after correction.
+
 ### 6.4 F006 = 0 Globally
 
-Junction conservation is guaranteed: at every junction with 2+ upstream inputs, `corrected_facc >= sum(corrected_upstream_facc)`. This is enforced by Stage B Pass 1's junction floor rule and verified by the F006 lint check across all 6 regions.
+Junction conservation is guaranteed: at every junction with 2+ upstream inputs, `corrected_facc >= sum(corrected_upstream_facc)`. This is enforced by Stage B1's junction floor rule and verified by the F006 lint check across all 6 regions.
 
 ### 6.5 Diagnostic Flags
 
-After correction, three independent criteria flag remaining outliers. **These flags are metadata for downstream users. They do not modify facc values.**
+After correction, the inline validation (`_phase6_validate`) computes three independent diagnostic metrics on the **corrected** values. **These flags are metadata for downstream users. They do not modify facc values.** (Note: A3's outlier detection runs earlier on the pre-correction baseline and is separate from these post-correction diagnostics.)
 
-1. **Neighborhood log-deviation**: Log-space deviation between corrected facc and median of neighbors' corrected facc, flagged at Tukey IQR upper fence (Q3 + 1.5*IQR), with a floor of ~2.7x deviation.
-2. **Junction raises >2x**: Junctions where the corrected value is more than 2x the baseline — likely over-floored by inflated upstream branches.
-3. **1:1 drops >2x**: 1:1 links where the upstream reach has >2x the downstream reach's corrected facc — residual UPA misalignment that Stage A1 didn't catch.
+1. **Junction raises >2x**: Junctions where the corrected value is more than 2x the v17b baseline — likely over-floored by inflated upstream branches.
+2. **1:1 drops**: 1:1 links where the upstream reach's corrected facc exceeds the downstream's by more than 1 km^2 — residual UPA misalignment that survived the pipeline.
+3. **Bifurcation-excluded T003**: Bifurcation edges where facc drops downstream (expected behavior, excluded from T003 violation counts).
 
 ### 6.6 Full Lint Suite
 
@@ -309,7 +311,7 @@ After correction, three independent criteria flag remaining outliers. **These fl
 ```
 src/sword_duckdb/facc_detection/
   correct_facc_denoise.py       # Biphase pipeline (Stage A + Stage B)
-  detect.py                     # Anomaly detection rules
+  detect.py                     # Standalone QA anomaly detection (not called by the pipeline)
 ```
 
 ### Outputs

@@ -3,7 +3,7 @@
 Facc Denoising — Topology-Aware v3 Pipeline
 ============================================
 
-Three-stage architecture that cleans baseline accuracy FIRST, then propagates:
+Two-stage architecture that cleans baseline accuracy FIRST, then propagates:
 
   Stage A — Baseline Cleanup (internal data only, no propagation):
     A1: Node denoising (dn-node for noisy reaches)
@@ -18,10 +18,6 @@ Three-stage architecture that cleans baseline accuracy FIRST, then propagates:
     B4: (REMOVED — caused cascading inflation via B5 propagation)
     B5: Final consistency pass
 
-  Stage C — Optional MERIT refinement (only if --merit provided):
-    C1: MERIT resample remaining T003 violations
-    C2: Re-run Stage B on updated baseline (if C1 changed anything)
-
 The key improvement: cleaning MERIT D8 noise from the baseline before
 propagation prevents error amplification through the network.
 
@@ -35,19 +31,14 @@ Relationship to Yushan's Integrator:
 
 Usage::
 
-    # Dry run on NA (no DB changes, no UPA re-sampling)
+    # Dry run on NA (no DB changes)
     python -m src.sword_duckdb.facc_detection.correct_facc_denoise \\
         --db data/duckdb/sword_v17c.duckdb --v17b data/duckdb/sword_v17b.duckdb --region NA
-
-    # Full run with UPA re-sampling
-    python -m src.sword_duckdb.facc_detection.correct_facc_denoise \\
-        --db data/duckdb/sword_v17c.duckdb --v17b data/duckdb/sword_v17b.duckdb \\
-        --region NA --merit /Volumes/SWORD_DATA/data/MERIT_Hydro
 
     # Apply to all regions
     python -m src.sword_duckdb.facc_detection.correct_facc_denoise \\
         --db data/duckdb/sword_v17c.duckdb --v17b data/duckdb/sword_v17b.duckdb \\
-        --all --apply --merit /Volumes/SWORD_DATA/data/MERIT_Hydro
+        --all --apply
 """
 
 from __future__ import annotations
@@ -64,8 +55,6 @@ import duckdb
 import networkx as nx
 import numpy as np
 import pandas as pd
-
-from .merit_search import MeritGuidedSearch, create_merit_search
 
 logger = logging.getLogger(__name__)
 
@@ -502,319 +491,6 @@ def _phase3_outlier_detection(
 
     print(f"    Phase 3 — total flagged: {len(flagged)}")
     return flagged
-
-
-# ---------------------------------------------------------------------------
-# Phase 4: Re-sample flagged reaches from UPA rasters
-# ---------------------------------------------------------------------------
-
-
-def _phase4_resample_t003(
-    conn: duckdb.DuckDBPyConnection,
-    G: nx.DiGraph,
-    corrected: Dict[int, float],
-    dn_node_facc: Dict[int, float],
-    region: str,
-    merit_searcher: Optional[MeritGuidedSearch],
-    node_max_lookup: Optional[Dict[int, float]] = None,
-) -> Tuple[Dict[int, float], int, Dict[str, int], Dict[int, Dict]]:
-    """
-    T003-targeted MERIT re-sampling with dual-endpoint D8 flow-walk.
-
-    Instead of generic radial buffering, uses three strategies:
-    1. **D8 walk A** (primary): From the downstream reach's upstream endpoint,
-       walk downstream along MERIT's D8 flow direction for up to 150 cells
-       (~13.5km). Snaps to MERIT's actual thalweg.
-    2. **D8 walk B** (secondary): From the upstream reach's downstream endpoint,
-       walk D8 downstream. Covers the other side of the junction.
-    3. **Radial buffer** (fallback): If neither D8 walk fixes monotonicity,
-       use wide buffer around the junction point.
-
-    For each downstream reach in a 1:1 T003 violation:
-    - Pick the *minimum* UPA >= corrected[upstream] (fixes monotonicity
-      with minimal distortion)
-    - If none, pick the *maximum* candidate (reduces the gap)
-
-    Returns (updated_dn_node_facc, n_resampled, stats_dict, diagnostics).
-    diagnostics: {reach_id: {reason, target_min, best_candidate, delta_to_fix, method, ...}}
-    """
-    stats = {
-        "t003_violations_total": 0,
-        "t003_on_1to1_links": 0,
-        "t003_on_bifurc_edges": 0,
-        "t003_on_junction_edges": 0,
-        "downstream_resampled": 0,
-        "downstream_fixed_mono": 0,
-        "downstream_reduced_gap": 0,
-        "downstream_no_geom": 0,
-        "downstream_no_candidates": 0,
-        "fixed_via_d8_walk": 0,
-        "fixed_via_d8_walk_b": 0,
-        "fixed_via_radial": 0,
-        "gap_reduced_via_d8_walk": 0,
-        "gap_reduced_via_d8_walk_b": 0,
-        "gap_reduced_via_radial": 0,
-    }
-    diagnostics: Dict[int, Dict] = {}
-
-    if merit_searcher is None:
-        print("    Phase 4 — SKIPPED (no MERIT path provided)")
-        return dn_node_facc, 0, stats, diagnostics
-
-    from shapely import wkt as shapely_wkt
-    from shapely.geometry import Point
-
-    # ---- Step 1: Find T003-violating edges ----
-    t003_downstream: Dict[int, float] = {}
-    for u, v in G.edges():
-        corr_u = corrected.get(u, 0.0)
-        corr_v = corrected.get(v, 0.0)
-        if corr_u <= corr_v + 1.0:
-            continue
-
-        stats["t003_violations_total"] += 1
-
-        if G.out_degree(u) >= 2:
-            stats["t003_on_bifurc_edges"] += 1
-            continue
-
-        if G.in_degree(v) >= 2:
-            stats["t003_on_junction_edges"] += 1
-            continue
-
-        stats["t003_on_1to1_links"] += 1
-        if v not in t003_downstream or corr_u > t003_downstream[v]:
-            t003_downstream[v] = corr_u
-
-    n_targets = len(t003_downstream)
-    if n_targets == 0:
-        print("    Phase 4 — no 1:1-link T003 violations to fix")
-        return dn_node_facc, 0, stats, diagnostics
-
-    print(f"    Phase 4 — {stats['t003_violations_total']} T003 violations total:")
-    print(f"      1:1 links (targetable): {stats['t003_on_1to1_links']}")
-    print(f"      bifurcation edges (expected): {stats['t003_on_bifurc_edges']}")
-    print(f"      junction edges: {stats['t003_on_junction_edges']}")
-    print(f"    Targeting {n_targets} downstream reaches...")
-
-    # ---- Step 2: Load geometries ----
-    target_ids = sorted(t003_downstream.keys())
-    geom_data = _load_reach_geometries(conn, target_ids, region)
-
-    upstream_ids = set()
-    for v_rid in target_ids:
-        for u_rid in G.predecessors(v_rid):
-            upstream_ids.add(u_rid)
-    upstream_geom = _load_reach_geometries(conn, sorted(upstream_ids), region)
-
-    # ---- Step 3: Re-sample using D8 walk + radial fallback ----
-    n_resampled = 0
-
-    for v_rid in target_ids:
-        target_min = t003_downstream[v_rid]
-        diag: Dict = {
-            "target_min": round(target_min, 2),
-            "original_facc": round(dn_node_facc.get(v_rid, 0.0), 2),
-            "method": None,
-            "reason": None,
-            "best_candidate": None,
-            "delta_to_fix": None,
-            "d8_steps": None,
-        }
-
-        if v_rid not in geom_data:
-            stats["downstream_no_geom"] += 1
-            diag["reason"] = "no_geometry"
-            diagnostics[v_rid] = diag
-            continue
-
-        wkt_v, width_v = geom_data[v_rid]
-        if wkt_v is None:
-            stats["downstream_no_geom"] += 1
-            diag["reason"] = "no_geometry"
-            diagnostics[v_rid] = diag
-            continue
-
-        try:
-            geom_v = shapely_wkt.loads(wkt_v)
-        except Exception:
-            stats["downstream_no_geom"] += 1
-            diag["reason"] = "invalid_geometry"
-            diagnostics[v_rid] = diag
-            continue
-
-        # Find upstream endpoint of downstream reach (walk A start)
-        upstream_point = None
-        upstream_dn_point = None  # downstream endpoint of upstream reach (walk B)
-        for u_rid in G.predecessors(v_rid):
-            if u_rid in upstream_geom:
-                wkt_u, _ = upstream_geom[u_rid]
-                if wkt_u is None:
-                    continue
-                try:
-                    geom_u = shapely_wkt.loads(wkt_u)
-                    # Walk A: downstream reach's upstream end
-                    start_pt = Point(geom_v.coords[0])
-                    end_pt = Point(geom_v.coords[-1])
-                    d_start = start_pt.distance(geom_u)
-                    d_end = end_pt.distance(geom_u)
-                    upstream_point = start_pt if d_start < d_end else end_pt
-                    # Walk B: upstream reach's downstream end (closest to v)
-                    u_start = Point(geom_u.coords[0])
-                    u_end = Point(geom_u.coords[-1])
-                    d_us = u_start.distance(geom_v)
-                    d_ue = u_end.distance(geom_v)
-                    upstream_dn_point = u_start if d_us < d_ue else u_end
-                except Exception:
-                    pass
-                break
-
-        if upstream_point is None:
-            upstream_point = Point(geom_v.coords[0])
-
-        junction_lon = upstream_point.x
-        junction_lat = upstream_point.y
-
-        # ---- Strategy A: D8 flow-walk from downstream reach's upstream end ----
-        best = None
-        method_used = None
-
-        d8_val, d8_meta = merit_searcher.walk_d8_downstream(
-            lon=junction_lon,
-            lat=junction_lat,
-            region=region,
-            target_min=target_min,
-            max_steps=150,
-        )
-
-        diag["d8_steps"] = d8_meta.get("steps_walked", 0)
-
-        if d8_val is not None and d8_val > 0:
-            best = d8_val
-            if d8_val >= target_min:
-                method_used = "d8_walk_fixed"
-                stats["fixed_via_d8_walk"] += 1
-            else:
-                method_used = "d8_walk_gap"
-                stats["gap_reduced_via_d8_walk"] += 1
-
-        # ---- Strategy A2: D8 flow-walk from upstream reach's downstream end ----
-        if (best is None or best < target_min) and upstream_dn_point is not None:
-            d8_val_b, d8_meta_b = merit_searcher.walk_d8_downstream(
-                lon=upstream_dn_point.x,
-                lat=upstream_dn_point.y,
-                region=region,
-                target_min=target_min,
-                max_steps=150,
-            )
-            diag["d8_steps_b"] = d8_meta_b.get("steps_walked", 0)
-
-            if d8_val_b is not None and d8_val_b > 0:
-                # Pick best of walk A + walk B
-                if d8_val_b >= target_min and (best is None or best < target_min):
-                    best = d8_val_b
-                    method_used = "d8_walk_b_fixed"
-                    stats["fixed_via_d8_walk_b"] += 1
-                elif d8_val_b >= target_min and best is not None and best >= target_min:
-                    # Both above target — take the minimum (least distortion)
-                    if d8_val_b < best:
-                        best = d8_val_b
-                        method_used = "d8_walk_b_fixed"
-                        stats["fixed_via_d8_walk_b"] += 1
-                elif best is None or d8_val_b > best:
-                    best = d8_val_b
-                    method_used = "d8_walk_b_gap"
-                    stats["gap_reduced_via_d8_walk_b"] += 1
-
-        # ---- Strategy B: Radial buffer (fallback if D8 didn't fix) ----
-        if best is None or best < target_min:
-            buffer_m = max(500, min(5 * max(width_v, 100), 5000))
-            meters_per_deg = 111320 * np.cos(np.radians(junction_lat))
-            if meters_per_deg <= 0:
-                meters_per_deg = 111320
-            buffer_deg = buffer_m / meters_per_deg
-            buffered = upstream_point.buffer(buffer_deg)
-
-            merit_values = merit_searcher._sample_in_polygon(buffered, region)
-            candidates = [
-                val
-                for val in merit_values
-                if val > 0 and target_min / 100 <= val <= target_min * 100
-            ]
-
-            if candidates:
-                above = [c for c in candidates if c >= target_min]
-                if above:
-                    radial_best = min(above)
-                    if best is None or radial_best < best or best < target_min:
-                        best = radial_best
-                        method_used = "radial_fixed"
-                        stats["fixed_via_radial"] += 1
-                elif best is None or max(candidates) > best:
-                    best = max(candidates)
-                    if method_used is None:
-                        method_used = "radial_gap"
-                        stats["gap_reduced_via_radial"] += 1
-
-        # ---- Apply result (with sanity guards) ----
-        if best is not None and best > 0:
-            original_val = dn_node_facc.get(v_rid, 0.0)
-
-            # Guard 1: never lower the baseline — if D8 walk returned a
-            # value worse than what we already have, it followed a wrong
-            # tributary.  Skip entirely.
-            if best < original_val - 1.0:
-                diag["resample_rejected_lower"] = round(best, 2)
-                diag["kept_original"] = round(original_val, 2)
-                best = None
-                stats["downstream_no_candidates"] += 1
-                diag["reason"] = "resample_would_lower"
-                diagnostics[v_rid] = diag
-                continue
-
-            # Guard 2: if MERIT re-sample is wildly below node evidence,
-            # the D8 walk followed the wrong tributary. Use node MAX instead.
-            if node_max_lookup:
-                node_max = node_max_lookup.get(v_rid, 0.0)
-                if node_max > 0 and best < node_max * 0.1:
-                    diag["resample_before_guard"] = round(best, 2)
-                    diag["node_max_override"] = round(node_max, 2)
-                    best = node_max
-
-            dn_node_facc[v_rid] = best
-            n_resampled += 1
-
-            if best >= target_min:
-                stats["downstream_fixed_mono"] += 1
-                diag["reason"] = "fixed_monotonicity"
-            else:
-                stats["downstream_reduced_gap"] += 1
-                diag["reason"] = "merit_shift"
-                diag["delta_to_fix"] = round(target_min - best, 2)
-
-            diag["method"] = method_used
-            diag["best_candidate"] = round(best, 2)
-        else:
-            stats["downstream_no_candidates"] += 1
-            diag["reason"] = "no_candidates"
-
-        diagnostics[v_rid] = diag
-
-    stats["downstream_resampled"] = n_resampled
-    print("    Phase 4 results:")
-    print(f"      Resampled: {n_resampled} / {n_targets}")
-    print(f"      Fixed monotonicity: {stats['downstream_fixed_mono']}")
-    print(f"        via D8 walk A: {stats['fixed_via_d8_walk']}")
-    print(f"        via D8 walk B: {stats['fixed_via_d8_walk_b']}")
-    print(f"        via radial:    {stats['fixed_via_radial']}")
-    print(f"      Reduced gap: {stats['downstream_reduced_gap']}")
-    print(f"        via D8 walk A: {stats['gap_reduced_via_d8_walk']}")
-    print(f"        via D8 walk B: {stats['gap_reduced_via_d8_walk_b']}")
-    print(f"        via radial:    {stats['gap_reduced_via_radial']}")
-    print(f"      No geometry: {stats['downstream_no_geom']}")
-    print(f"      No candidates: {stats['downstream_no_candidates']}")
-
-    return dn_node_facc, n_resampled, stats, diagnostics
 
 
 # ---------------------------------------------------------------------------
@@ -1743,7 +1419,6 @@ def correct_facc_denoise(
     v17b_path: str,
     region: str,
     dry_run: bool = True,
-    merit_path: Optional[str] = None,
     output_dir: str = "output/facc_detection",
     log_threshold: float = 1.0,
     variability_threshold: float = 2.0,
@@ -1752,11 +1427,10 @@ def correct_facc_denoise(
     """
     Run v3 facc denoising pipeline for one region.
 
-    Three-stage architecture:
-      Stage A: Baseline cleanup (node init, validation, outlier detection, isotonic)
+    Two-stage architecture:
+      Stage A: Baseline cleanup (node init, outlier detection, isotonic)
       Stage B: Propagation + refinement (topo correction, isotonic, junction floor,
-               node validation, final consistency)
-      Stage C: Optional MERIT refinement (resample T003 violations, re-run Stage B)
+               final consistency)
 
     Parameters
     ----------
@@ -1764,7 +1438,6 @@ def correct_facc_denoise(
     v17b_path : path to v17b DuckDB (read-only baseline)
     region : region code (NA, SA, EU, AF, AS, OC)
     dry_run : if True, don't modify DB
-    merit_path : path to MERIT Hydro base dir (enables Stage C)
     output_dir : where to write CSV + JSON
     log_threshold : min log-deviation for outlier flagging (default 1.0 ~ 2.7x)
     variability_threshold : min MAX/MIN ratio to trigger dn-node denoising (default 2.0)
@@ -1773,10 +1446,9 @@ def correct_facc_denoise(
     region = region.upper()
     out_path = Path(output_dir)
     mode_str = "DRY RUN" if dry_run else "APPLYING TO DB"
-    merit_str = "+ MERIT re-sampling" if merit_path else "(no MERIT)"
 
     print(f"\n{'=' * 60}")
-    print(f"Facc Denoising v3 — {region} [{mode_str}] {merit_str}")
+    print(f"Facc Denoising v3 — {region} [{mode_str}]")
     print(f"{'=' * 60}")
 
     # Load v17b baseline
@@ -1802,14 +1474,6 @@ def correct_facc_denoise(
         n_noisy = int((node_stats["variability_ratio"] > variability_threshold).sum())
         print(
             f"    {len(node_stats)} reaches, {n_noisy} with variability >{variability_threshold}x"
-        )
-
-        # Build node MAX lookup (used by Stage C MERIT re-sampling only)
-        node_max_lookup: Dict[int, float] = dict(
-            zip(
-                node_stats["reach_id"].astype(int),
-                node_stats["max_facc"].astype(float),
-            )
         )
 
         # Build graph
@@ -1903,66 +1567,6 @@ def correct_facc_denoise(
         )
 
         # ==============================================================
-        # Stage C: Optional MERIT refinement
-        # ==============================================================
-
-        print("\n  Stage C: Optional MERIT refinement")
-        merit_searcher = create_merit_search(merit_path)
-        resampled_ids: Set[int] = set()
-        n_resampled = 0
-        resample_stats: Dict[str, int] = {}
-        resample_diag: Dict[int, Dict] = {}
-
-        if merit_searcher:
-            dn_node_facc, n_resampled, resample_stats, resample_diag = (
-                _phase4_resample_t003(
-                    conn,
-                    G,
-                    corrected,
-                    dn_node_facc,
-                    region,
-                    merit_searcher,
-                    node_max_lookup=node_max_lookup,
-                )
-            )
-            # Track which reaches were actually resampled
-            for rid in G.nodes():
-                base_val = max(v17b_facc.get(rid, 0.0), 0.0)
-                if abs(dn_node_facc.get(rid, 0.0) - base_val) > 0.01:
-                    if rid not in denoised_ids:
-                        resampled_ids.add(rid)
-
-            if n_resampled > 0:
-                print("\n    Re-running Stage B on MERIT-updated baseline...")
-                corrected, changes, adjusted, floored, final_changes = _run_stage_b(
-                    G, dn_node_facc, diagnose_rids
-                )
-                n_final_junc = sum(
-                    1 for _, _, t in final_changes.values() if t == "final_junction"
-                )
-                n_final_bifurc = sum(
-                    1 for _, _, t in final_changes.values() if t == "final_bifurc"
-                )
-                n_final_bifurc_ch = sum(
-                    1
-                    for _, _, t in final_changes.values()
-                    if t == "final_bifurc_channel"
-                )
-                n_final_1to1 = sum(
-                    1 for _, _, t in final_changes.values() if t == "final_1to1"
-                )
-                print(f"    Phase 2 changes: {len(changes)}")
-                print(f"    Isotonic adjusted: {len(adjusted)}")
-                print(f"    Junctions re-floored: {len(floored)}")
-                print(
-                    f"    Final consistency: {len(final_changes)} "
-                    f"({n_final_junc} junc, {n_final_bifurc} bifurc, "
-                    f"{n_final_bifurc_ch} bifurc_ch, {n_final_1to1} 1:1)"
-                )
-        else:
-            print("    SKIPPED (no MERIT path provided)")
-
-        # ==============================================================
         # Post-pipeline: validation, export, summary
         # ==============================================================
 
@@ -2017,8 +1621,6 @@ def correct_facc_denoise(
                     ctype = "isotonic_regression"
                 elif rid in changes:
                     ctype = changes[rid][2]
-                elif rid in resampled_ids:
-                    ctype = "upa_resample"
                 elif rid in baseline_isotonic_ids:
                     ctype = "baseline_isotonic"
                 elif rid in denoised_ids:
@@ -2027,7 +1629,6 @@ def correct_facc_denoise(
                     ctype = "t003_flagged_only"
                 else:
                     ctype = "unknown"
-                diag = resample_diag.get(rid, {})
                 rows.append(
                     {
                         "reach_id": rid,
@@ -2040,13 +1641,6 @@ def correct_facc_denoise(
                         "correction_type": ctype,
                         "t003_flag": rid in t003_flags,
                         "t003_reason": t003_flags.get(rid),
-                        "was_resampled": rid in resampled_ids,
-                        "resample_reason": diag.get("reason"),
-                        "resample_method": diag.get("method"),
-                        "resample_target_min": diag.get("target_min"),
-                        "resample_best_candidate": diag.get("best_candidate"),
-                        "resample_delta_to_fix": diag.get("delta_to_fix"),
-                        "resample_d8_steps": diag.get("d8_steps"),
                     }
                 )
 
@@ -2076,14 +1670,6 @@ def correct_facc_denoise(
         print(f"    Net facc change: {total_delta:>+,.0f} km^2 ({pct:+.3f}%)")
         print(f"    Phase 3 flagged: {len(flagged)}")
         print(f"    Baseline isotonic adjusted: {len(baseline_isotonic)}")
-        print(f"    T003 targeted resampled: {n_resampled}")
-        if resample_stats:
-            print(
-                f"    T003 fixed monotonicity: {resample_stats.get('downstream_fixed_mono', 0)}"
-            )
-            print(
-                f"    T003 reduced gap: {resample_stats.get('downstream_reduced_gap', 0)}"
-            )
         for ctype, row in by_type.iterrows():
             print(
                 f"      {ctype:25s}  n={int(row['count']):>6,}  "
@@ -2122,7 +1708,6 @@ def correct_facc_denoise(
             "region": region,
             "algorithm": "denoise_v3",
             "dry_run": dry_run,
-            "merit_resample": merit_path is not None,
             "total_reaches": len(reaches_df),
             "bifurcations": n_bifurc,
             "node_stats_coverage": len(node_stats),
@@ -2136,7 +1721,6 @@ def correct_facc_denoise(
             "pct_change": round(pct, 4),
             "baseline_isotonic_adjusted": len(baseline_isotonic),
             "phase3_flagged": len(flagged),
-            "t003_resample_stats": resample_stats,
             "t003_flagged": len(t003_flags),
             "floored_junctions": len(floored),
             "final_consistency_changes": len(final_changes),
@@ -2176,7 +1760,7 @@ def correct_facc_denoise(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Facc denoising v3 — topology-aware with UPA re-sampling"
+        description="Facc denoising v3 — topology-aware correction"
     )
     parser.add_argument("--db", required=True, help="v17c DuckDB path")
     parser.add_argument(
@@ -2190,9 +1774,6 @@ def main():
         "--apply",
         action="store_true",
         help="Write corrections to DB (default: dry run)",
-    )
-    parser.add_argument(
-        "--merit", help="MERIT Hydro base path (enables Phase 4 re-sampling)"
     )
     parser.add_argument(
         "--output-dir", default="output/facc_detection", help="Output directory"
@@ -2227,7 +1808,6 @@ def main():
             v17b_path=args.v17b,
             region=region,
             dry_run=not args.apply,
-            merit_path=args.merit,
             output_dir=args.output_dir,
             log_threshold=args.log_threshold,
             variability_threshold=args.var_threshold,
@@ -2240,15 +1820,10 @@ def main():
         combined = pd.concat(all_corrections, ignore_index=True)
         n_up = int((combined["delta"] > 0).sum())
         n_dn = int((combined["delta"] < 0).sum())
-        n_resamp = (
-            int(combined["was_resampled"].sum())
-            if "was_resampled" in combined.columns
-            else 0
-        )
         print(f"\n{'=' * 60}")
         print(
             f"GRAND TOTAL: {len(combined)} modifications "
-            f"({n_up} raised, {n_dn} lowered, {n_resamp} resampled)"
+            f"({n_up} raised, {n_dn} lowered)"
         )
         print(f"{'=' * 60}")
 
