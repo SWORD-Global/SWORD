@@ -235,7 +235,6 @@ CREATE TABLE IF NOT EXISTS reaches (
     dist_out DOUBLE,             -- distance from outlet (m)
     hydro_dist_out DOUBLE,       -- hydrologic distance to outlet (via main channel)
     hydro_dist_hw DOUBLE,        -- hydrologic distance to headwater (via main channel)
-    dist_out_short DOUBLE,       -- shortest-path distance to outlet
 
     -- Topology
     n_rch_up INTEGER,            -- number of upstream neighbors
@@ -878,7 +877,6 @@ def add_v17c_columns(db) -> bool:
         ("pathlen_out", "DOUBLE"),
         ("main_path_id", "BIGINT"),
         ("is_mainstem_edge", "BOOLEAN DEFAULT FALSE"),
-        ("dist_out_short", "DOUBLE"),
         ("hydro_dist_out", "DOUBLE"),
         ("hydro_dist_hw", "DOUBLE"),
         ("rch_id_up_main", "BIGINT"),

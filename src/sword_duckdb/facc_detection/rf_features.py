@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 RF Feature Extraction for FACC Anomaly Detection
-=================================================
+-------------------------------------------------
 
 Extracts comprehensive feature set (~56 features) for Random Forest classifier.
 
@@ -11,7 +11,7 @@ Feature categories:
                   end_reach, main_side, network, trib_flag
 3. Classification (5): lakeflag, type, n_chan_max, n_chan_mod, iceflag
 4. SWOT Observations (13): n_obs, swot_obs, wse_obs_*, width_obs_*, slope_obs_*
-5. v17c Topology (8): hydro_dist_out, hydro_dist_hw, dist_out, dist_out_short,
+5. v17c Topology (7): hydro_dist_out, hydro_dist_hw, dist_out,
                       pathlen_hw, pathlen_out, is_mainstem_edge, main_path_id
 6. Computed (12): ratios, logs, neighbor metrics
 
@@ -87,7 +87,6 @@ class RFFeatureExtractor:
         "hydro_dist_out",
         "hydro_dist_hw",
         "dist_out",
-        "dist_out_short",
         "pathlen_hw",
         "pathlen_out",
         "is_mainstem_edge",
