@@ -30,10 +30,6 @@ from SWORD_graph import load_sword_data, create_edges_gdf, create_network_nodes_
 
 print("[IMPORT] SWORD_graph imported", file=sys.stderr, flush=True)
 
-print("[IMPORT] Importing SWOT_slopes...", file=sys.stderr, flush=True)
-
-print("[IMPORT] SWOT_slopes imported", file=sys.stderr, flush=True)
-
 print("[IMPORT] All imports complete", file=sys.stderr, flush=True)
 
 

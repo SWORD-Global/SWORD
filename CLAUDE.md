@@ -179,7 +179,6 @@ workflow.close()
 - `best_headwater`, `best_outlet` - width-prioritized endpoints
 - `pathlen_hw`, `pathlen_out` - cumulative path lengths
 - `is_mainstem_edge`, `main_path_id` - mainstem identification
-- `dist_out_short` - shortest-path distance to any outlet
 - `rch_id_up_main`, `rch_id_dn_main` - main neighbor selection
 - `subnetwork_id` - connected component (matches `network`)
 - `*_obs_mean/median/std/range`, `n_obs` - SWOT observation aggregations
@@ -264,7 +263,7 @@ workflow.close()
 | swot_observations | swot_obs, *_obs_mean/median/std/range, n_obs |
 | grades_discharge | ~~h_variance, w_variance~~ (removed in v17c) |
 | v17c_mainstem | hydro_dist_out/hw, best_headwater/outlet, pathlen_*, is_mainstem_edge |
-| v17c_path_topology | main_path_id, dist_out_short, rch_id_up/dn_main |
+| v17c_path_topology | main_path_id, rch_id_up/dn_main |
 | v17c_sections | v17c_sections table, section_slope_validation |
 | reach_neighbor_ids | rch_id_up_1-4, rch_id_dn_1-4 (reconstructed from topology) |
 | topology_review_flags | topology_suspect, topology_approved |
@@ -293,7 +292,6 @@ workflow.close()
 - `best_headwater`, `best_outlet` - endpoint selection
 - `pathlen_hw`, `pathlen_out` - cumulative path lengths
 - `is_mainstem_edge`, `main_path_id` - mainstem identification
-- `dist_out_short` - shortest-path distance
 - `rch_id_up_main`, `rch_id_dn_main` - main neighbor IDs
 
 **New tables:** `v17c_sections`, `v17c_section_slope_validation`
