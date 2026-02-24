@@ -17,7 +17,7 @@ Usage:
     python scripts/maintenance/sync_gcs_lint_fixes.py \
         --db data/duckdb/sword_v17c.duckdb --apply
 
-    # Apply to DuckDB + PostgreSQL (reads SWORD_POSTGRES_URL from .env)
+    # Apply to DuckDB + PostgreSQL (reads SWORD_POSTGRES_URL env var)
     python scripts/maintenance/sync_gcs_lint_fixes.py \
         --db data/duckdb/sword_v17c.duckdb --apply --sync-pg
 
@@ -34,6 +34,7 @@ Usage:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -281,7 +282,6 @@ def resolve_pg_url(explicit_url: str | None) -> str | None:
     """Return PG connection string from explicit arg, env var, or None."""
     if explicit_url:
         return explicit_url
-    import os
 
     return os.environ.get("SWORD_POSTGRES_URL")
 
@@ -291,11 +291,8 @@ def sync_fixes_to_postgres(pg_url: str, applied_fixes: list[dict]) -> int:
 
     Returns count of rows actually updated in PG.
     """
-    try:
-        import psycopg2
-    except ImportError:
-        print("ERROR: psycopg2 not installed. Run: uv pip install psycopg2-binary")
-        return 0
+    import psycopg2
+    from psycopg2 import sql as pg_sql
 
     pg_updated = 0
     conn = psycopg2.connect(pg_url)
@@ -315,9 +312,6 @@ def sync_fixes_to_postgres(pg_url: str, applied_fixes: list[dict]) -> int:
                 val = int(new_value) if column in ("lakeflag", "type") else new_value
             except (ValueError, TypeError):
                 continue
-
-            # Use psycopg2.sql for safe identifier quoting
-            from psycopg2 import sql as pg_sql
 
             query = pg_sql.SQL("UPDATE reaches SET {} = %s WHERE reach_id = %s").format(
                 pg_sql.Identifier(column)
@@ -364,6 +358,13 @@ def main():
         pg_url = resolve_pg_url(args.pg_url)
         if not pg_url:
             print("ERROR: --sync-pg requires --pg-url or SWORD_POSTGRES_URL env var")
+            sys.exit(1)
+        try:
+            import psycopg2  # noqa: F401
+        except ImportError:
+            print(
+                "ERROR: --sync-pg requires psycopg2. Run: uv pip install psycopg2-binary"
+            )
             sys.exit(1)
     else:
         pg_url = None
@@ -436,6 +437,7 @@ def main():
         print(f"\nRegion {region}: {len(region_fixes)} fixes")
 
         con = duckdb.connect(args.db)
+        indexes = []
         try:
             con.execute("INSTALL spatial; LOAD spatial;")
 
@@ -512,17 +514,18 @@ def main():
                 log_to_lint_fix_log(con, applied_this_region, "fix")
 
             con.commit()
-
-            # Recreate RTREE indexes
-            for _idx_name, _tbl, idx_sql in indexes:
-                con.execute(idx_sql)
-
             all_applied.extend(applied_this_region)
             print(f"  Region {region}: {len(applied_this_region)} applied")
         except Exception:
             con.rollback()
             raise
         finally:
+            # Always recreate RTREE indexes, even on error
+            for _idx_name, _tbl, idx_sql in indexes:
+                try:
+                    con.execute(idx_sql)
+                except Exception as idx_err:
+                    print(f"  WARNING: failed to recreate RTREE index: {idx_err}")
             con.close()
 
     # --- 6. Sync to PostgreSQL ---
@@ -543,7 +546,12 @@ def main():
         log_con = duckdb.connect(args.db)
         try:
             log_con.execute(LINT_FIX_LOG_DDL)
+            log_con.begin()
             log_to_lint_fix_log(log_con, new_skips, "skip")
+            log_con.commit()
+        except Exception:
+            log_con.rollback()
+            raise
         finally:
             log_con.close()
 
