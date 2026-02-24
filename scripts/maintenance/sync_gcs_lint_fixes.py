@@ -38,6 +38,8 @@ GCS_DEFAULT_BUCKET = "gs://sword-qc-data/sword/lint_fixes/"
 # Columns that the reviewer app can modify — reject anything else
 ALLOWED_COLUMNS = {"lakeflag", "type"}
 
+VALID_REGIONS = {"NA", "SA", "EU", "AF", "AS", "OC"}
+
 LINT_FIX_LOG_DDL = """
     CREATE TABLE IF NOT EXISTS lint_fix_log (
         fix_id INTEGER,
@@ -293,77 +295,95 @@ def main():
     mismatch_count = 0
 
     for region, region_fixes in sorted(by_region.items()):
+        if region not in VALID_REGIONS:
+            print(f"\nSKIP region '{region}': not in {sorted(VALID_REGIONS)}")
+            mismatch_count += len(region_fixes)
+            continue
+
         print(f"\nRegion {region}: {len(region_fixes)} fixes")
 
         workflow = SWORDWorkflow(user_id="gcs_sync")
-        workflow.load(args.db, region)
-        con = workflow._sword.db.conn
+        try:
+            workflow.load(args.db, region)
+            con = workflow._sword.db.conn
 
-        applied_this_region = []
+            applied_this_region = []
 
-        with workflow.transaction(f"GCS sync: {len(region_fixes)} fixes for {region}"):
-            for fix in region_fixes:
-                reach_id = fix["reach_id"]
-                column = fix.get("column_changed")
-                old_value = fix.get("old_value")
-                new_value = fix.get("new_value")
+            with workflow.transaction(
+                f"GCS sync: {len(region_fixes)} fixes for {region}"
+            ):
+                for fix in region_fixes:
+                    reach_id = fix["reach_id"]
+                    column = fix.get("column_changed")
+                    old_value = fix.get("old_value")
+                    new_value = fix.get("new_value")
 
-                if not column or new_value is None:
-                    print(f"  SKIP reach {reach_id}: missing column or new_value")
-                    continue
+                    if not column or new_value is None:
+                        print(f"  SKIP reach {reach_id}: missing column or new_value")
+                        continue
 
-                if column not in ALLOWED_COLUMNS:
-                    print(
-                        f"  SKIP reach {reach_id}: "
-                        f"column '{column}' not in allowlist {ALLOWED_COLUMNS}"
-                    )
-                    continue
+                    if column not in ALLOWED_COLUMNS:
+                        print(
+                            f"  SKIP reach {reach_id}: "
+                            f"column '{column}' not in allowlist {ALLOWED_COLUMNS}"
+                        )
+                        continue
 
-                # Verify current DB value matches expected old_value
-                row = con.execute(
-                    f"SELECT {column} FROM reaches "  # noqa: S608 — column validated above
-                    "WHERE reach_id = ? AND region = ?",
-                    [reach_id, region],
-                ).fetchone()
+                    # Verify current DB value matches expected old_value
+                    row = con.execute(
+                        f"SELECT {column} FROM reaches "  # noqa: S608 — column validated above
+                        "WHERE reach_id = ? AND region = ?",
+                        [reach_id, region],
+                    ).fetchone()
 
-                if row is None:
-                    print(f"  SKIP reach {reach_id}: not found in region {region}")
-                    continue
+                    if row is None:
+                        print(f"  SKIP reach {reach_id}: not found in region {region}")
+                        continue
 
-                current = row[0]
-                if old_value is not None and str(current) != str(old_value):
-                    print(
-                        f"  SKIP reach {reach_id}: {column} is {current}, "
-                        f"expected {old_value} (already modified elsewhere?)"
-                    )
-                    mismatch_count += 1
-                    continue
+                    current = row[0]
+                    if old_value is not None and str(current) != str(old_value):
+                        print(
+                            f"  SKIP reach {reach_id}: {column} is {current}, "
+                            f"expected {old_value} (already modified elsewhere?)"
+                        )
+                        mismatch_count += 1
+                        continue
 
-                # Cast value to appropriate type
-                val = new_value
-                if column in ("lakeflag", "type"):
-                    val = int(val)
+                    # Cast value to appropriate type
+                    try:
+                        val = (
+                            int(new_value)
+                            if column in ("lakeflag", "type")
+                            else new_value
+                        )
+                    except (ValueError, TypeError):
+                        print(
+                            f"  SKIP reach {reach_id}: "
+                            f"cannot cast {new_value!r} to int for {column}"
+                        )
+                        mismatch_count += 1
+                        continue
 
-                reason = f"{fix['check_id']}: gcs_sync"
-                notes = fix.get("notes", "")
-                if notes:
-                    reason += f" - {notes}"
+                    reason = f"{fix['check_id']}: gcs_sync"
+                    notes = fix.get("notes", "")
+                    if notes:
+                        reason += f" - {notes}"
 
-                workflow.modify_reach(reach_id, reason=reason, **{column: val})
-                applied_this_region.append(fix)
-                applied_count += 1
-                print(f"  Applied: reach {reach_id}: {column} = {val}")
+                    workflow.modify_reach(reach_id, reason=reason, **{column: val})
+                    applied_this_region.append(fix)
+                    applied_count += 1
+                    print(f"  Applied: reach {reach_id}: {column} = {val}")
 
-        workflow.close()
+            # Log to lint_fix_log using the same connection, after the
+            # transaction commits but before we close the workflow — avoids
+            # the gap where reaches are modified but the log is empty.
+            if applied_this_region:
+                con.execute(LINT_FIX_LOG_DDL)
+                log_to_lint_fix_log(con, applied_this_region, "fix")
 
-        # Log applied fixes to lint_fix_log (after successful transaction)
-        if applied_this_region:
-            log_con = duckdb.connect(args.db)
-            log_con.execute(LINT_FIX_LOG_DDL)
-            log_to_lint_fix_log(log_con, applied_this_region, "fix")
-            log_con.close()
-
-        print(f"  Region {region}: {len(applied_this_region)} applied")
+            print(f"  Region {region}: {len(applied_this_region)} applied")
+        finally:
+            workflow.close()
 
     # --- 6. Log skips ---
     if new_skips:
