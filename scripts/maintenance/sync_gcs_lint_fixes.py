@@ -42,7 +42,7 @@ VALID_REGIONS = {"NA", "SA", "EU", "AF", "AS", "OC"}
 
 LINT_FIX_LOG_DDL = """
     CREATE TABLE IF NOT EXISTS lint_fix_log (
-        fix_id INTEGER,
+        fix_id INTEGER PRIMARY KEY,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         check_id VARCHAR,
         reach_id BIGINT,
@@ -56,9 +56,14 @@ LINT_FIX_LOG_DDL = """
     )
 """
 
+REQUIRED_FIX_KEYS = {"check_id", "reach_id", "column_changed", "new_value"}
+
 
 def download_session_files(bucket_path: str, dest_dir: Path) -> list[Path]:
     """Download all lint_session_*.json files from GCS to dest_dir."""
+    if not bucket_path.startswith("gs://"):
+        print(f"ERROR: bucket_path must start with gs://, got: {bucket_path!r}")
+        sys.exit(1)
     if not bucket_path.endswith("/"):
         bucket_path += "/"
 
@@ -109,6 +114,14 @@ def download_session_files(bucket_path: str, dest_dir: Path) -> list[Path]:
     return downloaded
 
 
+def _validate_record(rec: dict) -> str | None:
+    """Return error string if record is missing required keys, else None."""
+    missing = REQUIRED_FIX_KEYS - rec.keys()
+    if missing:
+        return f"missing keys: {sorted(missing)}"
+    return None
+
+
 def parse_session_files(
     session_files: list[Path],
 ) -> tuple[list[dict], list[dict], int]:
@@ -117,7 +130,8 @@ def parse_session_files(
     all_skips = []
     defer_count = 0
 
-    for path in session_files:
+    # Sort by filename for deterministic ordering across runs
+    for path in sorted(session_files, key=lambda p: p.name):
         try:
             with open(path) as f:
                 session = json.load(f)
@@ -125,9 +139,17 @@ def parse_session_files(
             print(f"  WARNING: could not parse {path.name}: {e}")
             continue
 
-        fixes = [f for f in session.get("fixes", []) if not f.get("undone", False)]
+        raw_fixes = [f for f in session.get("fixes", []) if not f.get("undone", False)]
         skips = [s for s in session.get("skips", []) if not s.get("undone", False)]
         defers = session.get("pending", [])
+
+        fixes = []
+        for fix in raw_fixes:
+            err = _validate_record(fix)
+            if err:
+                print(f"  WARNING: skipping malformed fix in {path.name}: {err}")
+                continue
+            fixes.append(fix)
 
         all_fixes.extend(fixes)
         all_skips.extend(skips)
@@ -141,8 +163,10 @@ def parse_session_files(
     return all_fixes, all_skips, defer_count
 
 
-def get_existing_log_keys(db_path: str) -> tuple[set[tuple], set[tuple]]:
-    """Return sets of (check_id, reach_id) already in lint_fix_log for fixes and skips."""
+def get_existing_log_keys(
+    db_path: str,
+) -> tuple[dict[tuple, str | None], dict[tuple, str | None]]:
+    """Return dicts of {(check_id, reach_id): new_value} for fixes and skips in lint_fix_log."""
     con = duckdb.connect(db_path, read_only=True)
     try:
         tables = con.execute(
@@ -150,19 +174,19 @@ def get_existing_log_keys(db_path: str) -> tuple[set[tuple], set[tuple]]:
             "WHERE table_name = 'lint_fix_log'"
         ).fetchall()
         if not tables:
-            return set(), set()
+            return {}, {}
 
         fix_keys = {
-            (r[0], r[1])
+            (r[0], r[1]): r[2]
             for r in con.execute(
-                "SELECT check_id, reach_id FROM lint_fix_log "
+                "SELECT check_id, reach_id, new_value FROM lint_fix_log "
                 "WHERE action = 'fix' AND NOT undone"
             ).fetchall()
         }
         skip_keys = {
-            (r[0], r[1])
+            (r[0], r[1]): r[2]
             for r in con.execute(
-                "SELECT check_id, reach_id FROM lint_fix_log "
+                "SELECT check_id, reach_id, new_value FROM lint_fix_log "
                 "WHERE action = 'skip' AND NOT undone"
             ).fetchall()
         }
@@ -172,14 +196,27 @@ def get_existing_log_keys(db_path: str) -> tuple[set[tuple], set[tuple]]:
 
 
 def deduplicate(
-    records: list[dict], existing_keys: set[tuple]
+    records: list[dict], existing_keys: dict[tuple, str | None]
 ) -> tuple[list[dict], list[dict]]:
-    """Split records into (new, already_present) based on (check_id, reach_id) keys."""
+    """Split records into (new, already_present) based on (check_id, reach_id) keys.
+
+    Warns when an incoming record has a different new_value than the logged one.
+    """
     new = []
     dupes = []
     for rec in records:
         key = (rec.get("check_id"), rec.get("reach_id"))
         if key in existing_keys:
+            logged_val = existing_keys[key]
+            incoming_val = (
+                str(rec["new_value"]) if rec.get("new_value") is not None else None
+            )
+            if incoming_val != logged_val:
+                print(
+                    f"  WARNING: reach {rec.get('reach_id')} check {rec.get('check_id')}: "
+                    f"incoming value ({incoming_val}) differs from logged value "
+                    f"({logged_val}) — skipping (undo the old fix first)"
+                )
             dupes.append(rec)
         else:
             new.append(rec)
@@ -305,7 +342,7 @@ def main():
         workflow = SWORDWorkflow(user_id="gcs_sync")
         try:
             workflow.load(args.db, region)
-            con = workflow._sword.db.conn
+            con = workflow.sword.db.conn
 
             applied_this_region = []
 
@@ -314,13 +351,9 @@ def main():
             ):
                 for fix in region_fixes:
                     reach_id = fix["reach_id"]
-                    column = fix.get("column_changed")
+                    column = fix["column_changed"]
                     old_value = fix.get("old_value")
-                    new_value = fix.get("new_value")
-
-                    if not column or new_value is None:
-                        print(f"  SKIP reach {reach_id}: missing column or new_value")
-                        continue
+                    new_value = fix["new_value"]
 
                     if column not in ALLOWED_COLUMNS:
                         print(
@@ -331,7 +364,7 @@ def main():
 
                     # Verify current DB value matches expected old_value
                     row = con.execute(
-                        f"SELECT {column} FROM reaches "  # noqa: S608 — column validated above
+                        f"SELECT {column} FROM reaches "  # noqa: S608 — column validated against ALLOWED_COLUMNS above
                         "WHERE reach_id = ? AND region = ?",
                         [reach_id, region],
                     ).fetchone()
@@ -374,12 +407,11 @@ def main():
                     applied_count += 1
                     print(f"  Applied: reach {reach_id}: {column} = {val}")
 
-            # Log to lint_fix_log using the same connection, after the
-            # transaction commits but before we close the workflow — avoids
-            # the gap where reaches are modified but the log is empty.
-            if applied_this_region:
-                con.execute(LINT_FIX_LOG_DDL)
-                log_to_lint_fix_log(con, applied_this_region, "fix")
+                # Log inside transaction scope so fixes and log entries
+                # share the same error-handling boundary.
+                if applied_this_region:
+                    con.execute(LINT_FIX_LOG_DDL)
+                    log_to_lint_fix_log(con, applied_this_region, "fix")
 
             print(f"  Region {region}: {len(applied_this_region)} applied")
         finally:
