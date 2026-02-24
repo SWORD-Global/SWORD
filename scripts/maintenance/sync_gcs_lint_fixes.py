@@ -46,8 +46,10 @@ import duckdb
 
 GCS_DEFAULT_BUCKET = "gs://sword-qc-data/sword/lint_fixes/"
 
-# Columns that the reviewer app can modify — reject anything else
-ALLOWED_COLUMNS = {"lakeflag", "type"}
+# Columns that the reviewer app can modify — reject anything else.
+# Mapping of column name -> Python type constructor for casting values.
+ALLOWED_COLUMNS: dict[str, type] = {"lakeflag": int, "type": int}
+ALLOWED_COLUMN_NAMES: set[str] = set(ALLOWED_COLUMNS)
 
 VALID_REGIONS = {"NA", "SA", "EU", "AF", "AS", "OC"}
 
@@ -68,6 +70,17 @@ LINT_FIX_LOG_DDL = """
 """
 
 REQUIRED_FIX_KEYS = {"check_id", "reach_id", "column_changed", "new_value"}
+
+
+def _cast_column_value(column: str, raw_value):
+    """Cast raw_value to the correct Python type for column.
+
+    Returns the cast value, or raises ValueError/TypeError on failure.
+    """
+    caster = ALLOWED_COLUMNS.get(column)
+    if caster is None:
+        return raw_value
+    return caster(raw_value)
 
 
 def download_session_files(bucket_path: str, dest_dir: Path) -> list[Path]:
@@ -130,10 +143,13 @@ def download_session_files(bucket_path: str, dest_dir: Path) -> list[Path]:
 
 
 def _validate_record(rec: dict) -> str | None:
-    """Return error string if record is missing required keys, else None."""
+    """Return error string if record is invalid, else None."""
     missing = REQUIRED_FIX_KEYS - rec.keys()
     if missing:
         return f"missing keys: {sorted(missing)}"
+    col = rec.get("column_changed")
+    if col not in ALLOWED_COLUMN_NAMES:
+        return f"column_changed '{col}' not in allowlist {sorted(ALLOWED_COLUMN_NAMES)}"
     return None
 
 
@@ -217,6 +233,37 @@ def get_existing_log_keys(
         return fix_keys, skip_keys
     finally:
         con.close()
+
+
+def deduplicate_within_batch(records: list[dict]) -> list[dict]:
+    """Keep only the first fix per (check_id, reach_id) within an incoming batch.
+
+    Warns when a later record would overwrite an earlier one from a different
+    session file.
+    """
+    seen: dict[tuple, dict] = {}
+    result = []
+    for rec in records:
+        key = (rec.get("check_id"), rec.get("reach_id"))
+        if key in seen:
+            prev = seen[key]
+            prev_val = (
+                str(prev["new_value"]) if prev.get("new_value") is not None else None
+            )
+            cur_val = (
+                str(rec["new_value"]) if rec.get("new_value") is not None else None
+            )
+            if cur_val != prev_val:
+                print(
+                    f"  WARNING: duplicate fix for reach {rec.get('reach_id')} "
+                    f"check {rec.get('check_id')}: "
+                    f"value {cur_val} conflicts with earlier value {prev_val} "
+                    f"— keeping first occurrence"
+                )
+        else:
+            seen[key] = rec
+            result.append(rec)
+    return result
 
 
 def deduplicate(
@@ -311,11 +358,11 @@ def sync_fixes_to_postgres(pg_url: str, applied_fixes: list[dict]) -> int:
             column = fix["column_changed"]
             new_value = fix["new_value"]
 
-            if column not in ALLOWED_COLUMNS:
+            if column not in ALLOWED_COLUMN_NAMES:
                 continue
 
             try:
-                val = int(new_value) if column in ("lakeflag", "type") else new_value
+                val = _cast_column_value(column, new_value)
             except (ValueError, TypeError):
                 continue
 
@@ -394,7 +441,12 @@ def main():
         return
 
     # --- 3. Deduplicate ---
-    print("\n=== Deduplicating against lint_fix_log ===")
+    print("\n=== Deduplicating ===")
+    # First: deduplicate within the incoming batch (cross-session-file conflicts)
+    fixes = deduplicate_within_batch(fixes)
+    skips = deduplicate_within_batch(skips)
+
+    # Then: deduplicate against existing lint_fix_log in the DB
     existing_fix_keys, existing_skip_keys = get_existing_log_keys(args.db)
 
     new_fixes, dupe_fixes = deduplicate(fixes, existing_fix_keys)
@@ -468,10 +520,10 @@ def main():
                     old_value = fix.get("old_value")
                     new_value = fix["new_value"]
 
-                    if column not in ALLOWED_COLUMNS:
+                    if column not in ALLOWED_COLUMN_NAMES:
                         print(
                             f"  SKIP reach {reach_id}: "
-                            f"column '{column}' not in allowlist {ALLOWED_COLUMNS}"
+                            f"column '{column}' not in allowlist {sorted(ALLOWED_COLUMN_NAMES)}"
                         )
                         continue
 
@@ -497,15 +549,11 @@ def main():
 
                     # Cast value to appropriate type
                     try:
-                        val = (
-                            int(new_value)
-                            if column in ("lakeflag", "type")
-                            else new_value
-                        )
+                        val = _cast_column_value(column, new_value)
                     except (ValueError, TypeError):
                         print(
                             f"  SKIP reach {reach_id}: "
-                            f"cannot cast {new_value!r} to int for {column}"
+                            f"cannot cast {new_value!r} for {column}"
                         )
                         mismatch_count += 1
                         continue
@@ -552,12 +600,14 @@ def main():
 
     # --- 6. Sync to PostgreSQL ---
     pg_updated = 0
+    pg_failed = False
     if pg_url and all_applied:
         print(f"\n=== Syncing {len(all_applied)} fixes to PostgreSQL ===")
         try:
             pg_updated = sync_fixes_to_postgres(pg_url, all_applied)
             print(f"  PostgreSQL rows updated: {pg_updated}")
         except Exception as e:
+            pg_failed = True
             print(f"  ERROR syncing to PostgreSQL: {e}")
             print("  DuckDB fixes were applied successfully — PG is out of sync.")
             print("  Re-run with --sync-pg to retry, or do a full reload.")
@@ -590,6 +640,9 @@ def main():
     print(f"  Skips logged:            {len(new_skips)}")
     print(f"  Skips skipped (dedup):   {len(dupe_skips)}")
     print(f"  Defers in GCS:           {defer_count}")
+
+    if pg_failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
