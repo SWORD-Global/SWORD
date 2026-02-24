@@ -21,10 +21,11 @@ Usage:
     python scripts/maintenance/sync_gcs_lint_fixes.py \
         --db data/duckdb/sword_v17c.duckdb --apply --sync-pg
 
-    # Explicit PostgreSQL URL
+    # Explicit PostgreSQL URL (prefer SWORD_POSTGRES_URL env var to avoid
+    # credentials appearing in shell history / process listings)
     python scripts/maintenance/sync_gcs_lint_fixes.py \
         --db data/duckdb/sword_v17c.duckdb --apply \
-        --sync-pg --pg-url postgresql://user:pass@host:5432/sword_v17c
+        --sync-pg --pg-url "$SWORD_POSTGRES_URL"
 
     # Custom bucket path
     python scripts/maintenance/sync_gcs_lint_fixes.py \
@@ -112,12 +113,16 @@ def download_session_files(bucket_path: str, dest_dir: Path) -> list[Path]:
     for gcs_path in session_files:
         filename = gcs_path.rsplit("/", 1)[-1]
         local_path = dest_dir / filename
-        subprocess.run(
-            ["gcloud", "storage", "cp", gcs_path, str(local_path)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["gcloud", "storage", "cp", gcs_path, str(local_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"  WARNING: could not download {filename}: {e.stderr.strip()}")
+            continue
         downloaded.append(local_path)
         print(f"  {filename}")
 
@@ -302,6 +307,7 @@ def sync_fixes_to_postgres(pg_url: str, applied_fixes: list[dict]) -> int:
 
         for fix in applied_fixes:
             reach_id = fix["reach_id"]
+            region = fix.get("region")
             column = fix["column_changed"]
             new_value = fix["new_value"]
 
@@ -313,10 +319,11 @@ def sync_fixes_to_postgres(pg_url: str, applied_fixes: list[dict]) -> int:
             except (ValueError, TypeError):
                 continue
 
-            query = pg_sql.SQL("UPDATE reaches SET {} = %s WHERE reach_id = %s").format(
-                pg_sql.Identifier(column)
-            )
-            cur.execute(query, [val, reach_id])
+            # reaches PK is (reach_id, region) — always filter both
+            query = pg_sql.SQL(
+                "UPDATE reaches SET {} = %s WHERE reach_id = %s AND region = %s"
+            ).format(pg_sql.Identifier(column))
+            cur.execute(query, [val, reach_id, region])
             if cur.rowcount > 0:
                 pg_updated += cur.rowcount
 
@@ -428,105 +435,120 @@ def main():
     mismatch_count = 0
     all_applied: list[dict] = []
 
-    for region, region_fixes in sorted(by_region.items()):
-        if region not in VALID_REGIONS:
-            print(f"\nSKIP region '{region}': not in {sorted(VALID_REGIONS)}")
-            mismatch_count += len(region_fixes)
-            continue
+    # Single connection for all regions — RTREE indexes are global to the DB
+    # file, so drop once before all UPDATEs and recreate once after.
+    con = duckdb.connect(args.db)
+    indexes: list[tuple] = []
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
 
-        print(f"\nRegion {region}: {len(region_fixes)} fixes")
+        # Drop RTREE indexes before UPDATE (DuckDB requirement)
+        indexes = con.execute(
+            "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+            "WHERE sql LIKE '%RTREE%'"
+        ).fetchall()
+        for idx_name, _tbl, _sql in indexes:
+            con.execute(f'DROP INDEX "{idx_name}"')
 
-        con = duckdb.connect(args.db)
-        indexes = []
-        try:
-            con.execute("INSTALL spatial; LOAD spatial;")
+        for region, region_fixes in sorted(by_region.items()):
+            if region not in VALID_REGIONS:
+                print(f"\nSKIP region '{region}': not in {sorted(VALID_REGIONS)}")
+                mismatch_count += len(region_fixes)
+                continue
 
-            # Drop RTREE indexes before UPDATE (DuckDB requirement)
-            indexes = con.execute(
-                "SELECT index_name, table_name, sql FROM duckdb_indexes() "
-                "WHERE sql LIKE '%RTREE%'"
-            ).fetchall()
-            for idx_name, _tbl, _sql in indexes:
-                con.execute(f'DROP INDEX "{idx_name}"')
+            print(f"\nRegion {region}: {len(region_fixes)} fixes")
 
             con.begin()
             applied_this_region = []
 
-            for fix in region_fixes:
-                reach_id = fix["reach_id"]
-                column = fix["column_changed"]
-                old_value = fix.get("old_value")
-                new_value = fix["new_value"]
+            try:
+                for fix in region_fixes:
+                    reach_id = fix["reach_id"]
+                    column = fix["column_changed"]
+                    old_value = fix.get("old_value")
+                    new_value = fix["new_value"]
 
-                if column not in ALLOWED_COLUMNS:
-                    print(
-                        f"  SKIP reach {reach_id}: "
-                        f"column '{column}' not in allowlist {ALLOWED_COLUMNS}"
+                    if column not in ALLOWED_COLUMNS:
+                        print(
+                            f"  SKIP reach {reach_id}: "
+                            f"column '{column}' not in allowlist {ALLOWED_COLUMNS}"
+                        )
+                        continue
+
+                    # Verify current DB value matches expected old_value
+                    row = con.execute(
+                        f"SELECT {column} FROM reaches "  # noqa: S608 — column validated against ALLOWED_COLUMNS above
+                        "WHERE reach_id = ? AND region = ?",
+                        [reach_id, region],
+                    ).fetchone()
+
+                    if row is None:
+                        print(f"  SKIP reach {reach_id}: not found in region {region}")
+                        continue
+
+                    current = row[0]
+                    if old_value is not None and str(current) != str(old_value):
+                        print(
+                            f"  SKIP reach {reach_id}: {column} is {current}, "
+                            f"expected {old_value} (already modified elsewhere?)"
+                        )
+                        mismatch_count += 1
+                        continue
+
+                    # Cast value to appropriate type
+                    try:
+                        val = (
+                            int(new_value)
+                            if column in ("lakeflag", "type")
+                            else new_value
+                        )
+                    except (ValueError, TypeError):
+                        print(
+                            f"  SKIP reach {reach_id}: "
+                            f"cannot cast {new_value!r} to int for {column}"
+                        )
+                        mismatch_count += 1
+                        continue
+
+                    # Direct SQL UPDATE
+                    con.execute(
+                        f"UPDATE reaches SET {column} = ? "  # noqa: S608 — column validated against ALLOWED_COLUMNS above
+                        "WHERE reach_id = ? AND region = ?",
+                        [val, reach_id, region],
                     )
-                    continue
+                    applied_this_region.append(fix)
+                    applied_count += 1
+                    print(f"  Applied: reach {reach_id}: {column} = {val}")
 
-                # Verify current DB value matches expected old_value
-                row = con.execute(
-                    f"SELECT {column} FROM reaches "  # noqa: S608 — column validated against ALLOWED_COLUMNS above
-                    "WHERE reach_id = ? AND region = ?",
-                    [reach_id, region],
-                ).fetchone()
+                # Log fixes
+                if applied_this_region:
+                    con.execute(LINT_FIX_LOG_DDL)
+                    log_to_lint_fix_log(con, applied_this_region, "fix")
 
-                if row is None:
-                    print(f"  SKIP reach {reach_id}: not found in region {region}")
-                    continue
-
-                current = row[0]
-                if old_value is not None and str(current) != str(old_value):
-                    print(
-                        f"  SKIP reach {reach_id}: {column} is {current}, "
-                        f"expected {old_value} (already modified elsewhere?)"
-                    )
-                    mismatch_count += 1
-                    continue
-
-                # Cast value to appropriate type
+                con.commit()
+                all_applied.extend(applied_this_region)
+                print(f"  Region {region}: {len(applied_this_region)} applied")
+            except Exception:
                 try:
-                    val = (
-                        int(new_value) if column in ("lakeflag", "type") else new_value
-                    )
-                except (ValueError, TypeError):
-                    print(
-                        f"  SKIP reach {reach_id}: "
-                        f"cannot cast {new_value!r} to int for {column}"
-                    )
-                    mismatch_count += 1
-                    continue
-
-                # Direct SQL UPDATE
-                con.execute(
-                    f"UPDATE reaches SET {column} = ? "  # noqa: S608 — column validated against ALLOWED_COLUMNS above
-                    "WHERE reach_id = ? AND region = ?",
-                    [val, reach_id, region],
-                )
-                applied_this_region.append(fix)
-                applied_count += 1
-                print(f"  Applied: reach {reach_id}: {column} = {val}")
-
-            # Log fixes
-            if applied_this_region:
-                con.execute(LINT_FIX_LOG_DDL)
-                log_to_lint_fix_log(con, applied_this_region, "fix")
-
-            con.commit()
-            all_applied.extend(applied_this_region)
-            print(f"  Region {region}: {len(applied_this_region)} applied")
-        except Exception:
-            con.rollback()
-            raise
-        finally:
-            # Always recreate RTREE indexes, even on error
-            for _idx_name, _tbl, idx_sql in indexes:
-                try:
-                    con.execute(idx_sql)
-                except Exception as idx_err:
-                    print(f"  WARNING: failed to recreate RTREE index: {idx_err}")
-            con.close()
+                    con.rollback()
+                except Exception:
+                    pass
+                raise
+    finally:
+        # Recreate RTREE indexes — failure here is an error, not a warning,
+        # because a missing spatial index silently degrades all spatial queries.
+        idx_errors: list[str] = []
+        for _idx_name, _tbl, idx_sql in indexes:
+            try:
+                con.execute(idx_sql)
+            except Exception as idx_err:
+                idx_errors.append(str(idx_err))
+        con.close()
+        if idx_errors:
+            raise RuntimeError(
+                f"Failed to recreate {len(idx_errors)} RTREE index(es): "
+                + "; ".join(idx_errors)
+            )
 
     # --- 6. Sync to PostgreSQL ---
     pg_updated = 0
@@ -550,7 +572,10 @@ def main():
             log_to_lint_fix_log(log_con, new_skips, "skip")
             log_con.commit()
         except Exception:
-            log_con.rollback()
+            try:
+                log_con.rollback()
+            except Exception:
+                pass
             raise
         finally:
             log_con.close()
