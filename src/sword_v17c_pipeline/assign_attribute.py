@@ -25,6 +25,17 @@ import gc
 from functools import lru_cache
 from datetime import datetime
 
+# Region offsets for globally unique main_path_id values.
+# Each region gets a 1M-wide ID band so IDs never collide across regions.
+REGION_OFFSETS = {
+    "AF": 1_000_000,
+    "AS": 2_000_000,
+    "EU": 3_000_000,
+    "NA": 4_000_000,
+    "OC": 5_000_000,
+    "SA": 6_000_000,
+}
+
 print("[IMPORT] Importing SWORD_graph...", file=sys.stderr, flush=True)
 from SWORD_graph import load_sword_data, create_edges_gdf, create_network_nodes_gdf
 
@@ -303,12 +314,15 @@ def compute_up_down_best(
     )
 
 
-def check_main_path_id_components(G):
+def check_main_path_id_components(G, continent):
+    # Validate continent is known (IDs were already offset by main_path())
+    if continent.upper() not in REGION_OFFSETS:
+        raise ValueError(f"Unknown continent: {continent}")
     # --- 1. Group edges by main_path_id ---
     groups = defaultdict(list)
     for u, v, k, d in G.edges(keys=True, data=True):
         groups[d["main_path_id"]].append((u, v, k))
-    next_id = max(groups.keys()) + 1  # to create new unique ids
+    next_id = max(groups.keys()) + 1  # stays in this region's offset band
     # --- 2. Process each main_path_id group ---
     for m, edge_list in groups.items():
         H = G.edge_subgraph(edge_list)  # view containing only these edges
@@ -330,10 +344,14 @@ def check_main_path_id_components(G):
                         d["main_path_id"] = new_id
 
 
-def main_path(DG):
+def main_path(DG, continent):
     from datetime import datetime
 
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] main_path: Starting...", flush=True)
+    offset = REGION_OFFSETS[continent.upper()]
+    print(
+        f"[{datetime.now().strftime('%H:%M:%S')}] main_path: Starting (region={continent.upper()}, offset={offset:,})...",
+        flush=True,
+    )
     groups = {}
     edge_count = 0
     total_edges = DG.number_of_edges()
@@ -363,9 +381,9 @@ def main_path(DG):
             groups[key] = []
         groups[key].append((u, v, k))
 
-    # Step 2: assign a unique main_path_id to each group
+    # Step 2: assign a unique main_path_id to each group (offset by region)
     print(
-        f"[{datetime.now().strftime('%H:%M:%S')}] main_path: Assigning main_path_id to {len(groups):,} groups...",
+        f"[{datetime.now().strftime('%H:%M:%S')}] main_path: Assigning main_path_id to {len(groups):,} groups (offset={offset:,})...",
         flush=True,
     )
     for idx, ((bhw, bow), edges) in enumerate(groups.items(), start=1):
@@ -374,11 +392,12 @@ def main_path(DG):
                 f"[{datetime.now().strftime('%H:%M:%S')}] main_path:   Processed {idx:,}/{len(groups):,} groups...",
                 flush=True,
             )
+        path_id = offset + idx
         for u, v, k in edges:
-            DG[u][v][k]["main_path_id"] = idx
+            DG[u][v][k]["main_path_id"] = path_id
 
     print(f"[{datetime.now().strftime('%H:%M:%S')}] main_path: Complete", flush=True)
-    check_main_path_id_components(DG)
+    check_main_path_id_components(DG, continent)
 
 
 def all_simple_paths_with_keys(G, source, target, cutoff=None):
@@ -1756,7 +1775,7 @@ def main():
     print(
         f"[{datetime.now().strftime('%H:%M:%S')}] Computing main paths...", flush=True
     )
-    main_path(G)
+    main_path(G, continent)
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Main paths computed", flush=True)
 
     # with open(os.path.join(directory + f'output/{continent}/{continent}_test.pkl'),"wb") as f:
