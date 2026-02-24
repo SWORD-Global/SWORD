@@ -640,3 +640,79 @@ def check_osm_name_continuity(
         details=issues,
         description="Reaches where river_name_local changes on 1:1 link (not at junction)",
     )
+
+
+@register_check(
+    "V013",
+    Category.V17C,
+    Severity.WARNING,
+    "main_path_id must map to a single (best_headwater, best_outlet) tuple globally",
+)
+def check_main_path_id_global_uniqueness(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check that each main_path_id maps to exactly one (best_headwater, best_outlet) pair.
+
+    Collisions indicate the per-region counter wasn't offset, so different
+    networks in different regions share the same main_path_id.
+    """
+    # Check if column exists
+    try:
+        conn.execute("SELECT main_path_id FROM reaches LIMIT 1")
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V013",
+            name="main_path_id_global_uniqueness",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Column main_path_id not found (v17c pipeline not run)",
+        )
+
+    # When checking a single region, collisions won't appear (they're cross-region).
+    # Still run the query — it acts as a within-region sanity check too.
+    where_clause = f"WHERE r.region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT
+        main_path_id,
+        COUNT(DISTINCT (best_headwater, best_outlet)) as n_tuples,
+        COUNT(*) as n_reaches,
+        ARRAY_AGG(DISTINCT region) as regions,
+        ARRAY_AGG(DISTINCT best_headwater) as headwaters,
+        ARRAY_AGG(DISTINCT best_outlet) as outlets
+    FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} main_path_id IS NOT NULL
+    GROUP BY main_path_id
+    HAVING COUNT(DISTINCT (best_headwater, best_outlet)) > 1
+    ORDER BY n_tuples DESC
+    LIMIT 500
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(DISTINCT main_path_id) FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} main_path_id IS NOT NULL
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V013",
+        name="main_path_id_global_uniqueness",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"main_path_id values mapping to multiple (best_headwater, best_outlet) tuples ({len(issues)} collisions)",
+    )
