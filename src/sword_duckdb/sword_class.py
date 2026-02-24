@@ -3406,30 +3406,10 @@ class SWORD:
                         continue
 
                     if min(dn_dist) == -9999:
-                        # Some downstream not yet computed
-                        if rch_flag == 1:
-                            # Already visited once, use max of available
-                            add_val = max(dn_dist)
-                            dist_out[rch] = self.reaches.len[rch] + add_val
-
-                            # Get upstream neighbors
-                            up_nghs = self.reaches.rch_id_up[:, rch]
-                            up_nghs = up_nghs[up_nghs > 0]
-
-                            up_flag = np.array(
-                                [
-                                    np.max(flag[np.where(self.reaches.id == n)[0]])
-                                    for n in up_nghs
-                                    if len(np.where(self.reaches.id == n)[0]) > 0
-                                ]
-                            )
-                            if len(up_flag) > 0:
-                                up_nghs = up_nghs[: len(up_flag)][up_flag == 0]
-                                # Flag these upstream for next iteration
-                                flag[np.where(np.isin(self.reaches.id, up_nghs))[0]] = 1
-                        else:
-                            # First visit, set flag and wait
-                            flag[rch] = 1
+                        # Some downstream not yet computed — defer.
+                        # Increment flag so we can detect truly stuck reaches
+                        # in the stall-recovery loop below.
+                        flag[rch] = rch_flag + 1
                     else:
                         # All downstream computed, use max
                         add_val = max(dn_dist)
@@ -3462,20 +3442,65 @@ class SWORD:
                     np.where((self.reaches.n_rch_down == 0) & (dist_out == -9999))[0]
                 ]
 
-                if len(unfilled_outlets) == 0 and np.min(dist_out) > -9999:
+                if len(unfilled_outlets) > 0:
+                    # Process next unfilled outlet
+                    start_rchs = np.array([unfilled_outlets[0]])
+                elif np.min(dist_out) > -9999:
                     # All done
                     start_rchs = np.array([])
-                elif len(unfilled_outlets) == 0 and np.min(dist_out) == -9999:
-                    # Check for flagged but unfilled reaches
-                    check_flag = np.where((flag == 1) & (dist_out == -9999))[0]
-                    if len(check_flag) > 0:
-                        start_rchs = np.array([self.reaches.id[check_flag[0]]])
-                    else:
-                        if verbose:
-                            logger.warning("No more outlets but still -9999 values")
-                        break
                 else:
-                    start_rchs = np.array([unfilled_outlets[0]])
+                    # No unfilled outlets but some reaches still -9999.
+                    # These are deferred bifurcation parents whose children
+                    # route to different outlets.  Now that all outlets are
+                    # processed, some children may have been filled.  Re-queue
+                    # any deferred reach that now has all downstream computed.
+                    deferred = np.where((flag > 0) & (dist_out == -9999))[0]
+                    newly_ready = []
+                    for idx in deferred:
+                        dn_nghs = self.reaches.rch_id_down[:, idx]
+                        dn_nghs = dn_nghs[dn_nghs > 0]
+                        dn_d = np.array(
+                            [
+                                dist_out[np.where(self.reaches.id == n)[0][0]]
+                                for n in dn_nghs
+                                if len(np.where(self.reaches.id == n)[0]) > 0
+                            ]
+                        )
+                        if len(dn_d) > 0 and min(dn_d) > -9999:
+                            newly_ready.append(self.reaches.id[idx])
+                    if len(newly_ready) > 0:
+                        start_rchs = np.array(newly_ready)
+                    else:
+                        # Truly stuck — some downstream children are
+                        # unreachable (disconnected components).  Use max
+                        # of available downstream values as fallback.
+                        stuck = []
+                        for idx in deferred:
+                            dn_nghs = self.reaches.rch_id_down[:, idx]
+                            dn_nghs = dn_nghs[dn_nghs > 0]
+                            dn_d = np.array(
+                                [
+                                    dist_out[np.where(self.reaches.id == n)[0][0]]
+                                    for n in dn_nghs
+                                    if len(np.where(self.reaches.id == n)[0]) > 0
+                                ]
+                            )
+                            valid = dn_d[dn_d > -9999]
+                            if len(valid) > 0:
+                                dist_out[idx] = self.reaches.len[idx] + max(valid)
+                                stuck.append(self.reaches.id[idx])
+                        if len(stuck) > 0:
+                            if verbose:
+                                logger.warning(
+                                    f"{len(stuck)} reaches resolved via "
+                                    f"fallback (partial downstream)"
+                                )
+                            # Re-queue their upstream neighbors
+                            start_rchs = np.array(stuck)
+                        else:
+                            if verbose:
+                                logger.warning("No more outlets but still -9999 values")
+                            break
 
             loop += 1
             if loop > max_loops:
