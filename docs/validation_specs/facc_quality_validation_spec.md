@@ -62,35 +62,10 @@ python -m src.sword_duckdb.facc_detection.cli \
 
 **Output:** GeoJSON files for QGIS review (`entry_point.geojson`, `jump_entry.geojson`, etc.)
 
-### 3.2 RF Regressor Correction (2026-02)
+### 3.2 RF Regressor Correction (2026-02) — REMOVED
 
-**Location:** `src/sword_duckdb/facc_detection/rf_regressor.py`
-
-Trained RF to predict what facc SHOULD be based on network position, then apply to detected anomalies.
-
-**Two Model Variants:**
-
-| Model | R² | Med Error | Top Feature | Purpose |
-|-------|------|-----------|-------------|---------|
-| Standard | 0.98 | 0.3% | max_2hop_upstream_facc (64%) | Primary correction |
-| No-facc | 0.79 | 32.8% | hydro_dist_hw (56.6%) | Sanity check |
-
-**Standard model** uses 2-hop facc features - accurate but tautology risk if neighbors corrupted.
-**No-facc model** excludes ALL facc-derived features - lower accuracy but independent validation.
-
-**Usage:**
-```bash
-# Train no-facc model
-python -m src.sword_duckdb.facc_detection.train_split_regressor \
-    --db data/duckdb/sword_v17c.duckdb \
-    --output-dir output/facc_detection \
-    --exclude-facc-features
-```
-
-**Files:**
-- `rf_regressor_baseline.joblib` - Standard model
-- `rf_regressor_baseline_nofacc.joblib` - No-facc variant
-- `rf_split_regressor*.joblib` - Split by main_side × lakeflag
+RF-based correction was superseded by topology-aware denoising (`correct_facc_denoise.py`).
+Code removed in rf-features cleanup.
 
 ### 3.3 Legacy Detection: fix_facc_violations() Method
 
