@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Sync GCS Lint Fixes to DuckDB
-------------------------------
+Sync GCS Lint Fixes to DuckDB (and optionally PostgreSQL)
+----------------------------------------------------------
 Download lint session files from the cloud reviewer app (GCS), parse fixes,
 deduplicate against local lint_fix_log, and apply to sword_v17c.duckdb.
+Optionally propagate the same fixes to PostgreSQL.
 
 Idempotent — safe to re-run as new reviews come in.
 
@@ -12,9 +13,19 @@ Usage:
     python scripts/maintenance/sync_gcs_lint_fixes.py \
         --db data/duckdb/sword_v17c.duckdb
 
-    # Apply fixes
+    # Apply to DuckDB only
     python scripts/maintenance/sync_gcs_lint_fixes.py \
         --db data/duckdb/sword_v17c.duckdb --apply
+
+    # Apply to DuckDB + PostgreSQL (reads SWORD_POSTGRES_URL env var)
+    python scripts/maintenance/sync_gcs_lint_fixes.py \
+        --db data/duckdb/sword_v17c.duckdb --apply --sync-pg
+
+    # Explicit PostgreSQL URL (prefer SWORD_POSTGRES_URL env var to avoid
+    # credentials appearing in shell history / process listings)
+    python scripts/maintenance/sync_gcs_lint_fixes.py \
+        --db data/duckdb/sword_v17c.duckdb --apply \
+        --sync-pg --pg-url "$SWORD_POSTGRES_URL"
 
     # Custom bucket path
     python scripts/maintenance/sync_gcs_lint_fixes.py \
@@ -24,6 +35,7 @@ Usage:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -31,12 +43,13 @@ from pathlib import Path
 
 import duckdb
 
-from src.sword_duckdb import SWORDWorkflow
 
 GCS_DEFAULT_BUCKET = "gs://sword-qc-data/sword/lint_fixes/"
 
-# Columns that the reviewer app can modify — reject anything else
-ALLOWED_COLUMNS = {"lakeflag", "type"}
+# Columns that the reviewer app can modify — reject anything else.
+# Mapping of column name -> Python type constructor for casting values.
+ALLOWED_COLUMNS: dict[str, type] = {"lakeflag": int, "type": int}
+ALLOWED_COLUMN_NAMES: set[str] = set(ALLOWED_COLUMNS)
 
 VALID_REGIONS = {"NA", "SA", "EU", "AF", "AS", "OC"}
 
@@ -57,6 +70,17 @@ LINT_FIX_LOG_DDL = """
 """
 
 REQUIRED_FIX_KEYS = {"check_id", "reach_id", "column_changed", "new_value"}
+
+
+def _cast_column_value(column: str, raw_value):
+    """Cast raw_value to the correct Python type for column.
+
+    Returns the cast value, or raises ValueError/TypeError on failure.
+    """
+    caster = ALLOWED_COLUMNS.get(column)
+    if caster is None:
+        return raw_value
+    return caster(raw_value)
 
 
 def download_session_files(bucket_path: str, dest_dir: Path) -> list[Path]:
@@ -102,12 +126,16 @@ def download_session_files(bucket_path: str, dest_dir: Path) -> list[Path]:
     for gcs_path in session_files:
         filename = gcs_path.rsplit("/", 1)[-1]
         local_path = dest_dir / filename
-        subprocess.run(
-            ["gcloud", "storage", "cp", gcs_path, str(local_path)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        try:
+            subprocess.run(
+                ["gcloud", "storage", "cp", gcs_path, str(local_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"  WARNING: could not download {filename}: {e.stderr.strip()}")
+            continue
         downloaded.append(local_path)
         print(f"  {filename}")
 
@@ -115,10 +143,13 @@ def download_session_files(bucket_path: str, dest_dir: Path) -> list[Path]:
 
 
 def _validate_record(rec: dict) -> str | None:
-    """Return error string if record is missing required keys, else None."""
+    """Return error string if record is invalid, else None."""
     missing = REQUIRED_FIX_KEYS - rec.keys()
     if missing:
         return f"missing keys: {sorted(missing)}"
+    col = rec.get("column_changed")
+    if col not in ALLOWED_COLUMN_NAMES:
+        return f"column_changed '{col}' not in allowlist {sorted(ALLOWED_COLUMN_NAMES)}"
     return None
 
 
@@ -204,6 +235,37 @@ def get_existing_log_keys(
         con.close()
 
 
+def deduplicate_within_batch(records: list[dict]) -> list[dict]:
+    """Keep only the first fix per (check_id, reach_id) within an incoming batch.
+
+    Warns when a later record would overwrite an earlier one from a different
+    session file.
+    """
+    seen: dict[tuple, dict] = {}
+    result = []
+    for rec in records:
+        key = (rec.get("check_id"), rec.get("reach_id"))
+        if key in seen:
+            prev = seen[key]
+            prev_val = (
+                str(prev["new_value"]) if prev.get("new_value") is not None else None
+            )
+            cur_val = (
+                str(rec["new_value"]) if rec.get("new_value") is not None else None
+            )
+            if cur_val != prev_val:
+                print(
+                    f"  WARNING: duplicate fix for reach {rec.get('reach_id')} "
+                    f"check {rec.get('check_id')}: "
+                    f"value {cur_val} conflicts with earlier value {prev_val} "
+                    f"— keeping first occurrence"
+                )
+        else:
+            seen[key] = rec
+            result.append(rec)
+    return result
+
+
 def deduplicate(
     records: list[dict], existing_keys: dict[tuple, str | None]
 ) -> tuple[list[dict], list[dict]]:
@@ -268,13 +330,76 @@ def log_to_lint_fix_log(con, records: list[dict], action: str):
         fid += 1
 
 
+def resolve_pg_url(explicit_url: str | None) -> str | None:
+    """Return PG connection string from explicit arg, env var, or None."""
+    if explicit_url:
+        return explicit_url
+
+    return os.environ.get("SWORD_POSTGRES_URL")
+
+
+def sync_fixes_to_postgres(pg_url: str, applied_fixes: list[dict]) -> int:
+    """Apply the same column updates to PostgreSQL that were applied to DuckDB.
+
+    Returns count of rows actually updated in PG.
+    """
+    import psycopg2
+    from psycopg2 import sql as pg_sql
+
+    pg_updated = 0
+    conn = psycopg2.connect(pg_url)
+    try:
+        conn.autocommit = False
+        cur = conn.cursor()
+
+        for fix in applied_fixes:
+            reach_id = fix["reach_id"]
+            region = fix.get("region")
+            column = fix["column_changed"]
+            new_value = fix["new_value"]
+
+            if column not in ALLOWED_COLUMN_NAMES:
+                continue
+
+            try:
+                val = _cast_column_value(column, new_value)
+            except (ValueError, TypeError):
+                continue
+
+            # reaches PK is (reach_id, region) — always filter both
+            query = pg_sql.SQL(
+                "UPDATE reaches SET {} = %s WHERE reach_id = %s AND region = %s"
+            ).format(pg_sql.Identifier(column))
+            cur.execute(query, [val, reach_id, region])
+            if cur.rowcount > 0:
+                pg_updated += cur.rowcount
+
+        conn.commit()
+        return pg_updated
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Sync lint fixes from GCS cloud reviewer to local DuckDB"
+        description="Sync lint fixes from GCS cloud reviewer to DuckDB and PostgreSQL"
     )
     parser.add_argument("--db", required=True, help="Path to DuckDB database")
     parser.add_argument(
         "--apply", action="store_true", help="Apply fixes (dry-run without this)"
+    )
+    parser.add_argument(
+        "--sync-pg",
+        action="store_true",
+        help="Also apply fixes to PostgreSQL (uses SWORD_POSTGRES_URL or --pg-url)",
+    )
+    parser.add_argument(
+        "--pg-url",
+        default=None,
+        help="PostgreSQL connection URL (default: SWORD_POSTGRES_URL env var)",
     )
     parser.add_argument(
         "--bucket",
@@ -282,6 +407,21 @@ def main():
         help=f"GCS bucket path (default: {GCS_DEFAULT_BUCKET})",
     )
     args = parser.parse_args()
+
+    if args.sync_pg:
+        pg_url = resolve_pg_url(args.pg_url)
+        if not pg_url:
+            print("ERROR: --sync-pg requires --pg-url or SWORD_POSTGRES_URL env var")
+            sys.exit(1)
+        try:
+            import psycopg2  # noqa: F401
+        except ImportError:
+            print(
+                "ERROR: --sync-pg requires psycopg2. Run: uv pip install psycopg2-binary"
+            )
+            sys.exit(1)
+    else:
+        pg_url = None
 
     # --- 1. Download ---
     print("=== Downloading session files from GCS ===")
@@ -301,7 +441,12 @@ def main():
         return
 
     # --- 3. Deduplicate ---
-    print("\n=== Deduplicating against lint_fix_log ===")
+    print("\n=== Deduplicating ===")
+    # First: deduplicate within the incoming batch (cross-session-file conflicts)
+    fixes = deduplicate_within_batch(fixes)
+    skips = deduplicate_within_batch(skips)
+
+    # Then: deduplicate against existing lint_fix_log in the DB
     existing_fix_keys, existing_skip_keys = get_existing_log_keys(args.db)
 
     new_fixes, dupe_fixes = deduplicate(fixes, existing_fix_keys)
@@ -331,43 +476,54 @@ def main():
             print(f"\nWould log {len(new_skips)} skips (no reach modification)")
         return
 
-    # --- 5. Apply fixes grouped by region ---
-    print("\n=== Applying fixes ===")
+    # --- 5. Apply fixes via direct SQL (bypasses SWORD class in-memory arrays,
+    #         which don't expose all columns like 'type') ---
+    print("\n=== Applying fixes to DuckDB ===")
     by_region: dict[str, list[dict]] = {}
     for fix in new_fixes:
         by_region.setdefault(fix.get("region", "UNKNOWN"), []).append(fix)
 
     applied_count = 0
     mismatch_count = 0
+    all_applied: list[dict] = []
 
-    for region, region_fixes in sorted(by_region.items()):
-        if region not in VALID_REGIONS:
-            print(f"\nSKIP region '{region}': not in {sorted(VALID_REGIONS)}")
-            mismatch_count += len(region_fixes)
-            continue
+    # Single connection for all regions — RTREE indexes are global to the DB
+    # file, so drop once before all UPDATEs and recreate once after.
+    con = duckdb.connect(args.db)
+    indexes: list[tuple] = []
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
 
-        print(f"\nRegion {region}: {len(region_fixes)} fixes")
+        # Drop RTREE indexes before UPDATE (DuckDB requirement)
+        indexes = con.execute(
+            "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+            "WHERE sql LIKE '%RTREE%'"
+        ).fetchall()
+        for idx_name, _tbl, _sql in indexes:
+            con.execute(f'DROP INDEX "{idx_name}"')
 
-        workflow = SWORDWorkflow(user_id="gcs_sync")
-        try:
-            workflow.load(args.db, region)
-            con = workflow.sword.db.conn
+        for region, region_fixes in sorted(by_region.items()):
+            if region not in VALID_REGIONS:
+                print(f"\nSKIP region '{region}': not in {sorted(VALID_REGIONS)}")
+                mismatch_count += len(region_fixes)
+                continue
 
+            print(f"\nRegion {region}: {len(region_fixes)} fixes")
+
+            con.begin()
             applied_this_region = []
 
-            with workflow.transaction(
-                f"GCS sync: {len(region_fixes)} fixes for {region}"
-            ):
+            try:
                 for fix in region_fixes:
                     reach_id = fix["reach_id"]
                     column = fix["column_changed"]
                     old_value = fix.get("old_value")
                     new_value = fix["new_value"]
 
-                    if column not in ALLOWED_COLUMNS:
+                    if column not in ALLOWED_COLUMN_NAMES:
                         print(
                             f"  SKIP reach {reach_id}: "
-                            f"column '{column}' not in allowlist {ALLOWED_COLUMNS}"
+                            f"column '{column}' not in allowlist {sorted(ALLOWED_COLUMN_NAMES)}"
                         )
                         continue
 
@@ -393,57 +549,100 @@ def main():
 
                     # Cast value to appropriate type
                     try:
-                        val = (
-                            int(new_value)
-                            if column in ("lakeflag", "type")
-                            else new_value
-                        )
+                        val = _cast_column_value(column, new_value)
                     except (ValueError, TypeError):
                         print(
                             f"  SKIP reach {reach_id}: "
-                            f"cannot cast {new_value!r} to int for {column}"
+                            f"cannot cast {new_value!r} for {column}"
                         )
                         mismatch_count += 1
                         continue
 
-                    reason = f"{fix['check_id']}: gcs_sync"
-                    notes = fix.get("notes", "")
-                    if notes:
-                        reason += f" - {notes}"
-
-                    workflow.modify_reach(reach_id, reason=reason, **{column: val})
+                    # Direct SQL UPDATE
+                    con.execute(
+                        f"UPDATE reaches SET {column} = ? "  # noqa: S608 — column validated against ALLOWED_COLUMNS above
+                        "WHERE reach_id = ? AND region = ?",
+                        [val, reach_id, region],
+                    )
                     applied_this_region.append(fix)
                     applied_count += 1
                     print(f"  Applied: reach {reach_id}: {column} = {val}")
 
-                # Log inside transaction scope so fixes and log entries
-                # share the same error-handling boundary.
+                # Log fixes
                 if applied_this_region:
                     con.execute(LINT_FIX_LOG_DDL)
                     log_to_lint_fix_log(con, applied_this_region, "fix")
 
-            print(f"  Region {region}: {len(applied_this_region)} applied")
-        finally:
-            workflow.close()
+                con.commit()
+                all_applied.extend(applied_this_region)
+                print(f"  Region {region}: {len(applied_this_region)} applied")
+            except Exception:
+                try:
+                    con.rollback()
+                except Exception:
+                    pass
+                raise
+    finally:
+        # Recreate RTREE indexes — failure here is an error, not a warning,
+        # because a missing spatial index silently degrades all spatial queries.
+        idx_errors: list[str] = []
+        for _idx_name, _tbl, idx_sql in indexes:
+            try:
+                con.execute(idx_sql)
+            except Exception as idx_err:
+                idx_errors.append(str(idx_err))
+        con.close()
+        if idx_errors:
+            raise RuntimeError(
+                f"Failed to recreate {len(idx_errors)} RTREE index(es): "
+                + "; ".join(idx_errors)
+            )
 
-    # --- 6. Log skips ---
+    # --- 6. Sync to PostgreSQL ---
+    pg_updated = 0
+    pg_failed = False
+    if pg_url and all_applied:
+        print(f"\n=== Syncing {len(all_applied)} fixes to PostgreSQL ===")
+        try:
+            pg_updated = sync_fixes_to_postgres(pg_url, all_applied)
+            print(f"  PostgreSQL rows updated: {pg_updated}")
+        except Exception as e:
+            pg_failed = True
+            print(f"  ERROR syncing to PostgreSQL: {e}")
+            print("  DuckDB fixes were applied successfully — PG is out of sync.")
+            print("  Re-run with --sync-pg to retry, or do a full reload.")
+
+    # --- 7. Log skips ---
     if new_skips:
         print(f"\nLogging {len(new_skips)} skips to lint_fix_log...")
         log_con = duckdb.connect(args.db)
         try:
             log_con.execute(LINT_FIX_LOG_DDL)
+            log_con.begin()
             log_to_lint_fix_log(log_con, new_skips, "skip")
+            log_con.commit()
+        except Exception:
+            try:
+                log_con.rollback()
+            except Exception:
+                pass
+            raise
         finally:
             log_con.close()
 
-    # --- 7. Summary ---
+    # --- 8. Summary ---
     print("\n=== Summary ===")
-    print(f"  Fixes applied:           {applied_count}")
+    print(f"  DuckDB fixes applied:    {applied_count}")
+    if pg_url:
+        print(f"  PostgreSQL rows updated: {pg_updated}")
     print(f"  Fixes skipped (dedup):   {len(dupe_fixes)}")
     print(f"  Fixes skipped (mismatch): {mismatch_count}")
     print(f"  Skips logged:            {len(new_skips)}")
     print(f"  Skips skipped (dedup):   {len(dupe_skips)}")
     print(f"  Defers in GCS:           {defer_count}")
+
+    if pg_failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
