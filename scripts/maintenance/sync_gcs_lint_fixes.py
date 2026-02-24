@@ -149,6 +149,15 @@ def parse_session_files(
             if err:
                 print(f"  WARNING: skipping malformed fix in {path.name}: {err}")
                 continue
+            # Ensure reach_id is int (JSON may deserialize as float)
+            try:
+                fix["reach_id"] = int(fix["reach_id"])
+            except (ValueError, TypeError):
+                print(
+                    f"  WARNING: skipping fix with invalid reach_id "
+                    f"{fix['reach_id']!r} in {path.name}"
+                )
+                continue
             fixes.append(fix)
 
         all_fixes.extend(fixes)
@@ -421,15 +430,17 @@ def main():
     if new_skips:
         print(f"\nLogging {len(new_skips)} skips to lint_fix_log...")
         log_con = duckdb.connect(args.db)
-        log_con.execute(LINT_FIX_LOG_DDL)
-        log_to_lint_fix_log(log_con, new_skips, "skip")
-        log_con.close()
+        try:
+            log_con.execute(LINT_FIX_LOG_DDL)
+            log_to_lint_fix_log(log_con, new_skips, "skip")
+        finally:
+            log_con.close()
 
     # --- 7. Summary ---
     print("\n=== Summary ===")
     print(f"  Fixes applied:           {applied_count}")
     print(f"  Fixes skipped (dedup):   {len(dupe_fixes)}")
-    print(f"  Fixes skipped (mismatch):{mismatch_count}")
+    print(f"  Fixes skipped (mismatch): {mismatch_count}")
     print(f"  Skips logged:            {len(new_skips)}")
     print(f"  Skips skipped (dedup):   {len(dupe_skips)}")
     print(f"  Defers in GCS:           {defer_count}")
