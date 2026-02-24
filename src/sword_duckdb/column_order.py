@@ -52,7 +52,6 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     "dist_out",
     "hydro_dist_out",
     "hydro_dist_hw",
-    "dist_out_short",
     # Topology
     "n_rch_up",
     "n_rch_down",

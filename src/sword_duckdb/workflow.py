@@ -1571,7 +1571,6 @@ class SWORDWorkflow:
             "pathlen_out",
             "main_path_id",
             "is_mainstem_edge",
-            "dist_out_short",
             "hydro_dist_out",
             "hydro_dist_hw",
             "rch_id_up_main",
