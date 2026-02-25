@@ -49,11 +49,7 @@ def get_planet_quarterly_mosaics(api_key: str):
         return []
     mosaics = resp.json().get("mosaics", [])
     quarterly = sorted(
-        [
-            m
-            for m in mosaics
-            if "quarterly" in m["name"] and "visual" in m["name"].lower()
-        ],
+        [m for m in mosaics if "quarterly" in m["name"]],
         key=lambda m: m["name"],
         reverse=True,
     )[:4]
