@@ -176,8 +176,9 @@ CREATE TABLE IF NOT EXISTS nodes (
     lakeflag INTEGER,            -- 0=river, 1=lake, 2=canal, 3=tidal
     n_chan_max INTEGER,           -- nchan_max
     n_chan_mod INTEGER,           -- nchan_mod
-    obstr_type INTEGER,          -- grod: 0=none, 1=dam, 2=lock, 3=low-perm, 4=waterfall
-    grod_id BIGINT,              -- GROD database ID
+    obstr_type INTEGER,          -- 0=none,1=dam,2=low_head_dam,3=lock,4=waterfall,5=partial_dam
+    grod_id BIGINT,              -- GROD database ID (v17b source; sunset in v18)
+    dl_grod_id BIGINT,           -- DL-GROD database ID (He et al. 2025)
     hfalls_id BIGINT,            -- HydroFALLS database ID
     trib_flag INTEGER,           -- 0=no tributary, 1=tributary
     manual_add INTEGER,          -- 0=not manual, 1=manual
@@ -304,8 +305,9 @@ CREATE TABLE IF NOT EXISTS reaches (
     lakeflag INTEGER,            -- 0=river, 1=lake, 2=canal, 3=tidal
     n_chan_max INTEGER,           -- nchan_max
     n_chan_mod INTEGER,           -- nchan_mod
-    obstr_type INTEGER,          -- grod
-    grod_id BIGINT,              -- GROD database ID
+    obstr_type INTEGER,          -- 0=none,1=dam,2=low_head_dam,3=lock,4=waterfall,5=partial_dam
+    grod_id BIGINT,              -- GROD database ID (v17b source; sunset in v18)
+    dl_grod_id BIGINT,           -- DL-GROD database ID (He et al. 2025)
     hfalls_id BIGINT,            -- HydroFALLS database ID
     swot_obs INTEGER,            -- max_obs: max SWOT passes in 21-day cycle
     iceflag INTEGER,             -- ice/seasonal flag
