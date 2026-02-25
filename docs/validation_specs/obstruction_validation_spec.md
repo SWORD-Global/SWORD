@@ -1,18 +1,24 @@
-# Validation Spec: Obstruction Variables (obstr_type, grod_id, hfalls_id)
+# Validation Spec: Obstruction Variables (obstr_type, grod_id, dl_grod_id, hfalls_id)
 
 ## Summary
 
-| Property | obstr_type | grod_id | hfalls_id |
-|----------|------------|---------|-----------|
-| **Source** | GROD + HydroFALLS | GROD | HydroFALLS |
-| **Units** | Categorical (0-4) | Database ID | Database ID |
-| **Applied to** | Nodes, Reaches | Nodes, Reaches | Nodes, Reaches |
+| Property | obstr_type | grod_id | dl_grod_id | hfalls_id |
+|----------|------------|---------|------------|-----------|
+| **Source** | GROD + DL-GROD + HydroFALLS | GROD | DL-GROD | HydroFALLS |
+| **Units** | Categorical (0-5) | Database ID | Database ID | Database ID |
+| **Applied to** | Nodes, Reaches | Nodes, Reaches | Reaches | Nodes, Reaches |
 
 **Official definitions (v17b PDD, Tables 3-5):**
 
 - **obstr_type**: "Type of obstruction for each [node/reach] based on GROD and HydroFALLS databases. Obstr_type values: 0 - No Dam, 1 - Dam, 2 - Lock, 3 - Low Permeable Dam, 4 - Waterfall."
 - **grod_id**: "The unique GROD ID for each [node/reach] with obstr_type values 1-3."
 - **hfalls_id**: "The unique HydroFALLS ID for each [node/reach] with obstr_type value 4."
+
+**v17c encoding (extends v17b — semantic changes to types 2 and 3):**
+
+- **obstr_type**: 0=none, 1=dam, 2=low-head dam (was lock in v17b), 3=lock (was low-perm in v17b), 4=waterfall, 5=partial dam
+- **dl_grod_id**: DL-GROD database ID (He et al. 2025). Set for obstr_type in {1, 2, 3, 5}. NULL for waterfalls.
+- **grod_id**: Retained from v17b; sunset in v18. Cleared when DL-GROD reclassifies a reach to waterfall.
 
 ---
 
@@ -46,6 +52,20 @@
 - `CONTINENT` - Continental region
 
 **Filtering:** HydroFALLS points within 500m of GROD locations are removed to avoid double-counting (see `hydrofalls_filtering.py`).
+
+### DL-GROD (Deep Learning Global River Obstruction Database)
+
+**Reference:** He et al. (2025). DL-GROD deep-learning extension of GROD.
+
+**File:** `barrier_reach_mapping.csv` from swot_obstructions project
+
+**Key fields:**
+- `ID` - Unique DL-GROD feature ID (mapped to `dl_grod_id` in SWORD)
+- `Type` - Obstruction type: dam, low-head dam, lock, partial dam, waterfall
+- `reach_id` - SWORD reach assignment
+- `distance_m` - Distance from obstruction to reach
+
+**Ingestion:** `scripts/maintenance/ingest_dl_grod.py` resolves multi-obstruction reaches by priority (dam > lock > low-head dam > partial dam > waterfall), updates 27,071 reaches. DL-GROD supersedes GROD (GROD is a subset of DL-GROD).
 
 ---
 
@@ -94,7 +114,7 @@ else:
     method=DerivationMethod.MAX,
     source_columns=["obstruction_type"],
     dependencies=["centerline.grod"],
-    description="Obstruction type: np.max(GROD[reach]), values >4 reset to 0. 0=none, 1=dam, 2=lock, 3=low-perm, 4=waterfall"
+    description="Obstruction type: np.max(GROD[reach]), values >5 reset to 0. 0=none, 1=dam, 2=low-head dam, 3=lock, 4=waterfall, 5=partial dam"
 ),
 
 "reach.grod_id": AttributeSpec(
@@ -130,20 +150,23 @@ else:
 
 ### obstr_type
 
-| Value | Meaning | Source | ID Field |
-|-------|---------|--------|----------|
-| 0 | No obstruction | N/A | Neither (both = 0) |
-| 1 | Dam | GROD | grod_id |
-| 2 | Lock | GROD | grod_id |
-| 3 | Low Permeable Dam | GROD | grod_id |
-| 4 | Waterfall | HydroFALLS | hfalls_id |
-| **5** | **Undocumented** | Unknown | Should not exist |
+**v17c encoding** (types 2 and 3 redefined from v17b):
 
-### grod_id and hfalls_id
+| Value | v17c Meaning | v17b Meaning | Source | ID Field |
+|-------|-------------|-------------|--------|----------|
+| 0 | No obstruction | No obstruction | N/A | Neither (both = 0) |
+| 1 | Dam | Dam | GROD / DL-GROD | grod_id, dl_grod_id |
+| 2 | Low-head dam | Lock | DL-GROD | dl_grod_id |
+| 3 | Lock | Low permeable dam | GROD / DL-GROD | grod_id, dl_grod_id |
+| 4 | Waterfall | Waterfall | HydroFALLS | hfalls_id |
+| 5 | Partial dam | Undocumented (5 buggy reaches) | DL-GROD | dl_grod_id |
+
+### grod_id, dl_grod_id, and hfalls_id
 
 | Field | Valid Range | Null/Zero Meaning |
 |-------|-------------|-------------------|
-| grod_id | 1 - ~30,350 | No GROD obstruction |
+| grod_id | 1 - ~30,350 | No GROD obstruction (sunset in v18) |
+| dl_grod_id | 1+ | No DL-GROD obstruction |
 | hfalls_id | 1 - ~3,934 | No waterfall |
 
 ---
@@ -196,11 +219,11 @@ else:
 
 ## Failure Modes
 
-### 1. Undocumented obstr_type=5 (BUG IDENTIFIED)
+### 1. v17b obstr_type=5 bug (SUPERSEDED by DL-GROD)
 
-**Description:** 5 reaches have `obstr_type=5`, which is not documented in the PDD. All 5 have `hfalls_id != 0`, suggesting they should be waterfalls (type=4).
+**Description:** In v17b, 5 reaches had `obstr_type=5`, which was undocumented in the PDD. All 5 had `hfalls_id != 0`, suggesting they should have been waterfalls (type=4).
 
-**Affected reaches:**
+**Affected reaches (v17b):**
 | reach_id | region | hfalls_id | lakeflag |
 |----------|--------|-----------|----------|
 | 82291000364 | NA | 18 | 0 (river) |
@@ -209,11 +232,9 @@ else:
 | 73120000244 | NA | 862 | 1 (lake) |
 | 73120000424 | NA | 783 | 0 (river) |
 
-**Root cause:** Values >4 should be reset to 0, but these appear to have been assigned `obstr_type=5` incorrectly. The algorithm clamps values >4 to 0, but `obstr_type=5` may have been assigned through a different code path.
+**v17c status:** `obstr_type=5` is now a valid value meaning "partial dam" (DL-GROD, He et al. 2025). These 5 v17b reaches may have been re-assigned by DL-GROD ingestion. The original v17b bug (5 should have been 4) is superseded by the new encoding.
 
-**Impact:** 5 reaches with incorrectly classified obstruction type; these should be `obstr_type=4` (waterfall).
-
-**Severity:** LOW (only 5 reaches)
+**Severity:** RESOLVED in v17c
 
 ### 2. obstr_type/grod_id Mismatch
 
@@ -262,70 +283,29 @@ else:
 
 ---
 
-## Existing Lint Checks
+## Lint Checks (Implemented)
 
-**None found.** The current lint framework (`src/sword_duckdb/lint/checks/`) does not include any checks for obstruction variables.
+**Category:** `O` (Obstruction) — `src/sword_duckdb/lint/checks/classification.py`
 
----
+### O001: obstr_type_values (ERROR)
 
-## Proposed New Checks
+**Description:** Check that obstr_type is in valid range {0, 1, 2, 3, 4, 5}.
 
-### O001: obstr_type_validity (ERROR)
-
-**Description:** Check that obstr_type is in valid range [0-4].
-
-**Rule:** `obstr_type NOT IN (0, 1, 2, 3, 4)` should be 0 count.
-
-**SQL:**
-```sql
-SELECT reach_id, region, obstr_type, grod_id, hfalls_id
-FROM reaches
-WHERE obstr_type NOT IN (0, 1, 2, 3, 4)
-```
-
-**Expected failures:** 5 reaches (obstr_type=5)
+**Note:** v17b numeric range was 0-4; v17c extends to 0-5. Semantic meanings of 2 and 3 differ between versions (see Valid Values table above).
 
 ### O002: grod_id_consistency (WARNING)
 
-**Description:** Check that grod_id is non-zero only when obstr_type in (1,2,3).
+**Description:** Check that grod_id and dl_grod_id are non-zero only when obstr_type in {1, 2, 3, 5}. Waterfall reaches (obstr_type=4) should use hfalls_id instead.
 
-**Rules:**
-1. If `obstr_type IN (1,2,3)` then `grod_id > 0`
-2. If `grod_id > 0` then `obstr_type IN (1,2,3)`
-
-**SQL:**
-```sql
--- Check 1: GROD obstructions should have grod_id
-SELECT reach_id FROM reaches
-WHERE obstr_type IN (1, 2, 3) AND (grod_id IS NULL OR grod_id = 0)
-
--- Check 2: grod_id should imply GROD obstruction type
-SELECT reach_id FROM reaches
-WHERE grod_id > 0 AND obstr_type NOT IN (1, 2, 3)
-```
-
-**Expected failures:** 0 for Check 1; 21 for Check 2 (obstr_type=4 with grod_id, co-located obstructions)
+**Note:** `ingest_dl_grod.py` clears stale `grod_id` when reclassifying a reach to waterfall.
 
 ### O003: hfalls_id_consistency (WARNING)
 
-**Description:** Check that hfalls_id is non-zero only when obstr_type = 4.
+**Description:** Check that hfalls_id is non-zero only when obstr_type = 4. Uses NULL-safe logic: `obstr_type IS NULL OR obstr_type != 4`.
 
-**Rules:**
-1. If `obstr_type = 4` then `hfalls_id > 0`
-2. If `hfalls_id > 0` then `obstr_type = 4`
+---
 
-**SQL:**
-```sql
--- Check 1: Waterfalls should have hfalls_id
-SELECT reach_id FROM reaches
-WHERE obstr_type = 4 AND (hfalls_id IS NULL OR hfalls_id = 0)
-
--- Check 2: hfalls_id should imply waterfall type
-SELECT reach_id FROM reaches
-WHERE hfalls_id > 0 AND obstr_type != 4
-```
-
-**Expected failures:** 21 for Check 1 (co-located with GROD); 5 for Check 2 (obstr_type=5 bug)
+## Proposed Checks (Not Yet Implemented)
 
 ### O004: obstruction_mutual_exclusivity (INFO)
 
@@ -396,11 +376,12 @@ Reach IDs encode type in the last digit. Type=4 indicates "dam or waterfall." Ho
 
 ## Recommendations
 
-### Short-term (v17c)
+### Short-term (v17c) — DONE
 
-1. **Fix obstr_type=5 bug:** Change 5 reaches from obstr_type=5 to obstr_type=4 (they all have hfalls_id)
-2. **Add lint checks O001-O004:** Implement basic consistency validation
-3. **Document co-located obstructions:** Note the 21 reaches with both GROD and HydroFALLS IDs
+1. ~~**Fix obstr_type=5 bug:**~~ Superseded — obstr_type=5 is now "partial dam" (DL-GROD)
+2. **Lint checks O001-O003:** Implemented in `classification.py` (PR #184)
+3. **DL-GROD ingestion:** 27,071 reaches updated via `ingest_dl_grod.py` (PR #184)
+4. **Document co-located obstructions:** 21 v17b reaches with both GROD and HydroFALLS IDs noted
 
 ### Medium-term (v18)
 
@@ -415,41 +396,43 @@ Reach IDs encode type in the last digit. Type=4 indicates "dam or waterfall." Ho
 
 1. **SWORD v17b PDD** - Tables 3-5 (variable definitions)
 2. **Whittemore et al., 2020** - GROD dataset documentation
-3. **HydroFALLS** - http://wp.geog.mcgill.ca/hydrolab/hydrofalls/
-4. **reconstruction.py** - AttributeSpecs and reconstruction methods
-5. **Reach_Definition_Tools_v11.py** - Original production algorithm
-6. **hydrofalls_filtering.py** - HydroFALLS preprocessing
+3. **He et al., 2025** - DL-GROD deep-learning extension of GROD
+4. **HydroFALLS** - http://wp.geog.mcgill.ca/hydrolab/hydrofalls/
+5. **reconstruction.py** - AttributeSpecs and reconstruction methods
+6. **Reach_Definition_Tools_v11.py** - Original production algorithm
+7. **hydrofalls_filtering.py** - HydroFALLS preprocessing
+8. **ingest_dl_grod.py** - DL-GROD ingestion script (PR #184)
 
 ---
 
 ## Appendix: SQL Validation Queries
 
 ```sql
--- Complete obstruction audit query
+-- Complete obstruction audit query (v17c)
 SELECT
     obstr_type,
     COUNT(*) as count,
-    SUM(CASE WHEN grod_id > 0 THEN 1 ELSE 0 END) as has_grod_id,
-    SUM(CASE WHEN hfalls_id > 0 THEN 1 ELSE 0 END) as has_hfalls_id,
-    SUM(CASE WHEN grod_id > 0 AND hfalls_id > 0 THEN 1 ELSE 0 END) as has_both
+    SUM(CASE WHEN grod_id IS NOT NULL AND grod_id != 0 THEN 1 ELSE 0 END) as has_grod_id,
+    SUM(CASE WHEN dl_grod_id IS NOT NULL AND dl_grod_id != 0 THEN 1 ELSE 0 END) as has_dl_grod_id,
+    SUM(CASE WHEN hfalls_id IS NOT NULL AND hfalls_id != 0 THEN 1 ELSE 0 END) as has_hfalls_id
 FROM reaches
 GROUP BY obstr_type
 ORDER BY obstr_type;
 
--- Find obstr_type=5 reaches (bug)
-SELECT reach_id, region, grod_id, hfalls_id, lakeflag, river_name
+-- Find partial dam reaches (DL-GROD type 5)
+SELECT reach_id, region, dl_grod_id, grod_id, hfalls_id, lakeflag, river_name
 FROM reaches
 WHERE obstr_type = 5;
 
--- Find inconsistent grod_id/obstr_type
-SELECT reach_id, obstr_type, grod_id, hfalls_id
+-- Find inconsistent grod_id/dl_grod_id vs obstr_type (O002 logic)
+SELECT reach_id, obstr_type, grod_id, dl_grod_id, hfalls_id
 FROM reaches
-WHERE (grod_id > 0 AND obstr_type NOT IN (1, 2, 3))
-   OR (obstr_type IN (1, 2, 3) AND (grod_id IS NULL OR grod_id = 0));
+WHERE (grod_id IS NOT NULL AND grod_id != 0 AND obstr_type NOT IN (1, 2, 3, 5))
+   OR (dl_grod_id IS NOT NULL AND dl_grod_id != 0 AND obstr_type NOT IN (1, 2, 3, 5));
 
--- Find inconsistent hfalls_id/obstr_type
-SELECT reach_id, obstr_type, grod_id, hfalls_id
+-- Find inconsistent hfalls_id vs obstr_type (O003 logic)
+SELECT reach_id, obstr_type, grod_id, dl_grod_id, hfalls_id
 FROM reaches
-WHERE (hfalls_id > 0 AND obstr_type != 4)
-   OR (obstr_type = 4 AND (hfalls_id IS NULL OR hfalls_id = 0));
+WHERE hfalls_id IS NOT NULL AND hfalls_id != 0
+  AND (obstr_type IS NULL OR obstr_type != 4);
 ```

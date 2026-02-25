@@ -341,6 +341,169 @@ def check_lakeflag_type_consistency(
 
 
 @register_check(
+    "O001",
+    Category.OBSTRUCTION,
+    Severity.ERROR,
+    "obstr_type must be in {0, 1, 2, 3, 4, 5}",
+)
+def check_obstr_type_values(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Validate obstr_type values.
+
+    Valid values (v17c encoding — different from v17b):
+    - 0: no obstruction
+    - 1: dam (GROD/DL-GROD)
+    - 2: low-head dam (DL-GROD)
+    - 3: lock (GROD/DL-GROD)
+    - 4: waterfall (HydroFALLS)
+    - 5: partial dam (DL-GROD, He et al. 2025)
+
+    Note: v17b used 2=lock, 3=low-perm — numeric range overlaps so this
+    check passes both encodings, but semantics differ. Only run against v17c.
+    """
+    where_clause = f"AND region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT reach_id, region, x, y, obstr_type
+    FROM reaches
+    WHERE obstr_type IS NOT NULL
+      AND obstr_type NOT IN (0, 1, 2, 3, 4, 5)
+    {where_clause}
+    ORDER BY reach_id
+    """
+    issues = conn.execute(query).fetchdf()
+
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM reaches WHERE obstr_type IS NOT NULL {where_clause}"
+    ).fetchone()[0]
+
+    return CheckResult(
+        check_id="O001",
+        name="obstr_type_values",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Reaches with invalid obstr_type (not in 0-5): {len(issues)}",
+    )
+
+
+@register_check(
+    "O002",
+    Category.OBSTRUCTION,
+    Severity.WARNING,
+    "grod_id/dl_grod_id non-zero only for obstr_type 1, 2, 3, 5",
+)
+def check_grod_id_consistency(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Validate grod_id and dl_grod_id are only set for dam/lock types.
+
+    grod_id and dl_grod_id should be non-zero only when obstr_type in {1, 2, 3, 5}.
+    obstr_type=4 (waterfall) uses hfalls_id instead.
+    """
+    where_clause = f"AND region = '{region}'" if region else ""
+
+    # Check if dl_grod_id column exists
+    cols = {
+        r[0]
+        for r in conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name='reaches'"
+        ).fetchall()
+    }
+    dl_grod_clause = (
+        "OR (dl_grod_id IS NOT NULL AND dl_grod_id != 0 AND obstr_type NOT IN (1, 2, 3, 5))"
+        if "dl_grod_id" in cols
+        else ""
+    )
+
+    query = f"""
+    SELECT reach_id, region, x, y, obstr_type, grod_id,
+           {"dl_grod_id," if "dl_grod_id" in cols else ""}
+           hfalls_id
+    FROM reaches
+    WHERE (
+        (grod_id IS NOT NULL AND grod_id != 0 AND obstr_type NOT IN (1, 2, 3, 5))
+        {dl_grod_clause}
+    )
+    {where_clause}
+    ORDER BY reach_id
+    """
+    issues = conn.execute(query).fetchdf()
+
+    # Denominator: reaches with any non-zero obstruction ID (matching issue query filters)
+    dl_grod_filter = (
+        "OR (dl_grod_id IS NOT NULL AND dl_grod_id != 0)"
+        if "dl_grod_id" in cols
+        else ""
+    )
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM reaches WHERE ((grod_id IS NOT NULL AND grod_id != 0) {dl_grod_filter}) {where_clause}"
+    ).fetchone()[0]
+
+    return CheckResult(
+        check_id="O002",
+        name="grod_id_consistency",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Reaches with grod/dl_grod_id set for non-dam/lock type: {len(issues)}",
+    )
+
+
+@register_check(
+    "O003",
+    Category.OBSTRUCTION,
+    Severity.WARNING,
+    "hfalls_id non-zero only for obstr_type 4 (waterfall)",
+)
+def check_hfalls_id_consistency(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Validate hfalls_id is only set for waterfall reaches (obstr_type=4)."""
+    where_clause = f"AND region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT reach_id, region, x, y, obstr_type, hfalls_id
+    FROM reaches
+    WHERE hfalls_id IS NOT NULL
+      AND hfalls_id != 0
+      AND (obstr_type IS NULL OR obstr_type != 4)
+    {where_clause}
+    ORDER BY reach_id
+    """
+    issues = conn.execute(query).fetchdf()
+
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM reaches WHERE hfalls_id IS NOT NULL AND hfalls_id != 0 {where_clause}"
+    ).fetchone()[0]
+
+    return CheckResult(
+        check_id="O003",
+        name="hfalls_id_consistency",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Reaches with hfalls_id set for non-waterfall type: {len(issues)}",
+    )
+
+
+@register_check(
     "C005",
     Category.CLASSIFICATION,
     Severity.WARNING,

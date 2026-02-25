@@ -50,6 +50,11 @@ Check IDs:
     Facc Anomaly (F0xx):
         F001: facc_width_ratio_anomaly - Facc/width > 50000 (extreme outliers)
         F002: facc_jump_ratio - Facc >> upstream sum (entry points)
+
+    Obstruction (O0xx):
+        O001: obstr_type_values - obstr_type must be in {0, 1, 2, 3, 4, 5} (v17c encoding)
+        O002: grod_id_consistency - grod/dl_grod_id non-zero only for obstr_type 1, 2, 3, 5
+        O003: hfalls_id_consistency - hfalls_id non-zero only for obstr_type 4 (waterfall)
 """
 
 from .core import (

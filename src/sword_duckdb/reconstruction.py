@@ -285,7 +285,7 @@ ATTRIBUTE_SOURCES: Dict[str, AttributeSpec] = {
         method=DerivationMethod.MAX,
         source_columns=["obstruction_type"],
         dependencies=["centerline.grod"],
-        description="Obstruction type: np.max(GROD[reach]), values >4 reset to 0. 0=none, 1=dam, 2=lock, 3=low-perm, 4=waterfall",
+        description="Obstruction type: np.max(GROD[reach]), values >5 reset to 0. 0=none, 1=dam, 2=low-head dam, 3=lock, 4=waterfall, 5=partial dam",
     ),
     "reach.grod_id": AttributeSpec(
         name="reach.grod_id",
@@ -3247,7 +3247,7 @@ class ReconstructionEngine:
         force: bool = False,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
-        """Reconstruct node obstr_type from GROD spatial join (0=none, 1=dam, 2=lock, 3=low-perm, 4=waterfall)."""
+        """Reconstruct node obstr_type from GROD spatial join (0=none, 1=dam, 2=low-head dam, 3=lock, 4=waterfall, 5=partial dam)."""
         where_clause = ""
         params = [self._region]
         if node_ids is not None:
@@ -3270,7 +3270,7 @@ class ReconstructionEngine:
             result_df = self._conn.execute(
                 f"""
                 SELECT n.node_id,
-                       CASE WHEN r.obstr_type > 4 THEN 0
+                       CASE WHEN r.obstr_type > 5 THEN 0
                             ELSE COALESCE(r.obstr_type, 0) END as obstr_type
                 FROM nodes n
                 JOIN reaches r ON n.reach_id = r.reach_id AND n.region = r.region
@@ -3904,8 +3904,8 @@ class ReconstructionEngine:
         """
         Reconstruct reach obstr_type as max of node obstr_types.
 
-        obstr_type: 0=none, 1=dam, 2=lock, 3=low-perm, 4=waterfall
-        Values >4 are reset to 0.
+        obstr_type: 0=none, 1=dam, 2=low-head dam, 3=lock, 4=waterfall, 5=partial dam
+        Values >5 are reset to 0.
         """
         logger.info("Reconstructing reach.obstr_type from node max")
 
@@ -3921,7 +3921,7 @@ class ReconstructionEngine:
             SELECT
                 n.reach_id,
                 CASE
-                    WHEN MAX(n.obstr_type) > 4 THEN 0
+                    WHEN MAX(n.obstr_type) > 5 THEN 0
                     ELSE COALESCE(MAX(n.obstr_type), 0)
                 END as obstr_type
             FROM nodes n
