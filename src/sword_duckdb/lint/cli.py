@@ -180,6 +180,11 @@ def list_checks():
                 "A": "ATTRIBUTES",
                 "G": "GEOMETRY",
                 "C": "CLASSIFICATION",
+                "V": "V17C",
+                "F": "FACC",
+                "FL": "FLAGS",
+                "N": "NETWORK",
+                "O": "OBSTRUCTION",
             }.get(category, category)
             print(f"\n{cat_name}:")
 

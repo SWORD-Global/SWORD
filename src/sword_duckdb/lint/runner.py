@@ -109,6 +109,8 @@ class LintRunner:
                     specs.append(registry[check])
                 elif check == "FL":
                     specs.extend(get_checks_by_category(Category.FLAGS))
+                elif check == "O":
+                    specs.extend(get_checks_by_category(Category.OBSTRUCTION))
                 elif check == "F":
                     # Special case: F checks are in ATTRIBUTES but filtered by ID
                     all_attrs = get_checks_by_category(Category.ATTRIBUTES)

@@ -342,7 +342,7 @@ def check_lakeflag_type_consistency(
 
 @register_check(
     "O001",
-    Category.CLASSIFICATION,
+    Category.OBSTRUCTION,
     Severity.ERROR,
     "obstr_type must be in {0, 1, 2, 3, 4, 5}",
 )
@@ -353,13 +353,16 @@ def check_obstr_type_values(
 ) -> CheckResult:
     """Validate obstr_type values.
 
-    Valid values:
+    Valid values (v17c encoding — different from v17b):
     - 0: no obstruction
     - 1: dam (GROD/DL-GROD)
     - 2: low-head dam (DL-GROD)
     - 3: lock (GROD/DL-GROD)
     - 4: waterfall (HydroFALLS)
     - 5: partial dam (DL-GROD, He et al. 2025)
+
+    Note: v17b used 2=lock, 3=low-perm — numeric range overlaps so this
+    check passes both encodings, but semantics differ. Only run against v17c.
     """
     where_clause = f"AND region = '{region}'" if region else ""
 
@@ -392,7 +395,7 @@ def check_obstr_type_values(
 
 @register_check(
     "O002",
-    Category.CLASSIFICATION,
+    Category.OBSTRUCTION,
     Severity.WARNING,
     "grod_id/dl_grod_id non-zero only for obstr_type 1, 2, 3, 5",
 )
@@ -435,9 +438,14 @@ def check_grod_id_consistency(
     """
     issues = conn.execute(query).fetchdf()
 
-    dl_grod_or = "OR dl_grod_id IS NOT NULL" if "dl_grod_id" in cols else ""
+    # Denominator: reaches with any non-zero obstruction ID (matching issue query filters)
+    dl_grod_filter = (
+        "OR (dl_grod_id IS NOT NULL AND dl_grod_id != 0)"
+        if "dl_grod_id" in cols
+        else ""
+    )
     total = conn.execute(
-        f"SELECT COUNT(*) FROM reaches WHERE (grod_id IS NOT NULL {dl_grod_or}) {where_clause}"
+        f"SELECT COUNT(*) FROM reaches WHERE ((grod_id IS NOT NULL AND grod_id != 0) {dl_grod_filter}) {where_clause}"
     ).fetchone()[0]
 
     return CheckResult(
@@ -455,7 +463,7 @@ def check_grod_id_consistency(
 
 @register_check(
     "O003",
-    Category.CLASSIFICATION,
+    Category.OBSTRUCTION,
     Severity.WARNING,
     "hfalls_id non-zero only for obstr_type 4 (waterfall)",
 )
@@ -472,7 +480,7 @@ def check_hfalls_id_consistency(
     FROM reaches
     WHERE hfalls_id IS NOT NULL
       AND hfalls_id != 0
-      AND obstr_type != 4
+      AND (obstr_type IS NULL OR obstr_type != 4)
     {where_clause}
     ORDER BY reach_id
     """

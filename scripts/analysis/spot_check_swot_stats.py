@@ -39,17 +39,17 @@ P50_TOL_FRAC = 0.05  # 5% — generous for spot check
 N_OBS_TOL_FRAC = 0.10  # 10% — n_obs may differ slightly if edge files missing
 
 
-def detect_columns(con: duckdb.DuckDBPyConnection) -> set[str]:
+def detect_columns(con: duckdb.DuckDBPyConnection, swot_path: Path) -> set[str]:
     sample = next(
         (
             f
-            for f in (SWOT_PATH / "reaches").iterdir()
+            for f in (swot_path / "reaches").iterdir()
             if f.suffix == ".parquet" and not f.name.startswith("._")
         ),
         None,
     )
     if not sample:
-        raise RuntimeError(f"No parquet files in {SWOT_PATH / 'reaches'}")
+        raise RuntimeError(f"No parquet files in {swot_path / 'reaches'}")
     return set(
         c.lower()
         for c in con.execute(f"SELECT * FROM read_parquet('{sample}') LIMIT 1")
@@ -95,9 +95,10 @@ def recompute_from_parquet(
     reach_ids: list[int],
     region: str,
     where_clause: str,
+    swot_path: Path = SWOT_PATH,
 ) -> pd.DataFrame:
     id_min, id_max = REACH_RANGES[region]
-    parquet_glob = str(SWOT_PATH / "reaches" / "*.parquet")
+    parquet_glob = str(swot_path / "reaches" / "*.parquet")
     ids = ", ".join(str(r) for r in reach_ids)
 
     return con.execute(
@@ -137,17 +138,23 @@ def main() -> None:
     parser.add_argument("--region", default="NA", choices=list(REACH_RANGES))
     parser.add_argument("--n", type=int, default=20, help="Number of reaches to check")
     parser.add_argument("--db", default=DB_PATH)
+    parser.add_argument(
+        "--swot-path",
+        default=str(SWOT_PATH),
+        help="Path to SWOT parquet directory (default: %(default)s)",
+    )
     args = parser.parse_args()
 
-    if not SWOT_PATH.exists():
-        print(f"ERROR: SWOT data not found at {SWOT_PATH}", file=sys.stderr)
+    swot_path = Path(args.swot_path)
+    if not swot_path.exists():
+        print(f"ERROR: SWOT data not found at {swot_path}", file=sys.stderr)
         sys.exit(1)
 
     print(f"Connecting to {args.db} ...")
     con = duckdb.connect(args.db, read_only=True)
 
     print("Detecting parquet columns ...")
-    colnames = detect_columns(con)
+    colnames = detect_columns(con, swot_path)
     where_clause = build_reach_filter_sql(colnames)
 
     print(f"Sampling {args.n} high-n_obs reaches from {args.region} ...")
@@ -161,7 +168,9 @@ def main() -> None:
     stored = fetch_stored(con, reach_ids)
 
     print("Recomputing from raw parquet (this may take 30-60s) ...")
-    recomputed = recompute_from_parquet(con, reach_ids, args.region, where_clause)
+    recomputed = recompute_from_parquet(
+        con, reach_ids, args.region, where_clause, swot_path
+    )
 
     if recomputed.empty:
         print("ERROR: No raw parquet rows matched — check region ID ranges or filters.")

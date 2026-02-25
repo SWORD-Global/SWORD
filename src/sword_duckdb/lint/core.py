@@ -33,6 +33,7 @@ class Category(Enum):
     V17C = "v17c"  # v17c-specific checks for new attributes
     FLAGS = "flags"  # iceflag, low_slope_flag, edit_flag, swot_obs
     NETWORK = "network"  # main_side, stream_order consistency
+    OBSTRUCTION = "obstruction"  # obstr_type, grod_id, dl_grod_id, hfalls_id
 
 
 @dataclass

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -70,7 +71,7 @@ _RAW_TO_OBSTR: dict[str, int] = {
 
 
 def normalize_type(raw: str) -> int | None:
-    key = raw.strip().lower().replace("  ", " ")
+    key = re.sub(r"\s+", " ", raw.strip()).lower()
     return _RAW_TO_OBSTR.get(key)
 
 
@@ -158,18 +159,19 @@ def update_reaches(
     for idx_name, _tbl, _sql in rtree_indexes:
         con.execute(f'DROP INDEX "{idx_name}"')
 
-    con.register("_dl_grod_updates", resolved)
-    con.execute("""
-        UPDATE reaches
-        SET obstr_type = u.obstr_type,
-            dl_grod_id = u.dl_grod_id
-        FROM _dl_grod_updates u
-        WHERE reaches.reach_id = u.reach_id
-    """)
-    con.unregister("_dl_grod_updates")
-
-    for idx_name, _tbl, sql in rtree_indexes:
-        con.execute(sql)
+    try:
+        con.register("_dl_grod_updates", resolved)
+        con.execute("""
+            UPDATE reaches
+            SET obstr_type = u.obstr_type,
+                dl_grod_id = u.dl_grod_id
+            FROM _dl_grod_updates u
+            WHERE reaches.reach_id = u.reach_id
+        """)
+        con.unregister("_dl_grod_updates")
+    finally:
+        for idx_name, _tbl, sql in rtree_indexes:
+            con.execute(sql)
 
     return len(resolved)
 
@@ -198,22 +200,28 @@ def main() -> None:
     df = load_mapping(mapping_path)
     resolved = resolve_per_reach(df)
 
+    if len(resolved) == 0:
+        log.warning(
+            "No matched reaches after resolving mapping — check CSV path and column names."
+        )
+        sys.exit(1)
+
     log.info("Resolved to %d unique reaches", len(resolved))
     by_type = resolved.groupby("obstr_type").size()
     for t, n in by_type.items():
         log.info("  obstr_type=%d: %d reaches", t, n)
 
     con = duckdb.connect(str(db_path), read_only=args.dry_run)
+    try:
+        if not args.dry_run:
+            add_dl_grod_column(con)
 
-    if not args.dry_run:
-        add_dl_grod_column(con)
-
-    n = update_reaches(con, resolved, args.dry_run)
-    log.info(
-        "%s %d reaches", "[dry-run] Would update" if args.dry_run else "Updated", n
-    )
-
-    con.close()
+        n = update_reaches(con, resolved, args.dry_run)
+        log.info(
+            "%s %d reaches", "[dry-run] Would update" if args.dry_run else "Updated", n
+        )
+    finally:
+        con.close()
     log.info("Done.")
 
 
