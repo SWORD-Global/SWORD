@@ -5,22 +5,23 @@ Reads barrier_reach_mapping.csv from the swot_obstructions project (He et al. 20
 normalizes obstruction types, resolves multi-obstruction reaches by priority, and
 bulk-updates reaches.obstr_type and reaches.dl_grod_id.
 
-Type mapping (DL-GROD → SWORD obstr_type):
-    Dam              → 1
-    Low-head Dam     → 2
-    Lock             → 3
-    Waterfall        → 4  (NULL dl_grod_id — HydroFALLS source, not DL-GROD)
-    Partial Dam      → 5
+v17c obstr_type encoding (intentionally extends v17b):
+    0 = no obstruction
+    1 = dam (GROD / DL-GROD)
+    2 = low-head dam (DL-GROD; NOTE: v17b used 2=lock — v17c redefines this slot)
+    3 = lock (GROD / DL-GROD; NOTE: v17b used 3=low-perm — v17c redefines this slot)
+    4 = waterfall (HydroFALLS; NULL dl_grod_id)
+    5 = partial dam (DL-GROD, He et al. 2025)
 
 Priority for reaches with multiple DL-GROD features (highest wins):
-    Dam(1) > Lock(3) > Low-head Dam(2) > Partial Dam(5) > Waterfall(4)
+    Dam > Lock > Low-head Dam > Partial Dam > Waterfall
 
 DL-GROD wins over existing GROD assignments (GROD ⊂ DL-GROD).
 
 Usage:
-    python scripts/maintenance/ingest_dl_grod.py
-    python scripts/maintenance/ingest_dl_grod.py --dry-run
     python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv
+    python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv --dry-run
+    python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv --db data/duckdb/sword_v17c.duckdb
 """
 
 from __future__ import annotations
@@ -40,10 +41,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DEFAULT_MAPPING = Path(
-    "/Users/jakegearon/projects/swot_obstructions/exports/fragmentation/barrier_reach_mapping.csv"
-)
-DEFAULT_DB = Path("/Users/jakegearon/projects/SWORD/data/duckdb/sword_v17c.duckdb")
+DEFAULT_DB = Path("data/duckdb/sword_v17c.duckdb")
 
 # obstr_type values
 TYPE_DAM = 1
@@ -151,6 +149,15 @@ def update_reaches(
             log.info("  obstr_type=%d: %d reaches", t, n)
         return len(resolved)
 
+    # reaches has an RTREE spatial index; must drop before UPDATE, recreate after.
+    # See CLAUDE.md Known Issues: "RTREE Update Pattern".
+    con.execute("INSTALL spatial; LOAD spatial;")
+    rtree_indexes = con.execute(
+        "SELECT index_name, table_name, sql FROM duckdb_indexes() WHERE sql LIKE '%RTREE%'"
+    ).fetchall()
+    for idx_name, _tbl, _sql in rtree_indexes:
+        con.execute(f'DROP INDEX "{idx_name}"')
+
     con.register("_dl_grod_updates", resolved)
     con.execute("""
         UPDATE reaches
@@ -160,12 +167,20 @@ def update_reaches(
         WHERE reaches.reach_id = u.reach_id
     """)
     con.unregister("_dl_grod_updates")
+
+    for idx_name, _tbl, sql in rtree_indexes:
+        con.execute(sql)
+
     return len(resolved)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest DL-GROD into SWORD reaches")
-    parser.add_argument("--mapping", default=str(DEFAULT_MAPPING))
+    parser.add_argument(
+        "--mapping",
+        required=True,
+        help="Path to barrier_reach_mapping.csv from swot_obstructions project",
+    )
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

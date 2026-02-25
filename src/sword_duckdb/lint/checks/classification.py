@@ -435,8 +435,9 @@ def check_grod_id_consistency(
     """
     issues = conn.execute(query).fetchdf()
 
+    dl_grod_or = "OR dl_grod_id IS NOT NULL" if "dl_grod_id" in cols else ""
     total = conn.execute(
-        f"SELECT COUNT(*) FROM reaches WHERE grod_id IS NOT NULL {where_clause}"
+        f"SELECT COUNT(*) FROM reaches WHERE (grod_id IS NOT NULL {dl_grod_or}) {where_clause}"
     ).fetchone()[0]
 
     return CheckResult(

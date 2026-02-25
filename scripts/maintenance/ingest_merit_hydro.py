@@ -46,7 +46,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-MERIT_ROOT = Path("/Volumes/SWORD_DATA/data/MERIT_Hydro")
+MERIT_ROOT: Path | None = None  # must be provided via --merit-root
 DB_PATH = Path("data/duckdb/sword_v17c.duckdb")
 
 FACC_MIN_KM2 = 10.0  # only pixels with meaningful flow accumulation
@@ -64,9 +64,7 @@ REGION_MAP = {r: r for r in REGIONS}
 # ---------------------------------------------------------------------------
 
 
-def find_tiles(
-    region: str, merit_root: Path = MERIT_ROOT
-) -> list[tuple[Path, Path, Path]]:
+def find_tiles(region: str, merit_root: Path) -> list[tuple[Path, Path, Path]]:
     """Return (elv_tif, upa_tif, wth_tif) triples for all tiles in a region."""
     elv_root = merit_root / region / "elv"
     upa_root = merit_root / region / "upa"
@@ -134,20 +132,20 @@ def process_tile(
         transform = src.transform
         nrows, ncols = src.height, src.width
 
-    # Bbox filter nodes
-    mask = (
-        (nodes["x"] >= bounds.left)
-        & (nodes["x"] <= bounds.right)
-        & (nodes["y"] >= bounds.bottom)
-        & (nodes["y"] <= bounds.top)
-    )
-    local_nodes = nodes[mask]
-    if local_nodes.empty:
-        return None
+        # Bbox filter nodes before reading full arrays
+        mask = (
+            (nodes["x"] >= bounds.left)
+            & (nodes["x"] <= bounds.right)
+            & (nodes["y"] >= bounds.bottom)
+            & (nodes["y"] <= bounds.top)
+        )
+        local_nodes = nodes[mask]
+        if local_nodes.empty:
+            return None
 
-    # Read all three bands
-    with rasterio.open(elv_tif) as src:
         elv_arr, elv_nd = _read_band(src, 1)
+
+    # Read remaining bands
     with rasterio.open(upa_tif) as src:
         upa_arr, upa_nd = _read_band(src, 1)
     with rasterio.open(wth_tif) as src:
@@ -251,7 +249,7 @@ def run_region(
     con: duckdb.DuckDBPyConnection,
     region: str,
     dry_run: bool,
-    merit_root: Path = MERIT_ROOT,
+    merit_root: Path,
 ) -> None:
     log.info("=== Region %s ===", region)
 
@@ -297,8 +295,8 @@ def main() -> None:
     parser.add_argument("--db", default=str(DB_PATH), help="Path to v17c DuckDB")
     parser.add_argument(
         "--merit-root",
-        default=str(MERIT_ROOT),
-        help="MERIT Hydro root directory",
+        required=True,
+        help="MERIT Hydro root directory (e.g. /Volumes/SWORD_DATA/data/MERIT_Hydro)",
     )
     parser.add_argument(
         "--dry-run",
@@ -307,10 +305,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    MERIT_ROOT = Path(args.merit_root)
+    merit_root = Path(args.merit_root)
 
-    if not MERIT_ROOT.exists():
-        log.error("MERIT Hydro root not found: %s", MERIT_ROOT)
+    if not merit_root.exists():
+        log.error("MERIT Hydro root not found: %s", merit_root)
         sys.exit(1)
 
     db_path = Path(args.db)
@@ -324,7 +322,7 @@ def main() -> None:
     con = duckdb.connect(str(db_path), read_only=read_only)
 
     for region in regions:
-        run_region(con, region, args.dry_run, merit_root=MERIT_ROOT)
+        run_region(con, region, args.dry_run, merit_root=merit_root)
 
     if not args.dry_run:
         log.info("All done. Committing.")
