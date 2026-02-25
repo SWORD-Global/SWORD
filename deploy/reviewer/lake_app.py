@@ -20,10 +20,64 @@ from pathlib import Path
 import duckdb
 import folium
 import pandas as pd
+import requests
 import streamlit as st
 from streamlit_folium import st_folium
 
 from lint.checks.classification import check_lake_sandwich
+
+# =============================================================================
+# PLANET QUARTERLY BASEMAPS
+# =============================================================================
+
+
+@st.cache_data(ttl=3600)
+def get_planet_quarterly_mosaics(api_key: str):
+    """Query Planet API for latest 4 quarterly visual basemap mosaics."""
+    if not api_key:
+        return []
+    try:
+        resp = requests.get(
+            "https://api.planet.com/basemaps/v1/mosaics",
+            params={"name__contains": "global_quarterly", "_page_size": 20},
+            auth=(api_key, ""),
+            timeout=10,
+        )
+    except requests.RequestException:
+        return []
+    if resp.status_code != 200:
+        return []
+    mosaics = resp.json().get("mosaics", [])
+    quarterly = sorted(
+        [
+            m
+            for m in mosaics
+            if "quarterly" in m["name"] and "visual" in m["name"].lower()
+        ],
+        key=lambda m: m["name"],
+        reverse=True,
+    )[:4]
+    return [m["name"] for m in quarterly]
+
+
+def _add_planet_tile_layer(m):
+    """Add Planet quarterly basemap tile layer to a folium map if configured."""
+    planet_mosaic = st.session_state.get("planet_mosaic")
+    planet_key = os.environ.get("PLANET_API_KEY")
+    if planet_mosaic and planet_key:
+        folium.TileLayer(
+            tiles=(
+                f"https://tiles.planet.com/basemaps/v1/planet-tiles/"
+                f"{planet_mosaic}/gmap/{{z}}/{{x}}/{{y}}.png?api_key={planet_key}"
+            ),
+            attr="Planet Labs",
+            name=f"Planet ({planet_mosaic})",
+            overlay=False,
+            control=True,
+            show=False,
+            max_zoom=18,
+        ).add_to(m)
+
 
 # =============================================================================
 # LOCAL PERSISTENCE (JSON file backup for session fixes)
@@ -643,6 +697,7 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
         control=True,
         show=False,
     ).add_to(m)
+    _add_planet_tile_layer(m)
     folium.LayerControl().add_to(m)
     nearby_unconnected = []
     if show_all:
@@ -851,6 +906,13 @@ try:
             st.sidebar.write(f"  Type Mismatch: {c004}")
 except Exception as e:
     st.sidebar.warning(f"Could not load summary: {e}")
+
+# Planet quarterly basemap selector
+planet_mosaics = get_planet_quarterly_mosaics(os.environ.get("PLANET_API_KEY", ""))
+if planet_mosaics:
+    st.sidebar.subheader("Planet Basemap")
+    selected_quarter = st.sidebar.selectbox("Quarter", planet_mosaics)
+    st.session_state["planet_mosaic"] = selected_quarter
 
 tab_c004, tab_c001, tab_history = st.tabs(
     ["Lakeflag/Type", "Lake Sandwich", "Fix History"]
