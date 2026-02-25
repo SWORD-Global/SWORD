@@ -171,8 +171,8 @@ def list_checks():
     for check_id in sorted(registry.keys()):
         spec = registry[check_id]
 
-        # Category header
-        category = check_id[0]
+        # Category header (FL is a two-char prefix)
+        category = check_id[:2] if check_id.startswith("FL") else check_id[0]
         if category != current_category:
             current_category = category
             cat_name = {

@@ -222,21 +222,34 @@ def update_nodes(
         log.info("[dry-run] Would update %d nodes in %s", len(results), region)
         return len(results)
 
-    # Register as a temporary view for the UPDATE
-    con.register("_merit_updates", results)
-    con.execute(
-        """
-        UPDATE nodes
-        SET wse   = u.wse,
-            facc  = u.facc,
-            width = u.width
-        FROM _merit_updates u
-        WHERE nodes.node_id = u.node_id
-          AND nodes.region  = ?
-    """,
-        [region],
-    )
-    con.unregister("_merit_updates")
+    # nodes has an RTREE spatial index; must drop before UPDATE, recreate after.
+    con.execute("INSTALL spatial; LOAD spatial;")
+    rtree_indexes = con.execute(
+        "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+        "WHERE sql LIKE '%RTREE%' AND table_name = 'nodes'"
+    ).fetchall()
+    for idx_name, _tbl, _sql in rtree_indexes:
+        con.execute(f'DROP INDEX "{idx_name}"')
+
+    try:
+        con.register("_merit_updates", results)
+        con.execute(
+            """
+            UPDATE nodes
+            SET wse   = u.wse,
+                facc  = u.facc,
+                width = u.width
+            FROM _merit_updates u
+            WHERE nodes.node_id = u.node_id
+              AND nodes.region  = ?
+        """,
+            [region],
+        )
+        con.unregister("_merit_updates")
+    finally:
+        for idx_name, _tbl, sql in rtree_indexes:
+            con.execute(sql)
+
     return len(results)
 
 

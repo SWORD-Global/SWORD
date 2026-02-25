@@ -161,10 +161,13 @@ def update_reaches(
 
     try:
         con.register("_dl_grod_updates", resolved)
+        # Clear grod_id when reclassifying to waterfall (obstr_type=4) to avoid
+        # stale GROD IDs triggering O002 lint violations.
         con.execute("""
             UPDATE reaches
             SET obstr_type = u.obstr_type,
-                dl_grod_id = u.dl_grod_id
+                dl_grod_id = u.dl_grod_id,
+                grod_id = CASE WHEN u.obstr_type = 4 THEN NULL ELSE reaches.grod_id END
             FROM _dl_grod_updates u
             WHERE reaches.reach_id = u.reach_id
         """)
