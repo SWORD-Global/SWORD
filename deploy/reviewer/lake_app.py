@@ -1018,41 +1018,77 @@ with tab_c004:
                 st.markdown("---")
                 st.markdown("### Fix the mismatch")
                 it = issue["issue_type"]
+                # Each issue type maps to a list of (label, column, value)
                 c004_fixes = {
-                    "lake_labeled_as_river_type": (
-                        "Set type=3 (lake_on_river)",
-                        "type",
-                        3,
-                    ),
-                    "river_labeled_as_lake_type": ("Set type=1 (river)", "type", 1),
-                    "canal_type_mismatch": ("Set type=4 (artificial)", "type", 4),
-                    "tidal_type_mismatch": ("Set lakeflag=0 (river)", "lakeflag", 0),
+                    "lake_labeled_as_river_type": [
+                        ("It's a lake → set type=3 (lake_on_river)", "type", 3),
+                        ("It's a river → set lakeflag=0 (river)", "lakeflag", 0),
+                    ],
+                    "river_labeled_as_lake_type": [
+                        ("Set type=1 (river)", "type", 1),
+                    ],
+                    "canal_type_mismatch": [
+                        ("Set type=4 (artificial)", "type", 4),
+                    ],
+                    "tidal_type_mismatch": [
+                        ("Set lakeflag=0 (river)", "lakeflag", 0),
+                    ],
                 }
-                fix_info = c004_fixes.get(it)
-                if fix_info and st.button(
-                    fix_info[0],
-                    key=f"c004_fix_{selected}",
-                    type="primary",
+                fixes = c004_fixes.get(it, [])
+                for i, (label, col, val) in enumerate(fixes):
+                    if st.button(
+                        label,
+                        key=f"c004_fix_{selected}_{i}",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        apply_column_fix(
+                            conn,
+                            selected,
+                            region,
+                            "C004",
+                            col,
+                            val,
+                            f"Fixed: {col}->{val}",
+                        )
+                        st.session_state.c004_pending.append(selected)
+                        st.cache_data.clear()
+                        st.rerun()
+                # Definite mismatches can't be skipped as "correct"
+                definite_mismatches = {
+                    "lake_labeled_as_river_type",
+                    "river_labeled_as_lake_type",
+                    "canal_type_mismatch",
+                    "tidal_type_mismatch",
+                }
+                if it not in definite_mismatches:
+                    if st.button(
+                        "Skip (correct as-is)",
+                        key=f"c004_skip_{selected}",
+                        use_container_width=True,
+                    ):
+                        log_skip(
+                            conn,
+                            selected,
+                            region,
+                            "C004",
+                            "Skipped: correct as-is",
+                        )
+                        st.session_state.c004_pending.append(selected)
+                        st.cache_data.clear()
+                        st.rerun()
+                if st.button(
+                    "Flag for investigation",
+                    key=f"c004_investigate_{selected}",
                     use_container_width=True,
                 ):
-                    apply_column_fix(
+                    log_skip(
                         conn,
                         selected,
                         region,
                         "C004",
-                        fix_info[1],
-                        fix_info[2],
-                        f"Fixed: {fix_info[1]}->{fix_info[2]}",
+                        f"Flagged: needs investigation ({it})",
                     )
-                    st.session_state.c004_pending.append(selected)
-                    st.cache_data.clear()
-                    st.rerun()
-                if st.button(
-                    "Skip (correct as-is)",
-                    key=f"c004_skip_{selected}",
-                    use_container_width=True,
-                ):
-                    log_skip(conn, selected, region, "C004", "Skipped: correct as-is")
                     st.session_state.c004_pending.append(selected)
                     st.cache_data.clear()
                     st.rerun()
