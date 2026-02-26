@@ -716,3 +716,57 @@ def check_centerline_node_assignment(
         details=issues,
         description="Nodes where centerline centroid is closer to an adjacent node",
     )
+
+
+@register_check(
+    "C007",
+    Category.CLASSIFICATION,
+    Severity.WARNING,
+    "Potential island-in-lake misclassification",
+)
+def check_island_detection(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Find potential islands in lakes.
+
+    An island (type=3) should ideally be flagged as river (lakeflag=0)
+    to represent the land/river interface, or correctly associated with
+    the surrounding lake (lakeflag=1).
+
+    This check flags reaches where type=3 (lake_on_river/island) but
+    lakeflag is NOT 0 or 1, or other suspicious combinations.
+    """
+    where_clause = f"AND region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT
+        reach_id, region, river_name, x, y,
+        type, lakeflag
+    FROM reaches
+    WHERE type = 3
+      AND lakeflag NOT IN (0, 1)
+      {where_clause}
+    ORDER BY reach_id
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches WHERE type = 3 {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="C007",
+        name="island_detection_consistency",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Reaches with type=3 (island) but invalid lakeflag (not 0 or 1)",
+    )

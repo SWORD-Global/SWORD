@@ -1128,10 +1128,10 @@ def assign_main_connection(G):
         candidates: list of (reach_id, attributes_dict)
         Applies your logic:
             1. If all have same main_path_id:
-                a) If any has main_stem_edge == True → choose that one
+                a) If any has is_mainstem_edge == True → choose that one
                 b) Else choose the one with largest width
             2. If not same main_path_id:
-                → choose the one with main_stem_edge == True
+                → choose the one with is_mainstem_edge == True
         """
         if not candidates:
             return None
@@ -1143,9 +1143,9 @@ def assign_main_connection(G):
 
         # CASE 1 — all candidates share same main_path_id
         if len(main_path_ids) == 1:
-            # a) Prefer main_stem_edge == True
+            # a) Prefer is_mainstem_edge == True
             stem_edges = [
-                (rid, a) for rid, a in candidates if a.get("main_stem_edge") is True
+                (rid, a) for rid, a in candidates if a.get("is_mainstem_edge") is True
             ]
             if stem_edges:
                 return stem_edges[0][0]
@@ -1156,9 +1156,9 @@ def assign_main_connection(G):
             )
             return sorted_by_width[0][0]
 
-        # CASE 2 — different main_path_id → pick main_stem_edge == True
+        # CASE 2 — different main_path_id → pick is_mainstem_edge == True
         stem_edges = [
-            (rid, a) for rid, a in candidates if a.get("main_stem_edge") is True
+            (rid, a) for rid, a in candidates if a.get("is_mainstem_edge") is True
         ]
         if stem_edges:
             return stem_edges[0][0]

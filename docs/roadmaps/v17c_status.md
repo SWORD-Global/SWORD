@@ -183,7 +183,7 @@ The correction pipeline uses v17c routing (`is_mainstem_edge`) to preserve mains
 | v17c_sections | ✅ | 42,607 junction-to-junction segments |
 
 ### Known Issues
-- **#69**: Mississippi/Ohio mainstem algorithm bug at Cairo confluence
+- **#69**: Mississippi/Ohio mainstem algorithm bug at Cairo confluence ✅ FIXED (2026-02-26)
 - **#111**: 1,210 hydro_dist_out monotonicity violations (closed, documented as expected)
 
 ---
@@ -243,7 +243,7 @@ The correction pipeline uses v17c routing (`is_mainstem_edge`) to preserve mains
 ### Related Issues
 - #77, #78, #80, #120: CLOSED (PostgreSQL backend, schema, and sync delivered)
 - #121: OPEN (QGIS integration guide with PostGIS)
-- #33: OPEN (essential schema columns)
+- #33: CLOSED (essential schema columns added 2026-02-23)
 
 **Question for meeting**: Ready for undergrad QGIS editing? Timeline?
 
@@ -261,18 +261,19 @@ The correction pipeline uses v17c routing (`is_mainstem_edge`) to preserve mains
 
 | Priority | Issue | Title |
 |----------|-------|-------|
-| P1 | #33 | Add essential new columns only |
-| P1 | #15 | Recalculate stream_order |
-| P1 | #17 | Fix island-in-lake misclassification |
 | P1 | #19 | Update lakeflag for misclassified reaches |
 | P1 | #121 | QGIS integration guide with PostGIS |
 | P2 | #164 | Port MERIT Hydro raster ingestion from legacy code |
-| P2 | #127 | Integrate DL-GROD and add obstruction lint checks |
 | P2 | #18 | Document lake sandwich reaches (3,167) |
 | P2 | #42 | Generate validation report |
 
 ### Recently Closed Priority Work
 
+- #17: Island-in-lake lint check C007 (Closed 2026-02-26)
+- #127: DL-GROD ingestion and O001-O003 lint checks (Closed 2026-02-26)
+- #15: Recalculate stream_order from path_freq (Closed 2026-02-26)
+- #33: Add essential new columns only (Closed 2026-02-23)
+- #178: Globally unique main_path_id via region offsets (Closed 2026-02-24)
 - #87, #101, #83: Topology and lint closure set complete
 - #78, #77, #80, #120: PostgreSQL infrastructure closure set complete
 - #72, #71, #70: Validation closure set complete
