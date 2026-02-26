@@ -46,13 +46,13 @@ def check_node_spacing_gap(
     SELECT
         node_id, prev_node_id, reach_id, region, x, y,
         111000.0 * SQRT(
-            POWER((x - prev_x) * COS(RADIANS((y + prev_y) / 2.0)), 2)
+            POWER(LEAST(ABS(x - prev_x), 360.0 - ABS(x - prev_x)) * COS(RADIANS((y + prev_y) / 2.0)), 2)
             + POWER(y - prev_y, 2)
         ) as spacing_m
     FROM ordered_nodes
     WHERE prev_node_id IS NOT NULL
         AND 111000.0 * SQRT(
-            POWER((x - prev_x) * COS(RADIANS((y + prev_y) / 2.0)), 2)
+            POWER(LEAST(ABS(x - prev_x), 360.0 - ABS(x - prev_x)) * COS(RADIANS((y + prev_y) / 2.0)), 2)
             + POWER(y - prev_y, 2)
         ) > {max_spacing}
     ORDER BY spacing_m DESC
@@ -215,58 +215,58 @@ def check_boundary_dist_out(
 ) -> CheckResult:
     """Check dist_out continuity at reach boundaries.
 
-    SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
-    For upstream reach A -> downstream reach B (direction='down'):
-      A's downstream boundary = MIN(node_id) in A  (lowest dist_out in A)
-      B's upstream boundary   = MAX(node_id) in B  (highest dist_out in B)
-    These two should be close in dist_out.
+    Checks all 4 boundary node pairs (MIN/MAX node_id of each reach) and
+    reports the minimum dist_out gap.  Only flags if no pair is within threshold.
     """
     max_diff = threshold if threshold is not None else 1000.0
     where_clause = f"AND rt.region = '{region}'" if region else ""
 
     query = f"""
-    -- SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
-    -- For upstream reach A -> downstream reach B (direction='down'):
-    --   A's downstream boundary = MIN(node_id) in A
-    --   B's upstream boundary   = MAX(node_id) in B
-    WITH up_boundary AS (
+    WITH reach_boundaries AS (
         SELECT reach_id, region,
-            MIN(node_id) as boundary_node_id
+            MIN(node_id) as min_node_id,
+            MAX(node_id) as max_node_id
         FROM nodes
         GROUP BY reach_id, region
     ),
-    dn_boundary AS (
-        SELECT reach_id, region,
-            MAX(node_id) as boundary_node_id
-        FROM nodes
-        GROUP BY reach_id, region
+    boundary_distout AS (
+        SELECT rb.reach_id, rb.region,
+            n_min.dist_out as min_do, n_min.node_id as min_node,
+            n_max.dist_out as max_do, n_max.node_id as max_node
+        FROM reach_boundaries rb
+        JOIN nodes n_min ON rb.min_node_id = n_min.node_id AND rb.region = n_min.region
+        JOIN nodes n_max ON rb.max_node_id = n_max.node_id AND rb.region = n_max.region
+        WHERE n_min.dist_out IS NOT NULL AND n_min.dist_out != -9999
+          AND n_max.dist_out IS NOT NULL AND n_max.dist_out != -9999
     ),
-    boundary_pairs AS (
+    all_pairs AS (
         SELECT
             rt.reach_id as up_reach,
             rt.neighbor_reach_id as dn_reach,
             rt.region,
-            n1.dist_out as up_boundary_dist_out,
-            n2.dist_out as dn_boundary_dist_out,
-            n1.node_id as up_boundary_node,
-            n2.node_id as dn_boundary_node
+            a.min_node as up_min_node, a.max_node as up_max_node,
+            b.min_node as dn_min_node, b.max_node as dn_max_node,
+            a.min_do as up_min_do, a.max_do as up_max_do,
+            b.min_do as dn_min_do, b.max_do as dn_max_do,
+            LEAST(
+                ABS(a.min_do - b.max_do),
+                ABS(a.min_do - b.min_do),
+                ABS(a.max_do - b.max_do),
+                ABS(a.max_do - b.min_do)
+            ) as boundary_gap
         FROM reach_topology rt
-        JOIN up_boundary ub ON rt.reach_id = ub.reach_id AND rt.region = ub.region
-        JOIN dn_boundary db ON rt.neighbor_reach_id = db.reach_id AND rt.region = db.region
-        JOIN nodes n1 ON ub.boundary_node_id = n1.node_id AND ub.region = n1.region
-        JOIN nodes n2 ON db.boundary_node_id = n2.node_id AND db.region = n2.region
+        JOIN boundary_distout a ON rt.reach_id = a.reach_id AND rt.region = a.region
+        JOIN boundary_distout b ON rt.neighbor_reach_id = b.reach_id AND rt.region = b.region
         WHERE rt.direction = 'down'
-            AND n1.dist_out IS NOT NULL AND n1.dist_out != -9999
-            AND n2.dist_out IS NOT NULL AND n2.dist_out != -9999
             {where_clause}
     )
     SELECT
         up_reach, dn_reach, region,
-        up_boundary_node, dn_boundary_node,
-        up_boundary_dist_out, dn_boundary_dist_out,
-        ABS(up_boundary_dist_out - dn_boundary_dist_out) as boundary_gap
-    FROM boundary_pairs
-    WHERE ABS(up_boundary_dist_out - dn_boundary_dist_out) > {max_diff}
+        up_min_node, up_max_node, dn_min_node, dn_max_node,
+        up_min_do, up_max_do, dn_min_do, dn_max_do,
+        boundary_gap
+    FROM all_pairs
+    WHERE boundary_gap > {max_diff}
     ORDER BY boundary_gap DESC
     LIMIT 10000
     """
@@ -307,59 +307,73 @@ def check_boundary_node_geolocation(
 ) -> CheckResult:
     """Check geographic co-location of boundary nodes at reach junctions.
 
-    SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
-    For upstream reach A -> downstream reach B (direction='down'):
-      A's downstream boundary = MIN(node_id) in A
-      B's upstream boundary   = MAX(node_id) in B
-    These two boundary nodes should be geographically close.
+    Checks all 4 boundary node pairs (MIN/MAX node_id of each reach) and
+    reports the minimum geographic distance.  Only flags if no pair is within
+    threshold.  Uses antimeridian-safe longitude wrapping.
     """
     max_dist = threshold if threshold is not None else 400.0
     where_clause = f"AND rt.region = '{region}'" if region else ""
 
+    # Antimeridian-safe equirectangular distance between two (x,y) points.
+    # LEAST(ABS(dx), 360-ABS(dx)) handles the ±180° wrap.
+    def _eqdist(x1: str, y1: str, x2: str, y2: str) -> str:
+        return (
+            f"111000.0 * SQRT("
+            f"POWER(LEAST(ABS({x1} - {x2}), 360.0 - ABS({x1} - {x2})) "
+            f"* COS(RADIANS(({y1} + {y2}) / 2.0)), 2) "
+            f"+ POWER({y1} - {y2}, 2))"
+        )
+
+    d_min_max = _eqdist("a.min_x", "a.min_y", "b.max_x", "b.max_y")
+    d_min_min = _eqdist("a.min_x", "a.min_y", "b.min_x", "b.min_y")
+    d_max_max = _eqdist("a.max_x", "a.max_y", "b.max_x", "b.max_y")
+    d_max_min = _eqdist("a.max_x", "a.max_y", "b.min_x", "b.min_y")
+
     query = f"""
-    WITH up_boundary AS (
+    WITH reach_boundaries AS (
         SELECT reach_id, region,
-            MIN(node_id) as boundary_node_id
+            MIN(node_id) as min_node_id,
+            MAX(node_id) as max_node_id
         FROM nodes
         GROUP BY reach_id, region
     ),
-    dn_boundary AS (
-        SELECT reach_id, region,
-            MAX(node_id) as boundary_node_id
-        FROM nodes
-        GROUP BY reach_id, region
+    boundary_coords AS (
+        SELECT rb.reach_id, rb.region,
+            n_min.x as min_x, n_min.y as min_y, n_min.node_id as min_node,
+            n_max.x as max_x, n_max.y as max_y, n_max.node_id as max_node
+        FROM reach_boundaries rb
+        JOIN nodes n_min ON rb.min_node_id = n_min.node_id AND rb.region = n_min.region
+        JOIN nodes n_max ON rb.max_node_id = n_max.node_id AND rb.region = n_max.region
+        WHERE n_min.x IS NOT NULL AND n_max.x IS NOT NULL
     ),
-    boundary_pairs AS (
+    all_pairs AS (
         SELECT
             rt.reach_id as up_reach,
             rt.neighbor_reach_id as dn_reach,
             rt.region,
-            n1.x as up_x, n1.y as up_y,
-            n2.x as dn_x, n2.y as dn_y,
-            n1.node_id as up_boundary_node,
-            n2.node_id as dn_boundary_node
+            a.min_node as up_min_node, a.max_node as up_max_node,
+            b.min_node as dn_min_node, b.max_node as dn_max_node,
+            a.min_x as up_min_x, a.min_y as up_min_y,
+            a.max_x as up_max_x, a.max_y as up_max_y,
+            b.min_x as dn_min_x, b.min_y as dn_min_y,
+            b.max_x as dn_max_x, b.max_y as dn_max_y,
+            LEAST(
+                {d_min_max}, {d_min_min}, {d_max_max}, {d_max_min}
+            ) as boundary_dist_m
         FROM reach_topology rt
-        JOIN up_boundary ub ON rt.reach_id = ub.reach_id AND rt.region = ub.region
-        JOIN dn_boundary db ON rt.neighbor_reach_id = db.reach_id AND rt.region = db.region
-        JOIN nodes n1 ON ub.boundary_node_id = n1.node_id AND ub.region = n1.region
-        JOIN nodes n2 ON db.boundary_node_id = n2.node_id AND db.region = n2.region
+        JOIN boundary_coords a ON rt.reach_id = a.reach_id AND rt.region = a.region
+        JOIN boundary_coords b ON rt.neighbor_reach_id = b.reach_id AND rt.region = b.region
         WHERE rt.direction = 'down'
-            AND n1.x IS NOT NULL AND n2.x IS NOT NULL
             {where_clause}
     )
     SELECT
         up_reach, dn_reach, region,
-        up_boundary_node, dn_boundary_node,
-        up_x, up_y, dn_x, dn_y,
-        111000.0 * SQRT(
-            POWER((up_x - dn_x) * COS(RADIANS((up_y + dn_y) / 2.0)), 2)
-            + POWER(up_y - dn_y, 2)
-        ) as boundary_dist_m
-    FROM boundary_pairs
-    WHERE 111000.0 * SQRT(
-            POWER((up_x - dn_x) * COS(RADIANS((up_y + dn_y) / 2.0)), 2)
-            + POWER(up_y - dn_y, 2)
-        ) > {max_dist}
+        up_min_node, up_max_node, dn_min_node, dn_max_node,
+        up_min_x, up_min_y, up_max_x, up_max_y,
+        dn_min_x, dn_min_y, dn_max_x, dn_max_y,
+        boundary_dist_m
+    FROM all_pairs
+    WHERE boundary_dist_m > {max_dist}
     ORDER BY boundary_dist_m DESC
     LIMIT 10000
     """
@@ -644,13 +658,13 @@ def check_centerline_node_distance(
         c.x as cl_x, c.y as cl_y,
         n.x as node_x, n.y as node_y,
         ROUND(111000.0 * SQRT(
-            POWER((c.x - n.x) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
+            POWER(LEAST(ABS(c.x - n.x), 360.0 - ABS(c.x - n.x)) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
             + POWER(c.y - n.y, 2)
         ), 1) as dist_m
     FROM centerlines c
     JOIN nodes n ON c.node_id = n.node_id AND c.region = n.region
     WHERE 111000.0 * SQRT(
-            POWER((c.x - n.x) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
+            POWER(LEAST(ABS(c.x - n.x), 360.0 - ABS(c.x - n.x)) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
             + POWER(c.y - n.y, 2)
         ) > {max_dist}
         {where_clause}
