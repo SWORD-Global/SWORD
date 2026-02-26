@@ -104,6 +104,27 @@ for i, idx in enumerate(sorted_indices):
     nodes.dist_out[idx] = base_dist + cumsum[i]
 ```
 
+## Known Issues and Investigation Results
+
+### N006: Boundary dist_out discontinuities
+Investigation of 2,596 violations in v17c (#192) revealed two distinct root causes:
+
+| Type | Cause | Gap Size | Severity | Description |
+|------|-------|----------|----------|-------------|
+| **Type A** | **Cross-Basin Merge** | **>100 km** | **ERROR** | False topological links between distinct basins (e.g., Burnett vs Murray-Darling). Reaches are erroneously assigned to a much longer network. |
+| **Type B** | **Braided Path Difference** | **1–50 km** | **INFO/WARN** | Inherent to single-scalar `dist_out`. At a bifurcation, `dist_out` matches the longest path; shorter parallel channels will show a gap at the junction. |
+
+#### Example: Type A (Burnett River, OC)
+Reach `56360400073` is erroneously connected to the Murray-Darling system.
+- Downstream neighbor 1 (Correct): `56360400063` (dist_out ~345 km)
+- Downstream neighbor 2 (False Merge): `56360400103` (dist_out ~3,500 km)
+- Result: `56360400073` inherits ~3,500 km, creating a ~3,155 km gap with its legitimate neighbor.
+
+#### Example: Type B (Kuskokwim River, NA)
+A reach bifurcates into two channels of different lengths that later rejoin.
+- Gap is exactly equal to the difference in path length between the two branches.
+- This is a valid representation of the longest path but flags as a discontinuity on the shorter branch.
+
 ## Dependencies
 
 ### Upstream Dependencies

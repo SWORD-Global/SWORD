@@ -217,18 +217,19 @@ def check_boundary_dist_out(
 
     SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
     For upstream reach A -> downstream reach B (direction='down'):
-      A's downstream boundary = MIN(node_id) in A  (lowest dist_out in A)
-      B's upstream boundary   = MAX(node_id) in B  (highest dist_out in B)
-    These two should be close in dist_out.
+      A's downstream boundary = MIN(node_id) in A
+      B's upstream boundary   = MAX(node_id) in B
+
+    Note on violations:
+    - Type A (>100km): Likely false cross-basin topological merge. High priority fix.
+    - Type B (1-50km): Likely path length difference in a braided system. At a
+      bifurcation, dist_out matches the longest path, creating a gap for shorter
+      parallel channels.
     """
     max_diff = threshold if threshold is not None else 1000.0
     where_clause = f"AND rt.region = '{region}'" if region else ""
 
     query = f"""
-    -- SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
-    -- For upstream reach A -> downstream reach B (direction='down'):
-    --   A's downstream boundary = MIN(node_id) in A
-    --   B's upstream boundary   = MAX(node_id) in B
     WITH up_boundary AS (
         SELECT reach_id, region,
             MIN(node_id) as boundary_node_id
@@ -241,6 +242,12 @@ def check_boundary_dist_out(
         FROM nodes
         GROUP BY reach_id, region
     ),
+    neighbor_counts AS (
+        SELECT reach_id, region, COUNT(*) as n_dn_neighbors
+        FROM reach_topology
+        WHERE direction = 'down'
+        GROUP BY reach_id, region
+    ),
     boundary_pairs AS (
         SELECT
             rt.reach_id as up_reach,
@@ -249,12 +256,14 @@ def check_boundary_dist_out(
             n1.dist_out as up_boundary_dist_out,
             n2.dist_out as dn_boundary_dist_out,
             n1.node_id as up_boundary_node,
-            n2.node_id as dn_boundary_node
+            n2.node_id as dn_boundary_node,
+            COALESCE(nc.n_dn_neighbors, 1) as n_dn_neighbors
         FROM reach_topology rt
         JOIN up_boundary ub ON rt.reach_id = ub.reach_id AND rt.region = ub.region
         JOIN dn_boundary db ON rt.neighbor_reach_id = db.reach_id AND rt.region = db.region
         JOIN nodes n1 ON ub.boundary_node_id = n1.node_id AND ub.region = n1.region
         JOIN nodes n2 ON db.boundary_node_id = n2.node_id AND db.region = n2.region
+        LEFT JOIN neighbor_counts nc ON rt.reach_id = nc.reach_id AND rt.region = nc.region
         WHERE rt.direction = 'down'
             AND n1.dist_out IS NOT NULL AND n1.dist_out != -9999
             AND n2.dist_out IS NOT NULL AND n2.dist_out != -9999
@@ -264,7 +273,8 @@ def check_boundary_dist_out(
         up_reach, dn_reach, region,
         up_boundary_node, dn_boundary_node,
         up_boundary_dist_out, dn_boundary_dist_out,
-        ABS(up_boundary_dist_out - dn_boundary_dist_out) as boundary_gap
+        ABS(up_boundary_dist_out - dn_boundary_dist_out) as boundary_gap,
+        n_dn_neighbors
     FROM boundary_pairs
     WHERE ABS(up_boundary_dist_out - dn_boundary_dist_out) > {max_diff}
     ORDER BY boundary_gap DESC
