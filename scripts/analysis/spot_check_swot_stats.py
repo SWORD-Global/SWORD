@@ -39,17 +39,29 @@ P50_TOL_FRAC = 0.05  # 5% — generous for spot check
 N_OBS_TOL_FRAC = 0.10  # 10% — n_obs may differ slightly if edge files missing
 
 
+<<<<<<< HEAD
 def detect_columns(con: duckdb.DuckDBPyConnection, swot_path: Path) -> set[str]:
     sample = next(
         (
             f
             for f in (swot_path / "reaches").iterdir()
+=======
+def detect_columns(con: duckdb.DuckDBPyConnection) -> set[str]:
+    sample = next(
+        (
+            f
+            for f in (SWOT_PATH / "reaches").iterdir()
+>>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
             if f.suffix == ".parquet" and not f.name.startswith("._")
         ),
         None,
     )
     if not sample:
+<<<<<<< HEAD
         raise RuntimeError(f"No parquet files in {swot_path / 'reaches'}")
+=======
+        raise RuntimeError(f"No parquet files in {SWOT_PATH / 'reaches'}")
+>>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
     return set(
         c.lower()
         for c in con.execute(f"SELECT * FROM read_parquet('{sample}') LIMIT 1")
@@ -95,10 +107,16 @@ def recompute_from_parquet(
     reach_ids: list[int],
     region: str,
     where_clause: str,
+<<<<<<< HEAD
     swot_path: Path = SWOT_PATH,
 ) -> pd.DataFrame:
     id_min, id_max = REACH_RANGES[region]
     parquet_glob = str(swot_path / "reaches" / "*.parquet")
+=======
+) -> pd.DataFrame:
+    id_min, id_max = REACH_RANGES[region]
+    parquet_glob = str(SWOT_PATH / "reaches" / "*.parquet")
+>>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
     ids = ", ".join(str(r) for r in reach_ids)
 
     return con.execute(
@@ -138,6 +156,7 @@ def main() -> None:
     parser.add_argument("--region", default="NA", choices=list(REACH_RANGES))
     parser.add_argument("--n", type=int, default=20, help="Number of reaches to check")
     parser.add_argument("--db", default=DB_PATH)
+<<<<<<< HEAD
     parser.add_argument(
         "--swot-path",
         default=str(SWOT_PATH),
@@ -148,13 +167,23 @@ def main() -> None:
     swot_path = Path(args.swot_path)
     if not swot_path.exists():
         print(f"ERROR: SWOT data not found at {swot_path}", file=sys.stderr)
+=======
+    args = parser.parse_args()
+
+    if not SWOT_PATH.exists():
+        print(f"ERROR: SWOT data not found at {SWOT_PATH}", file=sys.stderr)
+>>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
         sys.exit(1)
 
     print(f"Connecting to {args.db} ...")
     con = duckdb.connect(args.db, read_only=True)
 
     print("Detecting parquet columns ...")
+<<<<<<< HEAD
     colnames = detect_columns(con, swot_path)
+=======
+    colnames = detect_columns(con)
+>>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
     where_clause = build_reach_filter_sql(colnames)
 
     print(f"Sampling {args.n} high-n_obs reaches from {args.region} ...")
@@ -168,9 +197,13 @@ def main() -> None:
     stored = fetch_stored(con, reach_ids)
 
     print("Recomputing from raw parquet (this may take 30-60s) ...")
+<<<<<<< HEAD
     recomputed = recompute_from_parquet(
         con, reach_ids, args.region, where_clause, swot_path
     )
+=======
+    recomputed = recompute_from_parquet(con, reach_ids, args.region, where_clause)
+>>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
 
     if recomputed.empty:
         print("ERROR: No raw parquet rows matched — check region ID ranges or filters.")
