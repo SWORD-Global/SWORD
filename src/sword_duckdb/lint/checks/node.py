@@ -217,6 +217,12 @@ def check_boundary_dist_out(
 
     Checks all 4 boundary node pairs (MIN/MAX node_id of each reach) and
     reports the minimum dist_out gap.  Only flags if no pair is within threshold.
+
+    Note on violations:
+    - Type A (>100km): Likely false cross-basin topological merge. High priority fix.
+    - Type B (1-50km): Likely path length difference in a braided system. At a
+      bifurcation, dist_out matches the longest path, creating a gap for shorter
+      parallel channels.
     """
     max_diff = threshold if threshold is not None else 1000.0
     where_clause = f"AND rt.region = '{region}'" if region else ""
@@ -239,6 +245,12 @@ def check_boundary_dist_out(
         WHERE n_min.dist_out IS NOT NULL AND n_min.dist_out != -9999
           AND n_max.dist_out IS NOT NULL AND n_max.dist_out != -9999
     ),
+    neighbor_counts AS (
+        SELECT reach_id, region, COUNT(*) as n_dn_neighbors
+        FROM reach_topology
+        WHERE direction = 'down'
+        GROUP BY reach_id, region
+    ),
     all_pairs AS (
         SELECT
             rt.reach_id as up_reach,
@@ -253,10 +265,12 @@ def check_boundary_dist_out(
                 ABS(a.min_do - b.min_do),
                 ABS(a.max_do - b.max_do),
                 ABS(a.max_do - b.min_do)
-            ) as boundary_gap
+            ) as boundary_gap,
+            COALESCE(nc.n_dn_neighbors, 1) as n_dn_neighbors
         FROM reach_topology rt
         JOIN boundary_distout a ON rt.reach_id = a.reach_id AND rt.region = a.region
         JOIN boundary_distout b ON rt.neighbor_reach_id = b.reach_id AND rt.region = b.region
+        LEFT JOIN neighbor_counts nc ON rt.reach_id = nc.reach_id AND rt.region = nc.region
         WHERE rt.direction = 'down'
             {where_clause}
     )
@@ -264,7 +278,8 @@ def check_boundary_dist_out(
         up_reach, dn_reach, region,
         up_min_node, up_max_node, dn_min_node, dn_max_node,
         up_min_do, up_max_do, dn_min_do, dn_max_do,
-        boundary_gap
+        boundary_gap,
+        n_dn_neighbors
     FROM all_pairs
     WHERE boundary_gap > {max_diff}
     ORDER BY boundary_gap DESC
