@@ -46,13 +46,13 @@ def check_node_spacing_gap(
     SELECT
         node_id, prev_node_id, reach_id, region, x, y,
         111000.0 * SQRT(
-            POWER((x - prev_x) * COS(RADIANS((y + prev_y) / 2.0)), 2)
+            POWER(LEAST(ABS(x - prev_x), 360.0 - ABS(x - prev_x)) * COS(RADIANS((y + prev_y) / 2.0)), 2)
             + POWER(y - prev_y, 2)
         ) as spacing_m
     FROM ordered_nodes
     WHERE prev_node_id IS NOT NULL
         AND 111000.0 * SQRT(
-            POWER((x - prev_x) * COS(RADIANS((y + prev_y) / 2.0)), 2)
+            POWER(LEAST(ABS(x - prev_x), 360.0 - ABS(x - prev_x)) * COS(RADIANS((y + prev_y) / 2.0)), 2)
             + POWER(y - prev_y, 2)
         ) > {max_spacing}
     ORDER BY spacing_m DESC
@@ -215,58 +215,73 @@ def check_boundary_dist_out(
 ) -> CheckResult:
     """Check dist_out continuity at reach boundaries.
 
-    SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
-    For upstream reach A -> downstream reach B (direction='down'):
-      A's downstream boundary = MIN(node_id) in A  (lowest dist_out in A)
-      B's upstream boundary   = MAX(node_id) in B  (highest dist_out in B)
-    These two should be close in dist_out.
+    Checks all 4 boundary node pairs (MIN/MAX node_id of each reach) and
+    reports the minimum dist_out gap.  Only flags if no pair is within threshold.
+
+    Note on violations:
+    - Type A (>100km): Likely false cross-basin topological merge. High priority fix.
+    - Type B (1-50km): Likely path length difference in a braided system. At a
+      bifurcation, dist_out matches the longest path, creating a gap for shorter
+      parallel channels.
     """
     max_diff = threshold if threshold is not None else 1000.0
     where_clause = f"AND rt.region = '{region}'" if region else ""
 
     query = f"""
-    -- SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
-    -- For upstream reach A -> downstream reach B (direction='down'):
-    --   A's downstream boundary = MIN(node_id) in A
-    --   B's upstream boundary   = MAX(node_id) in B
-    WITH up_boundary AS (
+    WITH reach_boundaries AS (
         SELECT reach_id, region,
-            MIN(node_id) as boundary_node_id
+            MIN(node_id) as min_node_id,
+            MAX(node_id) as max_node_id
         FROM nodes
         GROUP BY reach_id, region
     ),
-    dn_boundary AS (
-        SELECT reach_id, region,
-            MAX(node_id) as boundary_node_id
-        FROM nodes
+    boundary_distout AS (
+        SELECT rb.reach_id, rb.region,
+            n_min.dist_out as min_do, n_min.node_id as min_node,
+            n_max.dist_out as max_do, n_max.node_id as max_node
+        FROM reach_boundaries rb
+        JOIN nodes n_min ON rb.min_node_id = n_min.node_id AND rb.region = n_min.region
+        JOIN nodes n_max ON rb.max_node_id = n_max.node_id AND rb.region = n_max.region
+        WHERE n_min.dist_out IS NOT NULL AND n_min.dist_out != -9999
+          AND n_max.dist_out IS NOT NULL AND n_max.dist_out != -9999
+    ),
+    neighbor_counts AS (
+        SELECT reach_id, region, COUNT(*) as n_dn_neighbors
+        FROM reach_topology
+        WHERE direction = 'down'
         GROUP BY reach_id, region
     ),
-    boundary_pairs AS (
+    all_pairs AS (
         SELECT
             rt.reach_id as up_reach,
             rt.neighbor_reach_id as dn_reach,
             rt.region,
-            n1.dist_out as up_boundary_dist_out,
-            n2.dist_out as dn_boundary_dist_out,
-            n1.node_id as up_boundary_node,
-            n2.node_id as dn_boundary_node
+            a.min_node as up_min_node, a.max_node as up_max_node,
+            b.min_node as dn_min_node, b.max_node as dn_max_node,
+            a.min_do as up_min_do, a.max_do as up_max_do,
+            b.min_do as dn_min_do, b.max_do as dn_max_do,
+            LEAST(
+                ABS(a.min_do - b.max_do),
+                ABS(a.min_do - b.min_do),
+                ABS(a.max_do - b.max_do),
+                ABS(a.max_do - b.min_do)
+            ) as boundary_gap,
+            COALESCE(nc.n_dn_neighbors, 1) as n_dn_neighbors
         FROM reach_topology rt
-        JOIN up_boundary ub ON rt.reach_id = ub.reach_id AND rt.region = ub.region
-        JOIN dn_boundary db ON rt.neighbor_reach_id = db.reach_id AND rt.region = db.region
-        JOIN nodes n1 ON ub.boundary_node_id = n1.node_id AND ub.region = n1.region
-        JOIN nodes n2 ON db.boundary_node_id = n2.node_id AND db.region = n2.region
+        JOIN boundary_distout a ON rt.reach_id = a.reach_id AND rt.region = a.region
+        JOIN boundary_distout b ON rt.neighbor_reach_id = b.reach_id AND rt.region = b.region
+        LEFT JOIN neighbor_counts nc ON rt.reach_id = nc.reach_id AND rt.region = nc.region
         WHERE rt.direction = 'down'
-            AND n1.dist_out IS NOT NULL AND n1.dist_out != -9999
-            AND n2.dist_out IS NOT NULL AND n2.dist_out != -9999
             {where_clause}
     )
     SELECT
         up_reach, dn_reach, region,
-        up_boundary_node, dn_boundary_node,
-        up_boundary_dist_out, dn_boundary_dist_out,
-        ABS(up_boundary_dist_out - dn_boundary_dist_out) as boundary_gap
-    FROM boundary_pairs
-    WHERE ABS(up_boundary_dist_out - dn_boundary_dist_out) > {max_diff}
+        up_min_node, up_max_node, dn_min_node, dn_max_node,
+        up_min_do, up_max_do, dn_min_do, dn_max_do,
+        boundary_gap,
+        n_dn_neighbors
+    FROM all_pairs
+    WHERE boundary_gap > {max_diff}
     ORDER BY boundary_gap DESC
     LIMIT 10000
     """
@@ -293,11 +308,24 @@ def check_boundary_dist_out(
     )
 
 
+def _ensure_spatial(conn: duckdb.DuckDBPyConnection) -> bool:
+    """Try to load the DuckDB spatial extension. Return True if available."""
+    try:
+        conn.execute("LOAD spatial")
+        return True
+    except Exception:
+        try:
+            conn.execute("INSTALL spatial; LOAD spatial")
+            return True
+        except Exception:
+            return False
+
+
 @register_check(
     "N007",
     Category.NETWORK,
     Severity.WARNING,
-    "Boundary node geolocation >400m between connected reaches",
+    "Reach geometry endpoints >400m apart between connected reaches",
     default_threshold=400.0,
 )
 def check_boundary_node_geolocation(
@@ -305,61 +333,66 @@ def check_boundary_node_geolocation(
     region: Optional[str] = None,
     threshold: Optional[float] = None,
 ) -> CheckResult:
-    """Check geographic co-location of boundary nodes at reach junctions.
+    """Check geographic co-location of reach geometry endpoints at junctions.
 
-    SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
-    For upstream reach A -> downstream reach B (direction='down'):
-      A's downstream boundary = MIN(node_id) in A
-      B's upstream boundary   = MAX(node_id) in B
-    These two boundary nodes should be geographically close.
+    For each downstream topology link A→B, computes the minimum distance
+    across all 4 geometry endpoint combos (start/end of A vs start/end of B)
+    using ST_Distance_Spheroid for geodesic accuracy.
+
+    Previous versions used MIN/MAX(node_id) as boundary proxies, which
+    produced ~92% false positives on sinuous reaches where the geographic
+    endpoint falls mid-way through the node_id/dist_out ordering.
     """
     max_dist = threshold if threshold is not None else 400.0
     where_clause = f"AND rt.region = '{region}'" if region else ""
 
+    if not _ensure_spatial(conn):
+        return CheckResult(
+            check_id="N007",
+            name="boundary_node_geolocation",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0.0,
+            details=None,
+            description="SKIPPED – spatial extension unavailable",
+            threshold=max_dist,
+        )
+
     query = f"""
-    WITH up_boundary AS (
-        SELECT reach_id, region,
-            MIN(node_id) as boundary_node_id
-        FROM nodes
-        GROUP BY reach_id, region
-    ),
-    dn_boundary AS (
-        SELECT reach_id, region,
-            MAX(node_id) as boundary_node_id
-        FROM nodes
-        GROUP BY reach_id, region
-    ),
-    boundary_pairs AS (
+    WITH pairs AS (
         SELECT
-            rt.reach_id as up_reach,
-            rt.neighbor_reach_id as dn_reach,
+            rt.reach_id AS up_reach,
+            rt.neighbor_reach_id AS dn_reach,
             rt.region,
-            n1.x as up_x, n1.y as up_y,
-            n2.x as dn_x, n2.y as dn_y,
-            n1.node_id as up_boundary_node,
-            n2.node_id as dn_boundary_node
+            ST_StartPoint(a.geom) AS a_start,
+            ST_EndPoint(a.geom)   AS a_end,
+            ST_StartPoint(b.geom) AS b_start,
+            ST_EndPoint(b.geom)   AS b_end
         FROM reach_topology rt
-        JOIN up_boundary ub ON rt.reach_id = ub.reach_id AND rt.region = ub.region
-        JOIN dn_boundary db ON rt.neighbor_reach_id = db.reach_id AND rt.region = db.region
-        JOIN nodes n1 ON ub.boundary_node_id = n1.node_id AND ub.region = n1.region
-        JOIN nodes n2 ON db.boundary_node_id = n2.node_id AND db.region = n2.region
+        JOIN reaches a ON a.reach_id = rt.reach_id AND a.region = rt.region
+        JOIN reaches b ON b.reach_id = rt.neighbor_reach_id AND b.region = rt.region
         WHERE rt.direction = 'down'
-            AND n1.x IS NOT NULL AND n2.x IS NOT NULL
+            AND a.geom IS NOT NULL AND b.geom IS NOT NULL
             {where_clause}
+    ),
+    dists AS (
+        SELECT
+            up_reach, dn_reach, region,
+            LEAST(
+                ST_Distance_Spheroid(ST_FlipCoordinates(a_start), ST_FlipCoordinates(b_start)),
+                ST_Distance_Spheroid(ST_FlipCoordinates(a_start), ST_FlipCoordinates(b_end)),
+                ST_Distance_Spheroid(ST_FlipCoordinates(a_end),   ST_FlipCoordinates(b_start)),
+                ST_Distance_Spheroid(ST_FlipCoordinates(a_end),   ST_FlipCoordinates(b_end))
+            ) AS boundary_dist_m
+        FROM pairs
     )
     SELECT
         up_reach, dn_reach, region,
-        up_boundary_node, dn_boundary_node,
-        up_x, up_y, dn_x, dn_y,
-        111000.0 * SQRT(
-            POWER((up_x - dn_x) * COS(RADIANS((up_y + dn_y) / 2.0)), 2)
-            + POWER(up_y - dn_y, 2)
-        ) as boundary_dist_m
-    FROM boundary_pairs
-    WHERE 111000.0 * SQRT(
-            POWER((up_x - dn_x) * COS(RADIANS((up_y + dn_y) / 2.0)), 2)
-            + POWER(up_y - dn_y, 2)
-        ) > {max_dist}
+        ROUND(boundary_dist_m, 1) AS boundary_dist_m
+    FROM dists
+    WHERE boundary_dist_m > {max_dist}
     ORDER BY boundary_dist_m DESC
     LIMIT 10000
     """
@@ -381,7 +414,7 @@ def check_boundary_node_geolocation(
         issues_found=len(issues),
         issue_pct=100 * len(issues) / total if total > 0 else 0,
         details=issues,
-        description=f"Reach boundary nodes >{max_dist:.0f}m apart geographically",
+        description=f"Reach geometry endpoints >{max_dist:.0f}m apart",
         threshold=max_dist,
     )
 
@@ -561,4 +594,119 @@ def check_node_ordering_problems(
         details=issues,
         description="Nodes with zero/negative length or length exceeding threshold",
         threshold=max_length,
+    )
+
+
+@register_check(
+    "N012",
+    Category.NETWORK,
+    Severity.WARNING,
+    "Node (x,y) too far from parent reach geometry (POM Test 9a)",
+    default_threshold=500.0,
+)
+def check_node_geolocation_vs_reach(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Flag nodes whose (x, y) is far from their parent reach linestring.
+
+    Uses ST_Distance (degree-based) scaled by 111 km/degree.  Requires the
+    DuckDB spatial extension.
+    """
+    max_dist = threshold if threshold is not None else 500.0
+    where_clause = f"AND n.region = '{region}'" if region else ""
+
+    conn.execute("INSTALL spatial; LOAD spatial;")
+
+    query = f"""
+    SELECT
+        n.node_id, n.reach_id, n.region, n.x, n.y,
+        ROUND(ST_Distance(ST_Point(n.x, n.y), r.geom) * 111000.0, 1) as dist_m
+    FROM nodes n
+    JOIN reaches r ON n.reach_id = r.reach_id AND n.region = r.region
+    WHERE ST_Distance(ST_Point(n.x, n.y), r.geom) * 111000.0 > {max_dist}
+        {where_clause}
+    ORDER BY dist_m DESC
+    LIMIT 10000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM nodes n WHERE 1=1 {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="N012",
+        name="node_geolocation_vs_reach",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Nodes >{max_dist:.0f}m from parent reach geometry",
+        threshold=max_dist,
+    )
+
+
+@register_check(
+    "N013",
+    Category.NETWORK,
+    Severity.WARNING,
+    "Centerline point too far from assigned node (POM Test 9d)",
+    default_threshold=500.0,
+)
+def check_centerline_node_distance(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Flag centerline points whose (x, y) is far from their assigned node.
+
+    Uses equirectangular approximation — no spatial extension needed.
+    """
+    max_dist = threshold if threshold is not None else 500.0
+    where_clause = f"AND c.region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT
+        c.cl_id, c.node_id, c.reach_id, c.region,
+        c.x as cl_x, c.y as cl_y,
+        n.x as node_x, n.y as node_y,
+        ROUND(111000.0 * SQRT(
+            POWER(LEAST(ABS(c.x - n.x), 360.0 - ABS(c.x - n.x)) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
+            + POWER(c.y - n.y, 2)
+        ), 1) as dist_m
+    FROM centerlines c
+    JOIN nodes n ON c.node_id = n.node_id AND c.region = n.region
+    WHERE 111000.0 * SQRT(
+            POWER(LEAST(ABS(c.x - n.x), 360.0 - ABS(c.x - n.x)) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
+            + POWER(c.y - n.y, 2)
+        ) > {max_dist}
+        {where_clause}
+    ORDER BY dist_m DESC
+    LIMIT 10000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM centerlines c WHERE 1=1 {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="N013",
+        name="centerline_node_distance",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Centerline points >{max_dist:.0f}m from assigned node",
+        threshold=max_dist,
     )

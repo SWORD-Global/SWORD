@@ -47,10 +47,14 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 MERIT_ROOT: Path | None = None  # must be provided via --merit-root
 =======
 MERIT_ROOT = Path("/Volumes/SWORD_DATA/data/MERIT_Hydro")
 >>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
+=======
+MERIT_ROOT: Path | None = None  # must be provided via --merit-root
+>>>>>>> investigate-issue-190
 DB_PATH = Path("data/duckdb/sword_v17c.duckdb")
 
 FACC_MIN_KM2 = 10.0  # only pixels with meaningful flow accumulation
@@ -69,12 +73,16 @@ REGION_MAP = {r: r for r in REGIONS}
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 def find_tiles(region: str, merit_root: Path) -> list[tuple[Path, Path, Path]]:
 =======
 def find_tiles(
     region: str, merit_root: Path = MERIT_ROOT
 ) -> list[tuple[Path, Path, Path]]:
 >>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
+=======
+def find_tiles(region: str, merit_root: Path) -> list[tuple[Path, Path, Path]]:
+>>>>>>> investigate-issue-190
     """Return (elv_tif, upa_tif, wth_tif) triples for all tiles in a region."""
     elv_root = merit_root / region / "elv"
     upa_root = merit_root / region / "upa"
@@ -143,6 +151,9 @@ def process_tile(
         nrows, ncols = src.height, src.width
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> investigate-issue-190
         # Bbox filter nodes before reading full arrays
         mask = (
             (nodes["x"] >= bounds.left)
@@ -157,6 +168,7 @@ def process_tile(
         elv_arr, elv_nd = _read_band(src, 1)
 
     # Read remaining bands
+<<<<<<< HEAD
 =======
     # Bbox filter nodes
     mask = (
@@ -173,6 +185,8 @@ def process_tile(
     with rasterio.open(elv_tif) as src:
         elv_arr, elv_nd = _read_band(src, 1)
 >>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
+=======
+>>>>>>> investigate-issue-190
     with rasterio.open(upa_tif) as src:
         upa_arr, upa_nd = _read_band(src, 1)
     with rasterio.open(wth_tif) as src:
@@ -250,6 +264,9 @@ def update_nodes(
         return len(results)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> investigate-issue-190
     # nodes has an RTREE spatial index; must drop before UPDATE, recreate after.
     con.execute("INSTALL spatial; LOAD spatial;")
     rtree_indexes = con.execute(
@@ -278,6 +295,7 @@ def update_nodes(
         for idx_name, _tbl, sql in rtree_indexes:
             con.execute(sql)
 
+<<<<<<< HEAD
 =======
     # Register as a temporary view for the UPDATE
     con.register("_merit_updates", results)
@@ -295,6 +313,8 @@ def update_nodes(
     )
     con.unregister("_merit_updates")
 >>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
+=======
+>>>>>>> investigate-issue-190
     return len(results)
 
 
@@ -308,10 +328,14 @@ def run_region(
     region: str,
     dry_run: bool,
 <<<<<<< HEAD
+<<<<<<< HEAD
     merit_root: Path,
 =======
     merit_root: Path = MERIT_ROOT,
 >>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
+=======
+    merit_root: Path,
+>>>>>>> investigate-issue-190
 ) -> None:
     log.info("=== Region %s ===", region)
 
@@ -358,12 +382,17 @@ def main() -> None:
     parser.add_argument(
         "--merit-root",
 <<<<<<< HEAD
+<<<<<<< HEAD
         required=True,
         help="MERIT Hydro root directory (e.g. /Volumes/SWORD_DATA/data/MERIT_Hydro)",
 =======
         default=str(MERIT_ROOT),
         help="MERIT Hydro root directory",
 >>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
+=======
+        required=True,
+        help="MERIT Hydro root directory (e.g. /Volumes/SWORD_DATA/data/MERIT_Hydro)",
+>>>>>>> investigate-issue-190
     )
     parser.add_argument(
         "--dry-run",
@@ -373,16 +402,22 @@ def main() -> None:
     args = parser.parse_args()
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> investigate-issue-190
     merit_root = Path(args.merit_root)
 
     if not merit_root.exists():
         log.error("MERIT Hydro root not found: %s", merit_root)
+<<<<<<< HEAD
 =======
     MERIT_ROOT = Path(args.merit_root)
 
     if not MERIT_ROOT.exists():
         log.error("MERIT Hydro root not found: %s", MERIT_ROOT)
 >>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
+=======
+>>>>>>> investigate-issue-190
         sys.exit(1)
 
     db_path = Path(args.db)
@@ -397,10 +432,14 @@ def main() -> None:
 
     for region in regions:
 <<<<<<< HEAD
+<<<<<<< HEAD
         run_region(con, region, args.dry_run, merit_root=merit_root)
 =======
         run_region(con, region, args.dry_run, merit_root=MERIT_ROOT)
 >>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
+=======
+        run_region(con, region, args.dry_run, merit_root=merit_root)
+>>>>>>> investigate-issue-190
 
     if not args.dry_run:
         log.info("All done. Committing.")
