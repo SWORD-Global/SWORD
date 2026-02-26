@@ -562,3 +562,118 @@ def check_node_ordering_problems(
         description="Nodes with zero/negative length or length exceeding threshold",
         threshold=max_length,
     )
+
+
+@register_check(
+    "N012",
+    Category.NETWORK,
+    Severity.WARNING,
+    "Node (x,y) too far from parent reach geometry (POM Test 9a)",
+    default_threshold=500.0,
+)
+def check_node_geolocation_vs_reach(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Flag nodes whose (x, y) is far from their parent reach linestring.
+
+    Uses ST_Distance (degree-based) scaled by 111 km/degree.  Requires the
+    DuckDB spatial extension.
+    """
+    max_dist = threshold if threshold is not None else 500.0
+    where_clause = f"AND n.region = '{region}'" if region else ""
+
+    conn.execute("INSTALL spatial; LOAD spatial;")
+
+    query = f"""
+    SELECT
+        n.node_id, n.reach_id, n.region, n.x, n.y,
+        ROUND(ST_Distance(ST_Point(n.x, n.y), r.geom) * 111000.0, 1) as dist_m
+    FROM nodes n
+    JOIN reaches r ON n.reach_id = r.reach_id AND n.region = r.region
+    WHERE ST_Distance(ST_Point(n.x, n.y), r.geom) * 111000.0 > {max_dist}
+        {where_clause}
+    ORDER BY dist_m DESC
+    LIMIT 10000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM nodes n WHERE 1=1 {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="N012",
+        name="node_geolocation_vs_reach",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Nodes >{max_dist:.0f}m from parent reach geometry",
+        threshold=max_dist,
+    )
+
+
+@register_check(
+    "N013",
+    Category.NETWORK,
+    Severity.WARNING,
+    "Centerline point too far from assigned node (POM Test 9d)",
+    default_threshold=500.0,
+)
+def check_centerline_node_distance(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Flag centerline points whose (x, y) is far from their assigned node.
+
+    Uses equirectangular approximation — no spatial extension needed.
+    """
+    max_dist = threshold if threshold is not None else 500.0
+    where_clause = f"AND c.region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT
+        c.cl_id, c.node_id, c.reach_id, c.region,
+        c.x as cl_x, c.y as cl_y,
+        n.x as node_x, n.y as node_y,
+        ROUND(111000.0 * SQRT(
+            POWER((c.x - n.x) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
+            + POWER(c.y - n.y, 2)
+        ), 1) as dist_m
+    FROM centerlines c
+    JOIN nodes n ON c.node_id = n.node_id AND c.region = n.region
+    WHERE 111000.0 * SQRT(
+            POWER((c.x - n.x) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
+            + POWER(c.y - n.y, 2)
+        ) > {max_dist}
+        {where_clause}
+    ORDER BY dist_m DESC
+    LIMIT 10000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM centerlines c WHERE 1=1 {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="N013",
+        name="centerline_node_distance",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Centerline points >{max_dist:.0f}m from assigned node",
+        threshold=max_dist,
+    )

@@ -81,7 +81,7 @@ python scripts/maintenance/rebuild_v17b.py  # Rebuilds from data/netcdf/*.nc
 src/
   sword_duckdb/           # Core module - workflow, schema, validation
     imagery/              # Satellite water detection (NDWI, ML4Floods, OPERA)
-    lint/                 # Lint framework (61 checks)
+    lint/                 # Lint framework (70+ checks)
   sword_v17c_pipeline/    # v17b→v17c topology enhancement (phi algorithm)
   _legacy/                # Archived pre-DuckDB code (see _legacy/README.md)
     updates/              # Old updates module (delta_updates, mhv_sword)
@@ -243,62 +243,14 @@ workflow.close()
 
 5. **When in doubt, make it a STUB** - preserve existing values rather than corrupt data
 
-**Validation specs (28 total in `docs/validation_specs/`):**
-
-| Spec | Variables Covered |
-|------|-------------------|
-| dist_out | dist_out algorithm, failure modes |
-| facc | facc, MERIT Hydro source, D8 limitations |
-| wse | wse, wse_var, elevation data |
-| width_slope | width, width_var, slope, max_width |
-| path_freq | path_freq, path_order algorithm |
-| stream_order_path_segs | stream_order, path_segs derivation |
-| end_reach_trib_flag | end_reach, trib_flag (MHV-based) |
-| main_side_network | main_side, network |
-| lakeflag_type | lakeflag, type classification |
-| reach_length_neighbor_count | reach_length, n_rch_up, n_rch_down |
-| obstruction | obstr_type, grod_id, hfalls_id |
-| flags | iceflag, low_slope_flag, add_flag, edit_flag |
-| channel_count | n_chan_max, n_chan_mod |
-| swot_observations | swot_obs, *_obs_mean/median/std/range, n_obs |
-| grades_discharge | ~~h_variance, w_variance~~ (removed in v17c) |
-| v17c_mainstem | hydro_dist_out/hw, best_headwater/outlet, pathlen_*, is_mainstem_edge |
-| v17c_path_topology | main_path_id, rch_id_up/dn_main |
-| v17c_sections | v17c_sections table, section_slope_validation |
-| reach_neighbor_ids | rch_id_up_1-4, rch_id_dn_1-4 (reconstructed from topology) |
-| topology_review_flags | topology_suspect, topology_approved |
-| facc_quality | facc_quality flag |
-| geometry_metadata | x, y, x_min/max, y_min/max, cl_id_min/max |
-| n_nodes | n_nodes (node count per reach) |
-| river_name | river_name (GRWL source) |
-| subnetwork_id | subnetwork_id (connected components) |
-| identifier_metadata | reach_id, region, version |
-| geom | geom (LINESTRING geometry) |
-| swot_slope | (REMOVED - documented for history) |
+**Validation specs:** 27 deep-dive docs in `docs/validation_specs/` covering every variable (algorithm, valid ranges, failure modes, reconstruction rules). `ls docs/validation_specs/` to browse.
 
 ## v17c Pipeline
 
 **Location:** `src/sword_v17c_pipeline/`
 
-**Steps:**
-1. Load v17b topology from DuckDB
-2. Build reach-level directed graph (NetworkX DiGraph)
-3. Compute v17c attributes (hydro_dist_out, best_headwater, is_mainstem_edge, etc.)
-4. Create junction-to-junction sections
-5. Save to DuckDB
+Computes v17c attributes (see "v17c Attributes" table above) and creates `v17c_sections` / `v17c_section_slope_validation` tables. Reads v17b topology from DuckDB, builds NetworkX DiGraph, writes results back.
 
-**New columns added to reaches:**
-- `hydro_dist_out`, `hydro_dist_hw` - Dijkstra distances
-- `best_headwater`, `best_outlet` - endpoint selection
-- `pathlen_hw`, `pathlen_out` - cumulative path lengths
-- `is_mainstem_edge`, `main_path_id` - mainstem identification
-- `rch_id_up_main`, `rch_id_dn_main` - main neighbor IDs
-
-**New tables:** `v17c_sections`, `v17c_section_slope_validation`
-
-**Input:** sword_v17c.duckdb (reads topology, writes attributes)
-
-**Run:**
 ```bash
 # All regions
 python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duckdb --all
@@ -310,8 +262,6 @@ python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duck
 python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duckdb --all --skip-swot
 ```
 
-**Note:** MILP optimization files archived in `_archived/` - v17c uses original v17b topology.
-
 ## Known Issues
 
 | Issue | Workaround |
@@ -322,8 +272,9 @@ python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duck
 | **DuckDB lock contention** | Only one write connection at a time. Kill Streamlit/other processes before UPDATE. |
 | **end_reach divergence from v17b** | v17c recomputed end_reach from topology: junction=3 when n_up>1 OR n_down>1. ~30k v17b "phantom junctions" (n_up=1, n_dn=1, end_reach=3) relabeled to 0. UNC's original junction criterion is unknown. See `docs/validation_specs/end_reach_trib_flag_validation_spec.md` Section 1.8. |
 | **reconstruction.py end_reach bug** | `_reconstruct_reach_end_reach` uses `n_up > 1` only (misses bifurcations). `reactive.py` has the correct logic (`n_up > 1 OR n_down > 1`). Don't use the reconstruction function without fixing it. |
-| **DuckDB reach geometry missing endpoint overlap** | DuckDB geometries (rebuilt from NetCDF) lack the overlap vertices at endpoints that make adjacent reaches visually connect. The v17b PostgreSQL table (`postgres.sword_reaches_v17b`) has the full-fidelity geometries. `scripts/maintenance/load_from_duckdb.py` auto-copies v17b geometries to v17c PostgreSQL via dblink (`--skip-v17b-geom` to disable). |
+| **DuckDB reach geometry missing endpoint overlap** | DuckDB geometries (rebuilt from NetCDF) lack the overlap vertices at endpoints that make adjacent reaches visually connect. The v17b PostgreSQL table (`postgres.sword_reaches_v17b`) has the full-fidelity geometries. `scripts/maintenance/load_from_duckdb.py` auto-copies v17b geometries to v17c PostgreSQL via dblink (`--skip-v17b-geom` to disable). See issue #187. |
 | **path_freq=0/-9999 on connected reaches** | 4,952 connected non-ghost reaches globally have invalid path_freq (34 with 0, 4,918 with -9999). 91% are 1:1 links (fixable by propagation), 9% are junctions (need full traversal). AS has 2,478. See issue #16. |
+| **POM lint findings (10 open investigation issues)** | POM validation checks found issues in v17c: 89K CL-node misallocations (#194), 4.8K WSE inversions (#195), 3.5K node spacing gaps (#193), 2.6K boundary dist_out gaps (#192), 553 dist_out jumps (#191), 467 boundary geo gaps (#188–#190), 197 name disagreements (#196). All are diagnose-first — see `docs/technical/pom_requests_summary.md` for full tracker. |
 
 ## Column Name Gotchas
 
@@ -362,42 +313,34 @@ Dependency graph auto-recalculates derived attributes:
 - Topology changes → dist_out, stream_order, path_freq, path_segs
 - Node changes → reach aggregates (wse, width)
 
-## Validation Checks
-
-`src/sword_duckdb/validation.py`:
-- dist_out decreasing downstream
-- path_freq increasing toward outlets
-- lake sandwich detection
-- topology consistency
-
 ## Lint Framework
 
 **Location:** `src/sword_duckdb/lint/`
 
-Comprehensive linting framework with 61 checks across 8 categories (T=Topology, A=Attributes, F=Facc, G=Geometry, C=Classification, V=v17c, FL=Flags, N=Network).
+70+ checks across 9 categories:
 
-**CLI Usage:**
+| Category | Prefix | Examples |
+|----------|--------|---------|
+| Topology | T | dist_out monotonicity, neighbor consistency, reciprocity, ID format, river names |
+| Attributes | A | slope, width, WSE, observation stats, end_reach consistency |
+| Facc | F | junction conservation, jump ratios, quality coverage |
+| Geometry | G | null/invalid geom, length bounds, sinuosity, endpoint alignment |
+| Classification | C | lake sandwich, lakeflag/type consistency |
+| v17c | V | hydro_dist_out monotonicity, mainstem continuity, headwater/outlet validity |
+| Flags | FL | SWOT obs coverage, iceflag values, low_slope_flag |
+| Network | N | main_side values, stream_order consistency |
+| Node | N0xx | node spacing, dist_out ordering, boundary alignment, node count, geolocation |
+
+Run `python -m src.sword_duckdb.lint.cli --list-checks` for the full list.
+
+**CLI:**
 ```bash
-# Run all checks
-python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb
-
-# Filter by region
-python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --region NA
-
-# Specific checks or category
-python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --checks T001 T002
-python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --checks T  # all topology
-
-# Output formats
+python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb                    # all checks
+python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --region NA        # one region
+python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --checks T         # category
+python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --checks T001 T002 # specific
 python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --format json -o report.json
-python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --format markdown -o report.md
-
-# CI mode (exit codes)
-python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --fail-on-error   # exit 2 on errors
-python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --fail-on-warning  # exit 1 on warnings
-
-# List all checks
-python -m src.sword_duckdb.lint.cli --list-checks
+python -m src.sword_duckdb.lint.cli --db sword_v17c.duckdb --fail-on-error    # CI mode
 ```
 
 **Python API:**
@@ -405,82 +348,10 @@ python -m src.sword_duckdb.lint.cli --list-checks
 from sword_duckdb.lint import LintRunner, Severity
 
 with LintRunner("sword_v17c.duckdb") as runner:
-    results = runner.run()  # all checks
-    results = runner.run(checks=["T"])  # topology only
-    results = runner.run(region="NA", severity=Severity.ERROR)
+    results = runner.run(checks=["T"], region="NA", severity=Severity.ERROR)
 ```
 
-**Check IDs (58 total):**
-
-| ID | Name | Severity | Description |
-|----|------|----------|-------------|
-| T001 | dist_out_monotonicity | ERROR | dist_out decreases downstream |
-| T002 | path_freq_monotonicity | WARNING | path_freq increases to outlets |
-| T003 | facc_monotonicity | WARNING | facc increases downstream |
-| T004 | orphan_reaches | WARNING | No neighbors |
-| T005 | neighbor_count_consistency | ERROR | n_rch_up/down matches topology |
-| T006 | connected_components | INFO | Network connectivity |
-| T007 | topology_reciprocity | WARNING | A→B implies B→A |
-| T008 | dist_out_negative | ERROR | No negative dist_out |
-| T009 | dist_out_zero_at_nonoutlet | ERROR | dist_out=0 only at outlets |
-| T010 | headwater_path_freq | ERROR | Headwaters have path_freq >= 1 |
-| T011 | path_freq_zero | WARNING | path_freq=0 only for disconnected |
-| T012 | topology_referential_integrity | ERROR | All neighbor_reach_ids exist in reaches |
-| A002 | slope_reasonableness | WARNING | No negative, <100 m/km |
-| A003 | width_trend | INFO | Width increases downstream |
-| A004 | attribute_completeness | INFO | Required attrs present |
-| A005 | trib_flag_distribution | INFO | Unmapped tributary stats |
-| A006 | attribute_outliers | INFO | Extreme values |
-| A007 | headwater_facc | WARNING | Headwaters have low facc |
-| A008 | headwater_width | WARNING | Headwaters have narrow width |
-| A009 | outlet_facc | INFO | Outlets have high facc |
-| A010 | end_reach_consistency | WARNING | end_reach matches topology |
-| F001 | facc_width_ratio_anomaly | WARNING | facc/width > 50000 (extreme outliers) |
-| F002 | facc_jump_ratio | WARNING | facc >> sum(upstream), entry points |
-| F006 | facc_junction_conservation | ERROR | facc < sum(upstream) at junctions (incl. incremental area) |
-| F009 | facc_quality_coverage | INFO | facc_quality tag distribution |
-| F010 | junction_raise_drop | INFO | facc drop downstream of raised junction |
-| F011 | facc_link_monotonicity | INFO | 1:1 link facc drop (D8 artifact) |
-| G001 | reach_length_bounds | INFO | 100m-50km, excl end_reach |
-| G002 | node_length_consistency | WARNING | Node sum ≈ reach length |
-| G003 | zero_length_reaches | INFO | Zero/negative length |
-| G004 | self_intersection | WARNING | ST_IsSimple = FALSE |
-| G005 | reach_length_vs_geom_length | WARNING | reach_length vs ST_Length >20% diff |
-| G006 | excessive_sinuosity | INFO | sinuosity > 10 |
-| G008 | geom_not_null | ERROR | NULL geometry |
-| G009 | geom_is_valid | ERROR | ST_IsValid = FALSE |
-| G010 | geom_min_points | ERROR | ST_NPoints < 2 |
-| G011 | bbox_consistency | WARNING | Centroid outside bbox or inverted min/max |
-| G012 | endpoint_alignment | INFO | Connected reach endpoints >500m apart (incl. confluences/bifurcations) |
-| C001 | lake_sandwich | WARNING | River between lakes |
-| C002 | lakeflag_distribution | INFO | Lakeflag values |
-| C003 | type_distribution | INFO | Type field values |
-| C004 | lakeflag_type_consistency | INFO | Lakeflag/type cross-tab (needs investigation) |
-| V001 | hydro_dist_out_monotonicity | ERROR | hydro_dist_out decreases downstream |
-| V002 | hydro_dist_vs_pathlen | INFO | hydro_dist_out vs pathlen_out diff |
-| V004 | mainstem_continuity | WARNING | is_mainstem_edge forms continuous path |
-| V005 | hydro_dist_out_coverage | ERROR | All connected reaches have hydro_dist_out |
-| V006 | mainstem_coverage | INFO | is_mainstem_edge coverage stats |
-| V007 | best_headwater_validity | WARNING | best_headwater is actual headwater |
-| V008 | best_outlet_validity | WARNING | best_outlet is actual outlet |
-| FL001 | swot_obs_coverage | INFO | SWOT observation coverage statistics |
-| FL002 | iceflag_values | WARNING | iceflag in {-9999, 0, 1, 2} |
-| FL003 | low_slope_flag_consistency | WARNING | low_slope_flag consistent with slope |
-| FL004 | edit_flag_format | INFO | edit_flag distribution |
-| N001 | main_side_values | ERROR | main_side in {0, 1, 2} |
-| N002 | main_side_stream_order | ERROR | main_side=0 implies valid stream_order |
-| A021 | wse_obs_vs_wse | WARNING | wse_obs_median close to wse |
-| A024 | width_obs_vs_width | INFO | width_obs_median reasonable vs width |
-| A026 | slope_obs_nonneg | ERROR | slope_obs_mean >= 0 |
-| A027 | slope_obs_extreme | WARNING | slope_obs_mean < 50 m/km |
-
-**Validation Specs:** 23 deep-dive documents in `docs/validation_specs/` covering every variable. Each spec includes:
-- Official definition (from PDD)
-- Algorithm/code path
-- Valid ranges and distributions
-- Failure modes
-- Proposed lint checks
-- Reconstruction rules
+**POM checks:** See `docs/technical/pom_requests_summary.md` for the 19 checks derived from Pierre-Olivier Malaterre's `sword_validity.m`, production results, and open investigation issues.
 
 ## Testing
 
@@ -500,7 +371,8 @@ Test DB: `tests/sword_duckdb/fixtures/sword_test_minimal.duckdb` (100 reaches, 5
 | `src/sword_duckdb/schema.py` | Table definitions |
 | `src/sword_duckdb/reactive.py` | Dependency graph |
 | `src/sword_duckdb/reconstruction.py` | 35+ attribute reconstructors |
-| `src/sword_duckdb/lint/` | Lint framework (50 checks) |
+| `src/sword_duckdb/lint/` | Lint framework (70+ checks) |
+| `docs/technical/pom_requests_summary.md` | **Living doc**: POM (Pierre-Olivier Malaterre) lint checks, columns, production results, and investigation issues. Update when POM-related work changes. |
 | `scripts/topology/run_v17c_topology.py` | Topology recalculation script |
 | `scripts/maintenance/rebuild_v17b.py` | Rebuild v17b from NetCDF (if corrupted) |
 | `deploy/reviewer/` | Streamlit GUI for topology/lake review |
@@ -531,48 +403,16 @@ Streamlit app for manual QA review of SWORD reaches. Located in `deploy/reviewer
 
 ## GitHub Issue Tracking
 
-**All v17c/v18 work is tracked via GitHub Issues.** See: https://github.com/ealtenau/SWORD/issues
+**All work tracked via GitHub Issues.** See: https://github.com/SWORD-Global/SWORD/issues
 
-### Milestones
+**Active milestone:** `v17c-april-2026` — all current v17c work. Future: `v18-planning`.
 
-| Milestone | Description | Deadline |
-|-----------|-------------|----------|
-| v17c-verify | Verify pipeline outputs before use | FIRST |
-| v17c-topology | Keep dist_out, add hydro_dist_out | 1-2 months |
-| v17c-lake-type | Fix lake/type classification | 1-2 months |
-| v17c-pipeline | Import 20+ new attrs | 1-2 months |
-| v17c-swot | WSE/width/slope stats | 1-2 months |
-| v17c-schema | New columns only | 1-2 months |
-| v17c-export | DuckDB, GPKG, NetCDF, Parquet | 1-2 months |
-| v17c-docs | Release notes, data dict | 1-2 months |
-| v18-planning | Scope, ID mapping | 6+ months |
-| v18-sources | MERIT Hydro, GROD | 6+ months |
-| v18-imagery | Sentinel-2 centerlines | 6+ months |
-| v18-reach-mod | Merge/add reaches | 6+ months |
-| v18-export | v18 exports | 6+ months |
+**Labels:** P0–P3 priority, type:{bug,feature,docs,verify}, region:{NA,SA,EU,AF,AS,OC,all}, comp:{topology,pipeline,swot,export,lake-type,schema,lint,verify}
 
-### Labels
-
-- **Priority:** P0-critical, P1-high, P2-medium, P3-low
-- **Type:** type:bug, type:feature, type:docs, type:verify
-- **Region:** region:NA/SA/EU/AF/AS/OC, region:all
-- **Component:** comp:topology, comp:pipeline, comp:swot, comp:export, comp:lake-type, comp:schema, comp:verify
-
-### Key Issues (v17c)
-
-| # | Title | Milestone |
-|---|-------|-----------|
-| 4 | Inventory pipeline output files | v17c-verify |
-| 14 | Fix facc using MERIT Hydro | v17c-topology |
-| 17 | Fix island-in-lake misclassification | v17c-lake-type |
-| 31 | Run aggregate_swot_observations | v17c-swot |
-| 34 | Export DuckDB (v17c final) | v17c-export |
-
-### Workflow
-
-1. Pick issue from milestone (priority order: v17c-verify → topology → lake-type → pipeline → swot → export → docs)
-2. Create branch from v17c-updates: `git checkout -b issue-N-short-desc`
-3. Work on issue, reference it in commits: `git commit -m "Fix #N: description"`
+**Workflow:**
+1. Pick issue from milestone by priority
+2. Branch from v17c-updates: `git checkout -b issue-N-short-desc`
+3. Reference in commits: `git commit -m "Fix #N: description"`
 4. PR to v17c-updates (NOT main)
 
 ## Source Datasets
@@ -583,45 +423,6 @@ Streamlit app for manual QA review of SWORD reaches. Located in `deploy/reviewer
 - **GRanD/GROD** - Dams and obstructions
 - **SWOT** - Satellite water surface elevation
 
-## Imagery Pipeline
+## Imagery Pipeline (experimental)
 
-**Location:** `src/sword_duckdb/imagery/`
-
-**Water Detection Ensemble (6 methods):**
-- NDWI, MNDWI, AWEI_nsh, AWEI_sh (spectral indices)
-- ML4Floods, DeepWaterMap (ML models)
-- Voting threshold: ≥4/6 methods agree
-- Post-processing: morphological closing, blob removal (200px), relative threshold
-
-**Key Classes:**
-- `SentinelSTACClient` - Sentinel-2 imagery search
-- `COGReader` - Cloud Optimized GeoTIFF reads
-- `WaterEnsemble` - Multi-method water detection
-- `RiverTracer` - Patch-based water mask + RivGraph centerline
-
-## Centerline Update Approach
-
-**Goal:** Update SWORD geometries using satellite-derived water masks
-
-**Algorithm (skeleton + SWORD-guided pathfinding):**
-1. Get water mask from ensemble
-2. Skeletonize → true water center
-3. Find start/end on skeleton nearest SWORD start/end
-4. Pathfind with cost = `1 + dist_to_sword * 0.1`
-5. At junctions, cost naturally picks SWORD's branch
-6. Result: true center following SWORD's path
-
-**Key insight:** SWORD defines PATH (which channel), skeleton defines POSITION (center)
-
-**Test results:**
-| River | Mean Drift | Notes |
-|-------|------------|-------|
-| Rhine | 61.5m | Clean single channel |
-| Missouri | 85.6m | Correct branch selection |
-
-**Limitations:**
-- Narrow rivers (<50m) fail with 4/6 vote threshold
-- Braided/anastomosing rivers need manual review
-- Wide lake-like sections have noisy skeletons
-
-**Note:** The centerline update approach is experimental. See `src/sword_duckdb/imagery/` for implementation.
+**Location:** `src/sword_duckdb/imagery/` — Sentinel-2 water detection (6-method ensemble) + skeleton-based centerline updates. Not active for v17c. See source files for details.
