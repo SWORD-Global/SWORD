@@ -293,11 +293,24 @@ def check_boundary_dist_out(
     )
 
 
+def _ensure_spatial(conn: duckdb.DuckDBPyConnection) -> bool:
+    """Try to load the DuckDB spatial extension. Return True if available."""
+    try:
+        conn.execute("LOAD spatial")
+        return True
+    except Exception:
+        try:
+            conn.execute("INSTALL spatial; LOAD spatial")
+            return True
+        except Exception:
+            return False
+
+
 @register_check(
     "N007",
     Category.NETWORK,
     Severity.WARNING,
-    "Boundary node geolocation >400m between connected reaches",
+    "Reach geometry endpoints >400m apart between connected reaches",
     default_threshold=400.0,
 )
 def check_boundary_node_geolocation(
@@ -305,74 +318,65 @@ def check_boundary_node_geolocation(
     region: Optional[str] = None,
     threshold: Optional[float] = None,
 ) -> CheckResult:
-    """Check geographic co-location of boundary nodes at reach junctions.
+    """Check geographic co-location of reach geometry endpoints at junctions.
 
-    Checks all 4 boundary node pairs (MIN/MAX node_id of each reach) and
-    reports the minimum geographic distance.  Only flags if no pair is within
-    threshold.  Uses antimeridian-safe longitude wrapping.
+    For each downstream topology link A→B, computes the minimum distance
+    across all 4 geometry endpoint combos (start/end of A vs start/end of B)
+    using ST_Distance_Spheroid for geodesic accuracy.
+
+    Previous versions used MIN/MAX(node_id) as boundary proxies, which
+    produced ~92% false positives on sinuous reaches where the geographic
+    endpoint falls mid-way through the node_id/dist_out ordering.
     """
     max_dist = threshold if threshold is not None else 400.0
     where_clause = f"AND rt.region = '{region}'" if region else ""
 
-    # Antimeridian-safe equirectangular distance between two (x,y) points.
-    # LEAST(ABS(dx), 360-ABS(dx)) handles the ±180° wrap.
-    def _eqdist(x1: str, y1: str, x2: str, y2: str) -> str:
-        return (
-            f"111000.0 * SQRT("
-            f"POWER(LEAST(ABS({x1} - {x2}), 360.0 - ABS({x1} - {x2})) "
-            f"* COS(RADIANS(({y1} + {y2}) / 2.0)), 2) "
-            f"+ POWER({y1} - {y2}, 2))"
+    if not _ensure_spatial(conn):
+        return CheckResult(
+            check_id="N007",
+            name="boundary_node_geolocation",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0.0,
+            details=None,
+            description="SKIPPED – spatial extension unavailable",
+            threshold=max_dist,
         )
 
-    d_min_max = _eqdist("a.min_x", "a.min_y", "b.max_x", "b.max_y")
-    d_min_min = _eqdist("a.min_x", "a.min_y", "b.min_x", "b.min_y")
-    d_max_max = _eqdist("a.max_x", "a.max_y", "b.max_x", "b.max_y")
-    d_max_min = _eqdist("a.max_x", "a.max_y", "b.min_x", "b.min_y")
-
     query = f"""
-    WITH reach_boundaries AS (
-        SELECT reach_id, region,
-            MIN(node_id) as min_node_id,
-            MAX(node_id) as max_node_id
-        FROM nodes
-        GROUP BY reach_id, region
-    ),
-    boundary_coords AS (
-        SELECT rb.reach_id, rb.region,
-            n_min.x as min_x, n_min.y as min_y, n_min.node_id as min_node,
-            n_max.x as max_x, n_max.y as max_y, n_max.node_id as max_node
-        FROM reach_boundaries rb
-        JOIN nodes n_min ON rb.min_node_id = n_min.node_id AND rb.region = n_min.region
-        JOIN nodes n_max ON rb.max_node_id = n_max.node_id AND rb.region = n_max.region
-        WHERE n_min.x IS NOT NULL AND n_max.x IS NOT NULL
-    ),
-    all_pairs AS (
+    WITH pairs AS (
         SELECT
-            rt.reach_id as up_reach,
-            rt.neighbor_reach_id as dn_reach,
+            rt.reach_id AS up_reach,
+            rt.neighbor_reach_id AS dn_reach,
             rt.region,
-            a.min_node as up_min_node, a.max_node as up_max_node,
-            b.min_node as dn_min_node, b.max_node as dn_max_node,
-            a.min_x as up_min_x, a.min_y as up_min_y,
-            a.max_x as up_max_x, a.max_y as up_max_y,
-            b.min_x as dn_min_x, b.min_y as dn_min_y,
-            b.max_x as dn_max_x, b.max_y as dn_max_y,
-            LEAST(
-                {d_min_max}, {d_min_min}, {d_max_max}, {d_max_min}
-            ) as boundary_dist_m
+            ST_StartPoint(a.geom) AS a_start,
+            ST_EndPoint(a.geom)   AS a_end,
+            ST_StartPoint(b.geom) AS b_start,
+            ST_EndPoint(b.geom)   AS b_end
         FROM reach_topology rt
-        JOIN boundary_coords a ON rt.reach_id = a.reach_id AND rt.region = a.region
-        JOIN boundary_coords b ON rt.neighbor_reach_id = b.reach_id AND rt.region = b.region
+        JOIN reaches a ON a.reach_id = rt.reach_id AND a.region = rt.region
+        JOIN reaches b ON b.reach_id = rt.neighbor_reach_id AND b.region = rt.region
         WHERE rt.direction = 'down'
+            AND a.geom IS NOT NULL AND b.geom IS NOT NULL
             {where_clause}
+    ),
+    dists AS (
+        SELECT
+            up_reach, dn_reach, region,
+            LEAST(
+                ST_Distance_Spheroid(ST_FlipCoordinates(a_start), ST_FlipCoordinates(b_start)),
+                ST_Distance_Spheroid(ST_FlipCoordinates(a_start), ST_FlipCoordinates(b_end)),
+                ST_Distance_Spheroid(ST_FlipCoordinates(a_end),   ST_FlipCoordinates(b_start)),
+                ST_Distance_Spheroid(ST_FlipCoordinates(a_end),   ST_FlipCoordinates(b_end))
+            ) AS boundary_dist_m
+        FROM pairs
     )
     SELECT
         up_reach, dn_reach, region,
-        up_min_node, up_max_node, dn_min_node, dn_max_node,
-        up_min_x, up_min_y, up_max_x, up_max_y,
-        dn_min_x, dn_min_y, dn_max_x, dn_max_y,
-        boundary_dist_m
-    FROM all_pairs
+        ROUND(boundary_dist_m, 1) AS boundary_dist_m
+    FROM dists
     WHERE boundary_dist_m > {max_dist}
     ORDER BY boundary_dist_m DESC
     LIMIT 10000
@@ -395,7 +399,7 @@ def check_boundary_node_geolocation(
         issues_found=len(issues),
         issue_pct=100 * len(issues) / total if total > 0 else 0,
         details=issues,
-        description=f"Reach boundary nodes >{max_dist:.0f}m apart geographically",
+        description=f"Reach geometry endpoints >{max_dist:.0f}m apart",
         threshold=max_dist,
     )
 
