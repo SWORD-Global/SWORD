@@ -321,12 +321,18 @@ def build_geometries(
         for cl_idx in in_rch_up_dn:
             xp, yp = cl_x[cl_idx], cl_y[cl_idx]
 
-            # Asia dateline edge case
+            # Asia dateline edge case: Only skip if it's NOT an antimeridian wrap.
+            # If distance is small (< 500m) but signs differ, it's a wrap.
             if region == "AS":
-                reach_min_x = min(cl_x[sort_ind[0]], cl_x[sort_ind[-1]])
-                if xp < 0 and reach_min_x > 0:
+                dist_wrap = geodesic((yp, xp), first_pt).m
+                # If they are on opposite sides of the dateline but far apart in
+                # planar space, only connect if geodesic distance is small.
+                if xp * first_pt[1] < 0 and abs(xp) > 170 and abs(first_pt[1]) > 170:
+                    # This is likely a wrap - distance is already calculated by geodesic
+                    pass
+                elif xp < 0 and first_pt[1] > 0 and dist_wrap > max_dist:
                     continue
-                if xp > 0 and reach_min_x < 0:
+                elif xp > 0 and first_pt[1] < 0 and dist_wrap > max_dist:
                     continue
 
             d1 = geodesic((yp, xp), first_pt).m

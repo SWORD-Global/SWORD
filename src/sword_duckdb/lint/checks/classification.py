@@ -342,15 +342,7 @@ def check_lakeflag_type_consistency(
 
 @register_check(
     "O001",
-<<<<<<< HEAD
-<<<<<<< HEAD
     Category.OBSTRUCTION,
-=======
-    Category.CLASSIFICATION,
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-    Category.OBSTRUCTION,
->>>>>>> investigate-issue-190
     Severity.ERROR,
     "obstr_type must be in {0, 1, 2, 3, 4, 5}",
 )
@@ -361,33 +353,16 @@ def check_obstr_type_values(
 ) -> CheckResult:
     """Validate obstr_type values.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
     Valid values (v17c encoding — different from v17b):
-=======
-    Valid values:
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-    Valid values (v17c encoding — different from v17b):
->>>>>>> investigate-issue-190
     - 0: no obstruction
     - 1: dam (GROD/DL-GROD)
     - 2: low-head dam (DL-GROD)
     - 3: lock (GROD/DL-GROD)
     - 4: waterfall (HydroFALLS)
     - 5: partial dam (DL-GROD, He et al. 2025)
-<<<<<<< HEAD
-<<<<<<< HEAD
 
     Note: v17b used 2=lock, 3=low-perm — numeric range overlaps so this
     check passes both encodings, but semantics differ. Only run against v17c.
-=======
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-
-    Note: v17b used 2=lock, 3=low-perm — numeric range overlaps so this
-    check passes both encodings, but semantics differ. Only run against v17c.
->>>>>>> investigate-issue-190
     """
     where_clause = f"AND region = '{region}'" if region else ""
 
@@ -420,15 +395,7 @@ def check_obstr_type_values(
 
 @register_check(
     "O002",
-<<<<<<< HEAD
-<<<<<<< HEAD
     Category.OBSTRUCTION,
-=======
-    Category.CLASSIFICATION,
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-    Category.OBSTRUCTION,
->>>>>>> investigate-issue-190
     Severity.WARNING,
     "grod_id/dl_grod_id non-zero only for obstr_type 1, 2, 3, 5",
 )
@@ -471,10 +438,6 @@ def check_grod_id_consistency(
     """
     issues = conn.execute(query).fetchdf()
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> investigate-issue-190
     # Denominator: reaches with any non-zero obstruction ID (matching issue query filters)
     dl_grod_filter = (
         "OR (dl_grod_id IS NOT NULL AND dl_grod_id != 0)"
@@ -483,13 +446,6 @@ def check_grod_id_consistency(
     )
     total = conn.execute(
         f"SELECT COUNT(*) FROM reaches WHERE ((grod_id IS NOT NULL AND grod_id != 0) {dl_grod_filter}) {where_clause}"
-<<<<<<< HEAD
-=======
-    total = conn.execute(
-        f"SELECT COUNT(*) FROM reaches WHERE grod_id IS NOT NULL {where_clause}"
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
->>>>>>> investigate-issue-190
     ).fetchone()[0]
 
     return CheckResult(
@@ -507,15 +463,7 @@ def check_grod_id_consistency(
 
 @register_check(
     "O003",
-<<<<<<< HEAD
-<<<<<<< HEAD
     Category.OBSTRUCTION,
-=======
-    Category.CLASSIFICATION,
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-    Category.OBSTRUCTION,
->>>>>>> investigate-issue-190
     Severity.WARNING,
     "hfalls_id non-zero only for obstr_type 4 (waterfall)",
 )
@@ -532,15 +480,7 @@ def check_hfalls_id_consistency(
     FROM reaches
     WHERE hfalls_id IS NOT NULL
       AND hfalls_id != 0
-<<<<<<< HEAD
-<<<<<<< HEAD
       AND (obstr_type IS NULL OR obstr_type != 4)
-=======
-      AND obstr_type != 4
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-      AND (obstr_type IS NULL OR obstr_type != 4)
->>>>>>> investigate-issue-190
     {where_clause}
     ORDER BY reach_id
     """

@@ -5,10 +5,6 @@ Reads barrier_reach_mapping.csv from the swot_obstructions project (He et al. 20
 normalizes obstruction types, resolves multi-obstruction reaches by priority, and
 bulk-updates reaches.obstr_type and reaches.dl_grod_id.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> investigate-issue-190
 v17c obstr_type encoding (intentionally extends v17b):
     0 = no obstruction
     1 = dam (GROD / DL-GROD)
@@ -19,57 +15,25 @@ v17c obstr_type encoding (intentionally extends v17b):
 
 Priority for reaches with multiple DL-GROD features (highest wins):
     Dam > Lock > Low-head Dam > Partial Dam > Waterfall
-<<<<<<< HEAD
-=======
-Type mapping (DL-GROD → SWORD obstr_type):
-    Dam              → 1
-    Low-head Dam     → 2
-    Lock             → 3
-    Waterfall        → 4  (NULL dl_grod_id — HydroFALLS source, not DL-GROD)
-    Partial Dam      → 5
-
-Priority for reaches with multiple DL-GROD features (highest wins):
-    Dam(1) > Lock(3) > Low-head Dam(2) > Partial Dam(5) > Waterfall(4)
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
->>>>>>> investigate-issue-190
 
 DL-GROD wins over existing GROD assignments (GROD ⊂ DL-GROD).
 
 Usage:
-<<<<<<< HEAD
-<<<<<<< HEAD
     python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv
     python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv --dry-run
     python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv --db data/duckdb/sword_v17c.duckdb
-=======
-    python scripts/maintenance/ingest_dl_grod.py
-    python scripts/maintenance/ingest_dl_grod.py --dry-run
-    python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-    python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv
-    python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv --dry-run
-    python scripts/maintenance/ingest_dl_grod.py --mapping /path/to/barrier_reach_mapping.csv --db data/duckdb/sword_v17c.duckdb
->>>>>>> investigate-issue-190
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-<<<<<<< HEAD
-<<<<<<< HEAD
 import re
-=======
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-import re
->>>>>>> investigate-issue-190
 import sys
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pandas as pd
 
 logging.basicConfig(
@@ -79,18 +43,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 DEFAULT_DB = Path("data/duckdb/sword_v17c.duckdb")
-=======
-DEFAULT_MAPPING = Path(
-    "/Users/jakegearon/projects/swot_obstructions/exports/fragmentation/barrier_reach_mapping.csv"
-)
-DEFAULT_DB = Path("/Users/jakegearon/projects/SWORD/data/duckdb/sword_v17c.duckdb")
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-DEFAULT_DB = Path("data/duckdb/sword_v17c.duckdb")
->>>>>>> investigate-issue-190
 
 # obstr_type values
 TYPE_DAM = 1
@@ -119,15 +72,7 @@ _RAW_TO_OBSTR: dict[str, int] = {
 
 
 def normalize_type(raw: str) -> int | None:
-<<<<<<< HEAD
-<<<<<<< HEAD
     key = re.sub(r"\s+", " ", raw.strip()).lower()
-=======
-    key = raw.strip().lower().replace("  ", " ")
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
-    key = re.sub(r"\s+", " ", raw.strip()).lower()
->>>>>>> investigate-issue-190
     return _RAW_TO_OBSTR.get(key)
 
 
@@ -147,7 +92,10 @@ def load_mapping(path: Path) -> pd.DataFrame:
     df["obstr_type"] = df["Type"].map(normalize_type)
     unknown = df[df["obstr_type"].isna()]["Type"].unique()
     if len(unknown) > 0:
-        log.warning("Unknown DL-GROD types (will be skipped): %s", list(unknown))
+        log.warning(
+            "Unknown DL-GROD types (will be skipped): %s",
+            list(unknown) if isinstance(unknown, (list, np.ndarray)) else unknown,
+        )
     df = df[df["obstr_type"].notna()].copy()
     df["obstr_type"] = df["obstr_type"].astype("int8")
 
@@ -206,15 +154,12 @@ def update_reaches(
             log.info("  obstr_type=%d: %d reaches", t, n)
         return len(resolved)
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> investigate-issue-190
     # reaches has an RTREE spatial index; must drop before UPDATE, recreate after.
     # See CLAUDE.md Known Issues: "RTREE Update Pattern".
     con.execute("INSTALL spatial; LOAD spatial;")
     rtree_indexes = con.execute(
-        "SELECT index_name, table_name, sql FROM duckdb_indexes() WHERE sql LIKE '%RTREE%'"
+        "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+        "WHERE sql LIKE '%RTREE%' AND table_name = 'reaches'"
     ).fetchall()
     for idx_name, _tbl, _sql in rtree_indexes:
         con.execute(f'DROP INDEX "{idx_name}"')
@@ -236,40 +181,16 @@ def update_reaches(
         for idx_name, _tbl, sql in rtree_indexes:
             con.execute(sql)
 
-<<<<<<< HEAD
-=======
-    con.register("_dl_grod_updates", resolved)
-    con.execute("""
-        UPDATE reaches
-        SET obstr_type = u.obstr_type,
-            dl_grod_id = u.dl_grod_id
-        FROM _dl_grod_updates u
-        WHERE reaches.reach_id = u.reach_id
-    """)
-    con.unregister("_dl_grod_updates")
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
->>>>>>> investigate-issue-190
     return len(resolved)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest DL-GROD into SWORD reaches")
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> investigate-issue-190
     parser.add_argument(
         "--mapping",
         required=True,
         help="Path to barrier_reach_mapping.csv from swot_obstructions project",
     )
-<<<<<<< HEAD
-=======
-    parser.add_argument("--mapping", default=str(DEFAULT_MAPPING))
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
->>>>>>> investigate-issue-190
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -287,31 +208,18 @@ def main() -> None:
     df = load_mapping(mapping_path)
     resolved = resolve_per_reach(df)
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> investigate-issue-190
     if len(resolved) == 0:
         log.warning(
             "No matched reaches after resolving mapping — check CSV path and column names."
         )
         sys.exit(1)
 
-<<<<<<< HEAD
-=======
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
->>>>>>> investigate-issue-190
     log.info("Resolved to %d unique reaches", len(resolved))
     by_type = resolved.groupby("obstr_type").size()
     for t, n in by_type.items():
         log.info("  obstr_type=%d: %d reaches", t, n)
 
     con = duckdb.connect(str(db_path), read_only=args.dry_run)
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> investigate-issue-190
     try:
         if not args.dry_run:
             add_dl_grod_column(con)
@@ -322,21 +230,6 @@ def main() -> None:
         )
     finally:
         con.close()
-<<<<<<< HEAD
-=======
-
-    if not args.dry_run:
-        add_dl_grod_column(con)
-
-    n = update_reaches(con, resolved, args.dry_run)
-    log.info(
-        "%s %d reaches", "[dry-run] Would update" if args.dry_run else "Updated", n
-    )
-
-    con.close()
->>>>>>> ad53e4b (feat: add DL-GROD ingestion and obstruction lint checks (#127))
-=======
->>>>>>> investigate-issue-190
     log.info("Done.")
 
 

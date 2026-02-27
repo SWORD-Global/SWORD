@@ -2779,6 +2779,67 @@ class SWORDWorkflow:
             "success": merged_count > 0,
         }
 
+    def sync_centerline_node_ids(
+        self,
+        reach_id: Optional[int] = None,
+        reason: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Sync centerlines.node_id from nodes.cl_id_min/max boundaries.
+
+        Fixes N013 systematic misallocations by ensuring centerline points
+        are assigned to the node that actually covers their cl_id range.
+
+        Parameters
+        ----------
+        reach_id : int, optional
+            Limit sync to a specific reach.
+        reason : str, optional
+            Reason for sync (logged to provenance)
+
+        Returns
+        -------
+        dict
+            Results including count of updated centerlines.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("No database loaded. Call load() first.")
+
+        conn = self._sword.db.connect()
+        region = self._region
+        where_clause = f"AND n.reach_id = {reach_id}" if reach_id else ""
+
+        def _do_sync():
+            res = conn.execute(
+                f"""
+                UPDATE centerlines
+                SET node_id = n.node_id
+                FROM nodes n
+                WHERE centerlines.reach_id = n.reach_id
+                  AND centerlines.region = n.region
+                  AND centerlines.cl_id BETWEEN n.cl_id_min AND n.cl_id_max
+                  AND centerlines.node_id != n.node_id
+                  AND centerlines.region = ?
+                  {where_clause}
+                """,
+                [region],
+            )
+            return res.fetchone()[0]
+
+        if self._provenance and self._enable_provenance:
+            with self._provenance.operation(
+                "UPDATE",
+                table_name="centerlines",
+                entity_ids=[reach_id] if reach_id else [],
+                region=region,
+                reason=reason or "Sync centerline node_ids from node boundaries",
+            ):
+                count = _do_sync()
+        else:
+            count = _do_sync()
+
+        return {"updated_count": count, "success": True}
+
     def append_reaches(
         self,
         centerlines,
@@ -4848,6 +4909,21 @@ class SWORDWorkflow:
                                     region,
                                 ],
                             )
+
+                        # Fix N013: Sync centerlines.node_id from the new node boundaries
+                        conn.execute(
+                            """
+                            UPDATE centerlines
+                            SET node_id = n.node_id
+                            FROM nodes n
+                            WHERE centerlines.reach_id = n.reach_id
+                              AND centerlines.region = n.region
+                              AND centerlines.cl_id BETWEEN n.cl_id_min AND n.cl_id_max
+                              AND centerlines.node_id != n.node_id
+                              AND n.reach_id = ?
+                            """,
+                            [reach_id],
+                        )
 
                     if self._provenance and self._enable_provenance:
                         with self._provenance.operation(
