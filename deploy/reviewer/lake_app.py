@@ -1100,6 +1100,19 @@ with tab_c001:
         st.session_state.last_fix = None
     if "c001_results" not in st.session_state:
         st.session_state.c001_results = None
+    # Query lint_fix_log for previously reviewed C001 reaches (survives restarts)
+    reviewed_c001 = (
+        conn.execute(
+            """
+        SELECT DISTINCT reach_id FROM lint_fix_log
+        WHERE region = ? AND check_id = 'C001' AND NOT undone
+    """,
+            [region],
+        )
+        .fetchdf()["reach_id"]
+        .tolist()
+    )
+    all_reviewed_c001 = set(reviewed_c001) | set(st.session_state.pending_fixes)
     if (
         st.session_state.c001_results is None
         or st.session_state.get("c001_region") != region
@@ -1107,21 +1120,13 @@ with tab_c001:
         with st.spinner("Running lake sandwich check..."):
             st.session_state.c001_results = run_c001_check(conn, region)
             st.session_state.c001_region = region
-            session = load_session_fixes(region, "C001")
-            st.session_state.pending_fixes = session.get("pending", [])
     result = st.session_state.c001_results
     if result:
         issues = result.details
         total = len(issues)
-        done = len(st.session_state.pending_fixes)
+        done = len(all_reviewed_c001)
         remaining = (
-            len(
-                [
-                    r
-                    for r in issues["reach_id"].tolist()
-                    if r not in st.session_state.pending_fixes
-                ]
-            )
+            len([r for r in issues["reach_id"].tolist() if r not in all_reviewed_c001])
             if total > 0
             else 0
         )
@@ -1143,9 +1148,7 @@ with tab_c001:
             st.success("No lake sandwich issues in this region!")
         else:
             available = [
-                r
-                for r in issues["reach_id"].tolist()
-                if r not in st.session_state.pending_fixes
+                r for r in issues["reach_id"].tolist() if r not in all_reviewed_c001
             ]
             selected = available[0]
             issue = issues[issues["reach_id"] == selected].iloc[0]
