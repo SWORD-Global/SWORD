@@ -30,6 +30,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Union, Optional, List, Dict, Any, Generator
 import numpy as np
+import pandas as pd
 
 if TYPE_CHECKING:
     from .reactive import SWORDReactive
@@ -3357,15 +3358,17 @@ class SWORD:
         loop = 1
         max_loops = 5 * len(self.reaches.id)
 
+        # Create a lookup for reach IDs to indices for O(1) lookup
+        reach_id_map = {rid: i for i, rid in enumerate(self.reaches.id)}
+
         # BFS traversal - following legacy algorithm exactly
         while len(start_rchs) > 0:
             up_ngh_list = []
 
             for r in range(len(start_rchs)):
-                rch_idx = np.where(self.reaches.id == start_rchs[r])[0]
-                if len(rch_idx) == 0:
+                rch = reach_id_map.get(start_rchs[r])
+                if rch is None:
                     continue
-                rch = rch_idx[0]
                 rch_flag = np.max(flag[rch])
 
                 if self.reaches.n_rch_down[rch] == 0:
@@ -3394,13 +3397,13 @@ class SWORD:
                     dn_nghs = dn_nghs[dn_nghs > 0]
 
                     # Get downstream distances
-                    dn_dist = np.array(
-                        [
-                            dist_out[np.where(self.reaches.id == n)[0][0]]
-                            for n in dn_nghs
-                            if len(np.where(self.reaches.id == n)[0]) > 0
-                        ]
-                    )
+                    dn_dist = []
+                    for n in dn_nghs:
+                        idx = reach_id_map.get(n)
+                        if idx is not None:
+                            dn_dist.append(dist_out[idx])
+                    
+                    dn_dist = np.array(dn_dist)
 
                     if len(dn_dist) == 0:
                         continue
@@ -3459,15 +3462,15 @@ class SWORD:
                     for idx in deferred:
                         dn_nghs = self.reaches.rch_id_down[:, idx]
                         dn_nghs = dn_nghs[dn_nghs > 0]
-                        dn_d = np.array(
-                            [
-                                dist_out[np.where(self.reaches.id == n)[0][0]]
-                                for n in dn_nghs
-                                if len(np.where(self.reaches.id == n)[0]) > 0
-                            ]
-                        )
+                        dn_d = []
+                        for n in dn_nghs:
+                            idx_ngh = reach_id_map.get(n)
+                            if idx_ngh is not None:
+                                dn_d.append(dist_out[idx_ngh])
+                        
                         if len(dn_d) > 0 and min(dn_d) > -9999:
                             newly_ready.append(self.reaches.id[idx])
+                    
                     if len(newly_ready) > 0:
                         start_rchs = np.array(newly_ready)
                     else:
@@ -3478,13 +3481,13 @@ class SWORD:
                         for idx in deferred:
                             dn_nghs = self.reaches.rch_id_down[:, idx]
                             dn_nghs = dn_nghs[dn_nghs > 0]
-                            dn_d = np.array(
-                                [
-                                    dist_out[np.where(self.reaches.id == n)[0][0]]
-                                    for n in dn_nghs
-                                    if len(np.where(self.reaches.id == n)[0]) > 0
-                                ]
-                            )
+                            dn_d = []
+                            for n in dn_nghs:
+                                idx_ngh = reach_id_map.get(n)
+                                if idx_ngh is not None:
+                                    dn_d.append(dist_out[idx_ngh])
+                            
+                            dn_d = np.array(dn_d)
                             valid = dn_d[dn_d > -9999]
                             if len(valid) > 0:
                                 dist_out[idx] = self.reaches.len[idx] + max(valid)
@@ -3522,23 +3525,25 @@ class SWORD:
 
         # Update reach dist_out in database
         conn = self._db.connect()
-        conn.execute("BEGIN TRANSACTION")
-
-        try:
-            for idx, rch_id in enumerate(self.reaches.id):
-                if dist_out[idx] != -9999:
-                    conn.execute(
-                        """
-                        UPDATE reaches SET dist_out = ?
-                        WHERE reach_id = ? AND region = ?
-                    """,
-                        [float(dist_out[idx]), int(rch_id), self.region],
-                    )
-
-            conn.execute("COMMIT")
-        except Exception as e:
-            conn.execute("ROLLBACK")
-            raise RuntimeError(f"Failed to update reach dist_out: {e}") from e
+        
+        valid_idx = np.where(dist_out != -9999)[0]
+        if len(valid_idx) > 0:
+            df_updates = pd.DataFrame({
+                'reach_id': self.reaches.id[valid_idx],
+                'dist_out': dist_out[valid_idx]
+            })
+            
+            try:
+                conn.register('_reach_updates', df_updates)
+                conn.execute(f"""
+                    UPDATE reaches 
+                    SET dist_out = u.dist_out
+                    FROM _reach_updates u
+                    WHERE reaches.reach_id = u.reach_id AND reaches.region = '{self.region}'
+                """)
+                conn.unregister('_reach_updates')
+            except Exception as e:
+                raise RuntimeError(f"Failed to update reach dist_out: {e}") from e
 
         # Update nodes if requested
         nodes_updated = 0
@@ -3600,38 +3605,48 @@ class SWORD:
             if len(nds) == 0:
                 continue
 
-            # Sort nodes by ID (ascending = downstream to upstream)
+            # Sort nodes by ID ascending (downstream to upstream)
             sort_nodes = np.argsort(self.nodes.id[nds])
 
-            # Base value: reach dist_out minus reach length
-            base_val = reach_dist_out[r] - self.reaches.len[r]
+            # Distance at the downstream end of the reach:
+            dn_val = reach_dist_out[r] - self.reaches.len[r]
 
-            # Cumulative node lengths
-            node_cs = np.cumsum(self.nodes.len[nds[sort_nodes]])
+            # Assign node dist_out values by interpolating between the
+            # downstream end (dn_val) and the upstream end (reach_dist_out).
+            # This ensures perfect continuity at boundaries (gap = 0)
+            # while respecting the node order.
+            if len(nds) > 1:
+                node_values = np.linspace(dn_val, reach_dist_out[r], len(nds))
+            else:
+                # For single-node reaches, use the reach dist_out (upstream end)
+                node_values = np.array([reach_dist_out[r]])
 
-            # Node dist_out = cumsum + base
-            nodes_out[nds[sort_nodes]] = node_cs + base_val
+            sort_nodes = np.argsort(self.nodes.id[nds])
+            nodes_out[nds[sort_nodes]] = node_values
             updated_count += len(nds)
 
         # Update database
         conn = self._db.connect()
-        conn.execute("BEGIN TRANSACTION")
-
-        try:
-            for idx, node_id in enumerate(self.nodes.id):
-                if nodes_out[idx] != self.nodes.dist_out[idx]:
-                    conn.execute(
-                        """
-                        UPDATE nodes SET dist_out = ?
-                        WHERE node_id = ? AND region = ?
-                    """,
-                        [float(nodes_out[idx]), int(node_id), self.region],
-                    )
-
-            conn.execute("COMMIT")
-        except Exception as e:
-            conn.execute("ROLLBACK")
-            raise RuntimeError(f"Failed to update node dist_out: {e}") from e
+        
+        # Filter to nodes that actually changed to reduce data transfer
+        changed_mask = nodes_out != self.nodes.dist_out
+        if np.any(changed_mask):
+            df_node_updates = pd.DataFrame({
+                'node_id': self.nodes.id[changed_mask],
+                'dist_out': nodes_out[changed_mask]
+            })
+            
+            try:
+                conn.register('_node_updates', df_node_updates)
+                conn.execute(f"""
+                    UPDATE nodes 
+                    SET dist_out = u.dist_out
+                    FROM _node_updates u
+                    WHERE nodes.node_id = u.node_id AND nodes.region = '{self.region}'
+                """)
+                conn.unregister('_node_updates')
+            except Exception as e:
+                raise RuntimeError(f"Failed to update node dist_out: {e}") from e
 
         if verbose:
             logger.info(f"Updated {updated_count} nodes")
