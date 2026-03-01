@@ -220,7 +220,7 @@ def check_boundary_dist_out(
 
     Note on violations:
     - Type A (>100km): Likely false cross-basin topological merge. High priority fix.
-    - Type B (1-50km): Likely path length difference in a braided system. At a
+    - Type B (2-50km): Likely path length difference in a braided system. At a
       bifurcation, dist_out matches the longest path, creating a gap for shorter
       parallel channels.
     """
