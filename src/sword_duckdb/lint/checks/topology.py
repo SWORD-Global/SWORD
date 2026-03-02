@@ -1248,3 +1248,115 @@ def check_dist_out_bifurcation_monotonicity(
         description="Downstream edges where dist_out increases (bifurcation bug)",
         threshold=tolerance,
     )
+
+
+def _ensure_spatial(conn: duckdb.DuckDBPyConnection) -> bool:
+    """Try to load the DuckDB spatial extension. Return True if available."""
+    try:
+        conn.execute("LOAD spatial")
+        return True
+    except Exception:
+        try:
+            conn.execute("INSTALL spatial; LOAD spatial")
+            return True
+        except Exception:
+            return False
+
+
+@register_check(
+    "T022",
+    Category.TOPOLOGY,
+    Severity.ERROR,
+    "Connected reaches with centroids >50km apart (cross-basin false merge)",
+    default_threshold=50000.0,
+)
+def check_topology_spatial_plausibility(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Flag topology edges connecting spatially distant reaches.
+
+    For each downstream topology edge A→B, computes geodesic distance
+    between reach centroids (x, y columns). Edges where centroids are
+    >50km apart are almost certainly false topology links merging
+    distinct drainage basins.
+
+    Rationale:
+    - N006 flags dist_out gaps but can't distinguish real cross-basin
+      errors from path-length artifacts at legitimate junctions.
+    - N007 flags geometry endpoint gaps at 400m — catches local errors
+      but not large-scale false merges with coincidentally close endpoints.
+    - This check uses centroid distance as a coarse spatial sanity filter.
+      A 50km threshold is deliberately conservative: even the longest
+      SWORD reaches are ~20km, so two connected reaches should never have
+      centroids >50km apart unless the topology link is wrong.
+
+    Validated against v17c (2026-03): all 76 N006 "Type A" violations
+    (dist_out gaps >100km) have centroids <20km apart — legitimate
+    junctions, not false merges. This check would correctly pass them.
+    """
+    max_dist = threshold if threshold is not None else 50000.0
+    where_clause = f"AND rt.region = '{region}'" if region else ""
+
+    if not _ensure_spatial(conn):
+        return CheckResult(
+            check_id="T022",
+            name="topology_spatial_plausibility",
+            severity=Severity.ERROR,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0.0,
+            details=None,
+            description="SKIPPED – spatial extension unavailable",
+            threshold=max_dist,
+        )
+
+    query = f"""
+    SELECT
+        rt.reach_id AS up_reach,
+        rt.neighbor_reach_id AS dn_reach,
+        rt.region,
+        a.river_name AS up_name,
+        b.river_name AS dn_name,
+        a.x AS up_x, a.y AS up_y,
+        b.x AS dn_x, b.y AS dn_y,
+        ROUND(ST_Distance_Spheroid(
+            ST_FlipCoordinates(ST_Point(a.x, a.y)),
+            ST_FlipCoordinates(ST_Point(b.x, b.y))
+        ), 1) AS centroid_dist_m
+    FROM reach_topology rt
+    JOIN reaches a ON a.reach_id = rt.reach_id AND a.region = rt.region
+    JOIN reaches b ON b.reach_id = rt.neighbor_reach_id AND b.region = rt.region
+    WHERE rt.direction = 'down'
+        AND a.x IS NOT NULL AND b.x IS NOT NULL
+        AND ST_Distance_Spheroid(
+            ST_FlipCoordinates(ST_Point(a.x, a.y)),
+            ST_FlipCoordinates(ST_Point(b.x, b.y))
+        ) > {max_dist}
+        {where_clause}
+    ORDER BY centroid_dist_m DESC
+    LIMIT 10000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reach_topology rt
+    WHERE direction = 'down' {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="T022",
+        name="topology_spatial_plausibility",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Connected reach centroids >{max_dist / 1000:.0f}km apart",
+        threshold=max_dist,
+    )

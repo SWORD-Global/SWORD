@@ -124,7 +124,7 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 | River name (14) | 2 | 0 | 2 (T019, T020) | 0 |
 | SWOT/type dist (15) | ~20 | 3 | 0 | ~17 (informational distributions) |
 | WSE | 1 | 0 | 1 (A030) | 0 |
-| **Totals** | **~60** | **14** | **19 new checks** | **~27 (mostly informational/low-priority)** |
+| **Totals** | **~60** | **14** | **20 new checks** | **~27 (mostly informational/low-priority)** |
 
 ## New Lint Checks Added for POM
 
@@ -139,6 +139,7 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 | T018 | ERROR | Reach/node ID format (11-digit reach, 14-digit node) | 12b/12c |
 | T019 | INFO | river_name = 'NODATA' coverage | 14a |
 | T020 | INFO | river_name disagrees with neighbor consensus | 14b |
+| T022 | ERROR | Connected reach centroids >50km apart (cross-basin false merge) | N006 spatial validation |
 
 ### Node (N-series)
 
@@ -175,19 +176,20 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 | N008 | 248,673 reaches | Node counts match n_nodes |
 | N010 | 248,673 reaches | Node indexes contiguous |
 | N004 | 11,112,454 nodes | 1 single violation (noise) |
+| T022 | 247,810 edges | No cross-basin false merges (all connected reaches <50km apart). Validates N006 "Type A" findings — those 76 pairs with >100km dist_out gaps are legitimate junctions (<20km spatial). |
 
 ### Failing (investigation needed)
 
 | Check | Violations | Sev | Investigation issue | Root cause summary |
 |-------|-----------|-----|--------------------|--------------------|
 | N013 | ~~89,364~~ → **311** | WARN | [#194](https://github.com/SWORD-Global/SWORD/issues/194) | **99.7% resolved.** Root cause: UNC's sequential cl_id-range grouping mismatches spatial order on sinuous reaches. Fixed by `sync_centerline_node_ids()` (commit 7b0ca71) which reassigns CLs via cl_id_min/max boundaries. Remaining 311 are structurally far (node sparsity), not misassigned — spatial-nearest reassignment only helps 89 of them and would break cl_id_min/max contiguity on 26 reaches. Accepted as residual. |
-| A030 | 4,816 | WARN | [#195](https://github.com/SWORD-Global/SWORD/issues/195) | Mix of real backwater/dams + data errors (max 4,121m increase in AS) |
-| N003 | 3,456 | WARN | [#193](https://github.com/SWORD-Global/SWORD/issues/193) | Node spacing gaps, AS=72% of violations |
-| N006 | 2,596 | WARN | [#192](https://github.com/SWORD-Global/SWORD/issues/192) | Boundary dist_out discontinuities |
-| T017 | 553 | WARN | [#191](https://github.com/SWORD-Global/SWORD/issues/191) | dist_out jumps >30km, max 3,201km (OC) |
-| N007 | 467 | WARN | [#188](https://github.com/SWORD-Global/SWORD/issues/188), [#189](https://github.com/SWORD-Global/SWORD/issues/189), [#190](https://github.com/SWORD-Global/SWORD/issues/190) | 3 root causes: date line bug (5–9), wrong-end connections (195), genuinely far (263) |
-| T020 | 197 | INFO | [#196](https://github.com/SWORD-Global/SWORD/issues/196) | River name disagreements, many semicolon-concatenated |
-| N012 | 12 | WARN | [#185](https://github.com/SWORD-Global/SWORD/issues/185) | 12 misplaced nodes, all ghost/Arctic reaches |
+| A030 | 4,816 | WARN | [#195](https://github.com/SWORD-Global/SWORD/issues/195) | **Closed.** Uses MERIT DEM `wse`, not SWOT — inversions are DEM noise. Not actionable. |
+| N003 | 3,456 | WARN | [#193](https://github.com/SWORD-Global/SWORD/issues/193) | **Closed.** v17b source data — UNC node placement, 0.03% of nodes. Defer to v18. |
+| N006 | 2,596 | WARN | [#192](https://github.com/SWORD-Global/SWORD/issues/192) | **Closed.** All violations are dist_out path-length artifacts at junctions, not bad topology. Spatial verification: all 76 "Type A" pairs are <20km apart. Inherent to single-scalar dist_out representation. |
+| T017 | 553 | WARN | [#191](https://github.com/SWORD-Global/SWORD/issues/191) | **Closed.** Duplicate of #192 — same edges at higher threshold. |
+| N007 | 467 | WARN | [#188](https://github.com/SWORD-Global/SWORD/issues/188), [#189](https://github.com/SWORD-Global/SWORD/issues/189), [#190](https://github.com/SWORD-Global/SWORD/issues/190) | **#188 closed** (code fix). **#190 closed** (58 v17b-inherited, deferred to v18 — needs geometry fixes). #189 closed (31 extreme). ~263 true positives remain. |
+| T020 | 197 | INFO | [#196](https://github.com/SWORD-Global/SWORD/issues/196) | **Closed.** GRWL source data — semicolon names, tributary spillover. Informational only. |
+| N012 | 12 | WARN | [#185](https://github.com/SWORD-Global/SWORD/issues/185) | **Closed.** 12 ghost/Arctic nodes, accepted as residual. |
 
 ### Informational (no action)
 
@@ -222,23 +224,23 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 | #156 | Lint A030: WSE monotonicity downstream | Closed |
 | #157 | Node-level lint: dist_out, spacing, and boundary checks (N003-N007) | Closed |
 | #158 | Node/centerline allocation validation (POM Tests 8/9) | Closed |
-| #185 | Lint N012: node geolocation outside parent reach geometry (POM Test 9a) | Open |
-| #186 | Lint N013: centerline point too far from assigned node (POM Test 9d) | Implemented (close) |
+| #185 | Lint N012: node geolocation outside parent reach geometry (POM Test 9a) | Closed (12 violations, all ghost/Arctic — accepted) |
+| #186 | Lint N013: centerline point too far from assigned node (POM Test 9d) | Closed |
 
 ### Investigation (diagnose first, fix only after discussing with Jake)
 
 | Issue | Check | Title | Priority |
 |-------|-------|-------|----------|
-| [#187](https://github.com/SWORD-Global/SWORD/issues/187) | N007/G012 | DuckDB reach geometries missing endpoint overlap vertices | P1 |
-| [#188](https://github.com/SWORD-Global/SWORD/issues/188) | N007 | Fix N007 distance formula: antimeridian wrapping + check all 4 boundary pairs | P1 |
+| [#187](https://github.com/SWORD-Global/SWORD/issues/187) | N007/G012 | DuckDB reach geometries missing endpoint overlap vertices | **Closed** — premise incorrect; DuckDB and PG have identical endpoint connectivity (37,976/38,346 touching in NA) |
+| [#188](https://github.com/SWORD-Global/SWORD/issues/188) | N007 | Fix N007 distance formula: antimeridian wrapping + check all 4 boundary pairs | **Closed** — fixed in `8b7ca76` (ST_Distance_Spheroid + all 4 endpoint combos) |
 | [#189](https://github.com/SWORD-Global/SWORD/issues/189) | N007 | Investigate 31 extreme bad topology links (>5km boundary gap) | P2 |
-| [#190](https://github.com/SWORD-Global/SWORD/issues/190) | N007 | Investigate 57 moderate topology gaps (800m–5km boundary) | P3 |
-| [#191](https://github.com/SWORD-Global/SWORD/issues/191) | T017 | Investigate 553 dist_out jumps >30km between connected reaches | P2 |
-| [#192](https://github.com/SWORD-Global/SWORD/issues/192) | N006 | Investigate 2,596 boundary dist_out gaps >1km | P2 |
-| [#193](https://github.com/SWORD-Global/SWORD/issues/193) | N003 | Investigate 3,456 node spacing gaps >400m | P2 |
+| [#190](https://github.com/SWORD-Global/SWORD/issues/190) | N007 | Investigate 57 moderate topology gaps (800m–5km boundary) | **Closed** — all v17b-inherited, needs geometry fixes, deferred to v18 |
+| [#191](https://github.com/SWORD-Global/SWORD/issues/191) | T017 | Investigate 553 dist_out jumps >30km between connected reaches | **Closed** — duplicate of #192 |
+| [#192](https://github.com/SWORD-Global/SWORD/issues/192) | N006 | Investigate 2,596 boundary dist_out gaps >1km | **Closed** — all path-length artifacts at junctions, spatially verified |
+| [#193](https://github.com/SWORD-Global/SWORD/issues/193) | N003 | Investigate 3,456 node spacing gaps >400m | **Closed** — v17b source data, defer to v18 |
 | [#194](https://github.com/SWORD-Global/SWORD/issues/194) | N013 | ~~Investigate 89,364 centerline-node misallocations >500m~~ **Resolved** — 99.7% fixed (311 remain, accepted as residual) | P1 |
-| [#195](https://github.com/SWORD-Global/SWORD/issues/195) | A030 | Investigate 4,816 WSE inversions downstream | P2 |
-| [#196](https://github.com/SWORD-Global/SWORD/issues/196) | T020 | Investigate 197 river name disagreements with neighbors | P3 |
+| [#195](https://github.com/SWORD-Global/SWORD/issues/195) | A030 | Investigate 4,816 WSE inversions downstream | **Closed** — MERIT DEM WSE, not SWOT; DEM noise, not actionable |
+| [#196](https://github.com/SWORD-Global/SWORD/issues/196) | T020 | Investigate 197 river name disagreements with neighbors | **Closed** — GRWL source data, informational |
 
 ## Source Files
 
