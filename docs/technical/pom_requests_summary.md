@@ -180,7 +180,7 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 
 | Check | Violations | Sev | Investigation issue | Root cause summary |
 |-------|-----------|-----|--------------------|--------------------|
-| N013 | 89,364 | WARN | [#194](https://github.com/SWORD-Global/SWORD/issues/194) | Systematic CL-node misallocation, AS=46K. Needs root cause diagnosis. |
+| N013 | ~~89,364~~ → **311** | WARN | [#194](https://github.com/SWORD-Global/SWORD/issues/194) | **99.7% resolved.** Root cause: UNC's sequential cl_id-range grouping mismatches spatial order on sinuous reaches. Fixed by `sync_centerline_node_ids()` (commit 7b0ca71) which reassigns CLs via cl_id_min/max boundaries. Remaining 311 are structurally far (node sparsity), not misassigned — spatial-nearest reassignment only helps 89 of them and would break cl_id_min/max contiguity on 26 reaches. Accepted as residual. |
 | A030 | 4,816 | WARN | [#195](https://github.com/SWORD-Global/SWORD/issues/195) | Mix of real backwater/dams + data errors (max 4,121m increase in AS) |
 | N003 | 3,456 | WARN | [#193](https://github.com/SWORD-Global/SWORD/issues/193) | Node spacing gaps, AS=72% of violations |
 | N006 | 2,596 | WARN | [#192](https://github.com/SWORD-Global/SWORD/issues/192) | Boundary dist_out discontinuities |
@@ -223,7 +223,7 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 | #157 | Node-level lint: dist_out, spacing, and boundary checks (N003-N007) | Closed |
 | #158 | Node/centerline allocation validation (POM Tests 8/9) | Closed |
 | #185 | Lint N012: node geolocation outside parent reach geometry (POM Test 9a) | Open |
-| #186 | Lint N013: centerline point too far from assigned node (POM Test 9d) | Open |
+| #186 | Lint N013: centerline point too far from assigned node (POM Test 9d) | Implemented (close) |
 
 ### Investigation (diagnose first, fix only after discussing with Jake)
 
@@ -236,7 +236,7 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 | [#191](https://github.com/SWORD-Global/SWORD/issues/191) | T017 | Investigate 553 dist_out jumps >30km between connected reaches | P2 |
 | [#192](https://github.com/SWORD-Global/SWORD/issues/192) | N006 | Investigate 2,596 boundary dist_out gaps >1km | P2 |
 | [#193](https://github.com/SWORD-Global/SWORD/issues/193) | N003 | Investigate 3,456 node spacing gaps >400m | P2 |
-| [#194](https://github.com/SWORD-Global/SWORD/issues/194) | N013 | Investigate 89,364 centerline-node misallocations >500m | P1 |
+| [#194](https://github.com/SWORD-Global/SWORD/issues/194) | N013 | ~~Investigate 89,364 centerline-node misallocations >500m~~ **Resolved** — 99.7% fixed (311 remain, accepted as residual) | P1 |
 | [#195](https://github.com/SWORD-Global/SWORD/issues/195) | A030 | Investigate 4,816 WSE inversions downstream | P2 |
 | [#196](https://github.com/SWORD-Global/SWORD/issues/196) | T020 | Investigate 197 river name disagreements with neighbors | P3 |
 
