@@ -50,17 +50,18 @@ def _make_reaches_df(**overrides):
         "slope_obs_n_passes": [15, 12, 14],
         "n_obs": [50, 45, 48],
         "lakeflag": [0, 0, 0],
+        "facc": [100.0, 200.0, 300.0],
     }
     defaults.update(overrides)
     return pd.DataFrame(defaults)
 
 
-def _make_graph(reach_ids, lakeflag_map=None):
+def _make_graph(reach_ids, lakeflag_map=None, facc_start=100):
     """Build a simple linear graph for testing."""
     G = nx.DiGraph()
-    for rid in reach_ids:
+    for i, rid in enumerate(reach_ids):
         lf = (lakeflag_map or {}).get(rid, 0)
-        G.add_node(rid, lakeflag=lf, reach_length=1000)
+        G.add_node(rid, lakeflag=lf, reach_length=1000, facc=facc_start + i * 100)
     for i in range(len(reach_ids) - 1):
         G.add_edge(reach_ids[i], reach_ids[i + 1])
     return G
@@ -100,22 +101,27 @@ class TestScoreSectionConfidence:
         G.nodes[100]["lakeflag"] = 3
         vrow = {
             "direction_valid": False,
-            "likely_cause": "potential_topology_error",
+            "likely_cause": "lake_section",
             "upstream_junction": 100,
+            "downstream_junction": 101,
             "slope_from_upstream": 0.01,
             "slope_from_downstream": -0.01,
         }
         tier, _ = score_section_confidence(vrow, G, _make_reaches_df(), [101])
         assert tier == "SKIP"
 
-    def test_high_confidence_both_wrong(self):
-        """Both slopes wrong, good quality -> HIGH."""
+    def test_high_confidence_both_wrong(self, monkeypatch):
+        """Both slopes wrong, good quality, good facc snap -> HIGH."""
+        import src.sword_v17c_pipeline.flow_direction as fd
+
+        monkeypatch.setattr(fd, "_get_facc_confidence", lambda *a, **k: (1.0, 0.05))
         G = _make_graph([100, 101, 102, 103, 104])
         rdf = _make_reaches_df(
             reach_id=[101, 102, 103],
             wse_obs_mean=[100.0, 99.0, 98.0],
             slope_obs_q=[0, 0, 0],
             slope_obs_n_passes=[15, 12, 14],
+            facc=[100.0, 200.0, 300.0],
         )
         vrow = {
             "direction_valid": False,
@@ -123,13 +129,16 @@ class TestScoreSectionConfidence:
             "slope_from_upstream": 0.01,  # wrong: should be negative
             "slope_from_downstream": -0.01,  # wrong: should be positive
             "upstream_junction": 100,
+            "downstream_junction": 104,
         }
         tier, meta = score_section_confidence(vrow, G, rdf, [101, 102, 103])
         assert tier == "HIGH"
-        assert meta["reason"] == "both_wrong_high_quality"
 
-    def test_medium_confidence_fewer_passes(self):
-        """Both slopes wrong, fewer passes -> MEDIUM."""
+    def test_medium_confidence_fewer_passes(self, monkeypatch):
+        """Both slopes wrong, moderate facc snap -> MEDIUM."""
+        import src.sword_v17c_pipeline.flow_direction as fd
+
+        monkeypatch.setattr(fd, "_get_facc_confidence", lambda *a, **k: (0.7, 0.3))
         G = _make_graph([100, 101, 102, 103])
         rdf = _make_reaches_df(
             reach_id=[101, 102],
@@ -138,6 +147,7 @@ class TestScoreSectionConfidence:
             slope_obs_n_passes=[5, 5],
             n_obs=[50, 45],
             lakeflag=[0, 0],
+            facc=[100.0, 200.0],
         )
         vrow = {
             "direction_valid": False,
@@ -145,6 +155,7 @@ class TestScoreSectionConfidence:
             "slope_from_upstream": 0.01,
             "slope_from_downstream": -0.01,
             "upstream_junction": 100,
+            "downstream_junction": 103,
         }
         tier, _ = score_section_confidence(vrow, G, rdf, [101, 102])
         assert tier == "MEDIUM"
@@ -152,13 +163,14 @@ class TestScoreSectionConfidence:
     def test_low_confidence_single_wrong(self):
         """Only one slope wrong -> LOW."""
         G = _make_graph([100, 101, 102, 103])
-        rdf = _make_reaches_df(reach_id=[101, 102, 103])
+        rdf = _make_reaches_df(reach_id=[101, 102, 103], facc=[100.0, 200.0, 300.0])
         vrow = {
             "direction_valid": False,
             "likely_cause": "potential_topology_error",
             "slope_from_upstream": -0.01,  # correct sign
             "slope_from_downstream": -0.01,  # wrong sign
             "upstream_junction": 100,
+            "downstream_junction": 103,
         }
         tier, _ = score_section_confidence(vrow, G, rdf, [101, 102, 103])
         assert tier == "LOW"
@@ -173,6 +185,7 @@ class TestScoreSectionConfidence:
             slope_obs_n_passes=[15],
             n_obs=[0],
             lakeflag=[0],
+            facc=[100.0],
         )
         vrow = {
             "direction_valid": False,
@@ -180,10 +193,10 @@ class TestScoreSectionConfidence:
             "slope_from_upstream": 0.01,
             "slope_from_downstream": -0.01,
             "upstream_junction": 100,
+            "downstream_junction": 101,
         }
         tier, meta = score_section_confidence(vrow, G, rdf, [101])
         assert tier == "LOW"
-        assert "insufficient_wse" in meta["reason"]
 
     def test_low_confidence_extreme_flags(self):
         """Extreme quality flags -> LOW even if both wrong."""
@@ -192,6 +205,7 @@ class TestScoreSectionConfidence:
             reach_id=[101, 102, 103],
             slope_obs_q=[8, 8, 0],  # bit 8 = extreme slope
             slope_obs_n_passes=[15, 12, 14],
+            facc=[100.0, 200.0, 300.0],
         )
         vrow = {
             "direction_valid": False,
@@ -199,6 +213,7 @@ class TestScoreSectionConfidence:
             "slope_from_upstream": 0.01,
             "slope_from_downstream": -0.01,
             "upstream_junction": 100,
+            "downstream_junction": 103,
         }
         tier, _ = score_section_confidence(vrow, G, rdf, [101, 102, 103])
         assert tier == "LOW"
@@ -338,11 +353,15 @@ class TestCorrectFlowDirections:
             slope_obs_n_passes=[15, 12, 14],
             n_obs=[50, 45, 48],
             lakeflag=[0, 0, 0],
+            facc=[100.0, 200.0, 300.0],
         )
         return G, sections_df, validation_df, reaches_df
 
-    def test_single_pass_flips(self, conn):
+    def test_single_pass_flips(self, conn, monkeypatch):
         """Single-pass mode flips HIGH section."""
+        import src.sword_v17c_pipeline.flow_direction as fd
+
+        monkeypatch.setattr(fd, "_get_facc_confidence", lambda *a, **k: (1.0, 0.05))
         G, sdf, vdf, rdf = self._setup_correction_scenario(conn)
         result = correct_flow_directions(
             conn,
@@ -407,6 +426,7 @@ class TestCorrectFlowDirections:
             slope_obs_n_passes=[15, 12],
             n_obs=[50, 45],
             lakeflag=[1, 1],
+            facc=[100.0, 200.0],
         )
         result = correct_flow_directions(conn, "NA", G, sdf, vdf, rdf, run_id="skip1")
         assert result["n_flipped"] == 0

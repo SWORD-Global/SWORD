@@ -1,0 +1,35 @@
+{
+  "region": "NA",
+  "n_invalid": 820,
+  "n_high_medium": 18,
+  "n_approved": 3,
+  "approved_sections": [
+    {
+      "section_id": 2404,
+      "tier": "HIGH",
+      "n_reaches": 3,
+      "dem_slope": 0.00012000215378881544,
+      "swot_slope": 5.806483636769562e-06,
+      "facc_frac": 0.0,
+      "reason": "slopes_plus_supporting"
+    },
+    {
+      "section_id": 2434,
+      "tier": "HIGH",
+      "n_reaches": 25,
+      "dem_slope": 0.00039570982435781644,
+      "swot_slope": 0.00044133938651278067,
+      "facc_frac": 0.0,
+      "reason": "multi_signal_agreement"
+    },
+    {
+      "section_id": 2909,
+      "tier": "HIGH",
+      "n_reaches": 6,
+      "dem_slope": 0.0006748408047008625,
+      "swot_slope": 0.0014659526905192568,
+      "facc_frac": 0.0,
+      "reason": "multi_signal_agreement"
+    }
+  ]
+}

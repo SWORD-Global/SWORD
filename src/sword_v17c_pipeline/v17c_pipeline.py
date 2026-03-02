@@ -113,11 +113,13 @@ def compute_junction_slopes(
     """
     log("Computing junction slopes from SWOT data...")
 
-    # Create reach -> WSE mapping
+    # Create reach -> WSE mapping (prefer SWOT p50, fallback to DEM wse)
     wse_map = {}
     for _, row in reaches_df.iterrows():
         rid = int(row["reach_id"])
-        wse = row.get("wse_obs_mean")
+        wse = row.get("wse_obs_p50")
+        if not pd.notna(wse):
+            wse = row.get("wse")
         if pd.notna(wse):
             wse_map[rid] = wse
 
@@ -381,11 +383,11 @@ def _process_region_inner(
         path_vars = compute_path_variables(G, sections_df)
 
     # Compute junction-level validation (uses WSE data)
-    has_wse = (
-        reaches_df["wse_obs_mean"].notna().any()
-        if "wse_obs_mean" in reaches_df.columns
-        else False
-    )
+    has_wse = False
+    for _wc in ("wse_obs_p50", "wse"):
+        if _wc in reaches_df.columns and reaches_df[_wc].notna().any():
+            has_wse = True
+            break
     validation_df = pd.DataFrame()
 
     if has_wse:

@@ -63,7 +63,8 @@ def build_reach_graph(
             "main_side": row.get("main_side", 0),
             "type": row.get("type", 1),
             "end_reach": row.get("end_reach", 0),
-            "wse_obs_mean": row.get("wse_obs_mean"),
+            "wse": row.get("wse"),
+            "wse_obs_p50": row.get("wse_obs_p50"),
             "width_obs_median": row.get("width_obs_median"),
             "n_obs": row.get("n_obs", 0),
         }

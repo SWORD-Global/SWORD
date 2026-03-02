@@ -50,8 +50,8 @@ def load_reaches(conn: duckdb.DuckDBPyConnection, region: str) -> pd.DataFrame:
 
     # Optional columns (v17c additions)
     optional_cols = [
-        "wse_obs_mean",
-        "wse_obs_std",
+        "wse",
+        "wse_obs_p50",
         "width_obs_median",
         "n_obs",
         "main_side",
