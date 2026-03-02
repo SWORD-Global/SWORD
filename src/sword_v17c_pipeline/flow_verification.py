@@ -720,7 +720,7 @@ def rebuild_derived_attrs(
     _, sections_df = build_section_graph(G, junctions)
 
     # Steps 3-7: compute all v17c attributes
-    path_vars = compute_path_variables(G, sections_df)
+    path_vars = compute_path_variables(G, sections_df, region=region)
     hydro_dist = compute_hydro_distances(G)
     hw_out = compute_best_headwater_outlet(G)
     is_mainstem = compute_mainstem(G, hw_out)
