@@ -24,7 +24,20 @@ v17c_pipeline.py
     │   └── is_mainstem_edge
     ├── Build section graph (junction-to-junction)
     ├── Validate slopes at junctions (if WSE data available)
+    ├── **Automated Flow Direction Correction** (Heals legacy v17b errors)
     └── Write to sword_v17c.duckdb
+
+## Automated Flow Direction Correction
+
+The v17c pipeline now includes a methodical stage to detect and "heal" physically reversed reaches inherited from v17b.
+
+### Methodology: The "Hydrological Snap"
+To ensure high confidence before flipping any topology, the pipeline uses a multi-evidence scoring system:
+1. **Slope Signal:** Checks if SWOT WSE data indicates uphill flow in the current direction.
+2. **Hydrological Snap:** Performs a virtual flip and re-accumulates Flow Accumulation (fACC) from headwaters. If the flipped chain "snaps" perfectly into the downstream neighbor's drainage area (<20% error), confidence is boosted.
+3. **DAG Validation:** Ensures flips do not introduce cycles or illegal topological structures.
+
+Reaches with a confidence score > 80 are automatically flipped in the `reach_topology` table.
 ```
 
 ## New Columns Added

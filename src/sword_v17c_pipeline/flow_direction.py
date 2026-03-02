@@ -106,6 +106,75 @@ def _get_reach_quality(reach_ids: List[int], reaches_df: pd.DataFrame) -> Dict:
     }
 
 
+def _get_facc_confidence(
+    G: nx.DiGraph, 
+    reach_ids: List[int], 
+    reaches_df: pd.DataFrame,
+    upstream_junction: int,
+    downstream_junction: int
+) -> Tuple[float, float]:
+    """
+    Calculate confidence based on iterative FACC re-accumulation.
+    Returns (facc_delta_score, facc_snap_error).
+    """
+    # 1. Map reach data
+    r_map = reaches_df.set_index('reach_id').to_dict('index')
+    
+    # 2. Estimate local area (facc - sum(upstream_facc))
+    local_areas = {}
+    for rid in reach_ids + [upstream_junction, downstream_junction]:
+        if rid not in r_map: continue
+        preds = list(G.predecessors(rid))
+        up_facc = sum(r_map[p]['facc'] for p in preds if p in r_map)
+        local_areas[rid] = max(0, r_map[rid]['facc'] - up_facc)
+
+    # 3. Virtual Flip
+    G_test = G.copy()
+    edges_to_flip = []
+    ids_set = set(reach_ids) | {upstream_junction, downstream_junction}
+    for u, v in G.edges():
+        if u in ids_set and v in ids_set:
+            edges_to_flip.append((u, v))
+            
+    for u, v in edges_to_flip:
+        G_test.remove_edge(u, v)
+        G_test.add_edge(v, u)
+
+    # 4. Re-accumulate
+    new_facc = {rid: local_areas.get(rid, 0) for rid in G_test.nodes()}
+    try:
+        for node in nx.topological_sort(G_test):
+            for succ in G_test.successors(node):
+                if succ in new_facc:
+                    new_facc[succ] += new_facc[node]
+    except nx.NetworkXUnfeasible:
+        return 0.0, 1.0 # Cycle created
+
+    # 5. Measure "Snap" at new downstream boundary
+    # In the flipped graph, the original upstream headwater becomes the new outlet
+    new_outlet = reach_ids[0] if reach_ids else None
+    if not new_outlet or new_outlet not in G_test:
+        return 0.0, 1.0
+        
+    dn_neighbors = list(G_test.successors(new_outlet))
+    if not dn_neighbors:
+        return 0.0, 1.0
+        
+    neighbor = dn_neighbors[0]
+    if neighbor not in r_map:
+        return 0.5, 0.5 # Neutral
+        
+    calc_val = new_facc[new_outlet]
+    expected_val = r_map[neighbor]['facc']
+    
+    snap_error = abs(calc_val - expected_val) / (expected_val + 1)
+    
+    # Confidence: 1.0 if perfect snap, 0.0 if huge mismatch
+    facc_conf = max(0, 1.0 - (snap_error / 0.5)) 
+    
+    return facc_conf, snap_error
+
+
 def score_section_confidence(
     validation_row: Dict,
     G: nx.DiGraph,
@@ -115,11 +184,7 @@ def score_section_confidence(
 ) -> Tuple[str, Dict]:
     """
     Score a section into HIGH / MEDIUM / LOW / SKIP confidence tier.
-
-    HIGH: both slopes wrong, majority good quality, >=10 passes, >=3 WSE reaches
-    MEDIUM: both slopes wrong, >=2 WSE reaches, no extreme flags
-    LOW: single slope wrong, quality issues, or insufficient WSE
-    SKIP: lake/reservoir, extreme data error, tidal, or already valid
+    Now uses both Slope (WSE) and Hydrological Snap (FACC) signals.
     """
     likely_cause = validation_row.get("likely_cause")
     direction_valid = validation_row.get("direction_valid")
@@ -132,38 +197,39 @@ def score_section_confidence(
     if likely_cause in ("lake_section", "extreme_slope_data_error"):
         return "SKIP", {"reason": f"likely_cause={likely_cause}"}
 
-    # Tidal check
-    uj = validation_row.get("upstream_junction")
-    if uj is not None and uj in G.nodes:
-        if G.nodes[uj].get("lakeflag", 0) == 3:
-            return "SKIP", {"reason": "tidal_section"}
-
+    # 1. Slope Signals
     metrics = _get_reach_quality(reach_ids, reaches_df)
     upstream_wrong = pd.notna(slope_up) and slope_up > 0
     downstream_wrong = pd.notna(slope_dn) and slope_dn < 0
     both_wrong = upstream_wrong and downstream_wrong
 
+    # 2. Hydrological Snap Signal (The "Methodical Solver")
+    uj = validation_row.get("upstream_junction")
+    dj = validation_row.get("downstream_junction")
+    facc_conf, snap_error = _get_facc_confidence(G, reach_ids, reaches_df, uj, dj)
+
     meta = {
         "upstream_wrong": upstream_wrong,
         "downstream_wrong": downstream_wrong,
+        "facc_confidence": facc_conf,
+        "snap_error": snap_error,
         **metrics,
     }
 
-    if metrics["n_with_wse"] < min_wse_reaches:
-        return "LOW", {**meta, "reason": "insufficient_wse"}
+    # Combined Decision Logic
+    # HIGH: Both slopes wrong AND FACC snaps perfectly (<20% error)
+    if both_wrong and snap_error < 0.2:
+        return "HIGH", {**meta, "reason": "slope_and_facc_agreement"}
+    
+    # MEDIUM: FACC snaps perfectly even if slope signal is noisy
+    if snap_error < 0.1:
+        return "MEDIUM", {**meta, "reason": "strong_facc_snap"}
 
-    if both_wrong:
-        if (
-            metrics["frac_good_q"] > 0.5
-            and metrics["median_n_passes"] >= 10
-            and metrics["n_with_wse"] >= 3
-            and not metrics["has_extreme_flags"]
-        ):
-            return "HIGH", {**meta, "reason": "both_wrong_high_quality"}
-        if metrics["n_with_wse"] >= 2 and not metrics["has_extreme_flags"]:
-            return "MEDIUM", {**meta, "reason": "both_wrong_moderate_quality"}
+    # MEDIUM: Both slopes wrong and decent FACC snap
+    if both_wrong and snap_error < 0.4:
+        return "MEDIUM", {**meta, "reason": "both_wrong_moderate_snap"}
 
-    return "LOW", {**meta, "reason": "single_wrong_or_quality_issues"}
+    return "LOW", {**meta, "reason": "conflicting_or_weak_signals"}
 
 
 def flip_section_topology(

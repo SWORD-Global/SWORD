@@ -721,13 +721,13 @@ def main():
     parser.add_argument(
         "--skip-flow-correction",
         action="store_true",
-        default=True,
-        help="Skip flow direction correction (default: on — correction disabled until scoring is reliable)",
+        help="Skip flow direction correction",
     )
     parser.add_argument(
         "--enable-flow-correction",
         action="store_true",
-        help="Enable flow direction correction (experimental, disabled by default)",
+        default=True,
+        help="Enable flow direction correction (Default: True)",
     )
     parser.add_argument(
         "--rollback-flow-corrections",

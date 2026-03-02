@@ -7,7 +7,11 @@ Categorizes reach pairs where WSE increases downstream by magnitude,
 obstruction proximity, and topological context.
 """
 
+import argparse
 import duckdb
+import pandas as pd
+import numpy as np
+from pathlib import Path
 
 DB_PATH = "tests/sword_duckdb/fixtures/sword_test_minimal.duckdb"
 
@@ -24,6 +28,8 @@ def investigate_a030(db_path: str):
         r1.wse as wse_up,
         r2.wse as wse_down,
         (r2.wse - r1.wse) as wse_increase,
+        r1.wse_obs_p50 as obs_up,
+        r2.wse_obs_p50 as obs_down,
         r1.obstr_type as up_obstr,
         r2.obstr_type as dn_obstr,
         r1.lakeflag as up_lake,
@@ -42,7 +48,7 @@ def investigate_a030(db_path: str):
     df = conn.execute(query).fetchdf()
 
     if df.empty:
-        print("No A030 violations found in this database.")
+        print(f"No A030 violations found in {db_path}.")
         return
 
     # 2. Categorize
@@ -51,7 +57,8 @@ def investigate_a030(db_path: str):
             return "Precision Jitter (<1cm)"
         if row["wse_increase"] < 0.1:
             return "Minor Noise (<10cm)"
-        if row["up_obstr"] > 0 or row["dn_obstr"] > 0:
+        if (row["up_obstr"] is not None and row["up_obstr"] > 0) or \
+           (row["dn_obstr"] is not None and row["dn_obstr"] > 0):
             return "Potential Backwater (Near Dam)"
         if row["up_lake"] == 1 or row["dn_lake"] == 1:
             return "Lake Level Flatness/Noise"
@@ -71,8 +78,20 @@ def investigate_a030(db_path: str):
     cols = ["up_id", "dn_id", "wse_up", "wse_down", "wse_increase", "category"]
     print(df.sort_values("wse_increase", ascending=False).head(5)[cols])
 
+    # 3. Satellite Observation Check
+    obs_valid = df[df['obs_up'].notna() & df['obs_down'].notna() & (df['obs_up'] != -9999) & (df['obs_down'] != -9999)]
+    if not obs_valid.empty:
+        confirmed = len(obs_valid[obs_valid['obs_down'] > obs_valid['obs_up']])
+        print(f"\n=== SWOT Observation Check ===")
+        print(f"Of {len(obs_valid)} reaches with SWOT data:")
+        print(f"  - Satellite confirms inversion: {confirmed} ({100*confirmed/len(obs_valid):.1f}%)")
+        print(f"  - Satellite says downhill:     {len(obs_valid) - confirmed} ({100*(len(obs_valid)-confirmed)/len(obs_valid):.1f}%)")
+
     conn.close()
 
 
 if __name__ == "__main__":
-    investigate_a030(DB_PATH)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", default=DB_PATH)
+    args = parser.parse_args()
+    investigate_a030(args.db)
