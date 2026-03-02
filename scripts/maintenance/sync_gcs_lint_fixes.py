@@ -27,6 +27,10 @@ Usage:
         --db data/duckdb/sword_v17c.duckdb --apply \
         --sync-pg --pg-url "$SWORD_POSTGRES_URL"
 
+    # Apply to PostgreSQL only (no DuckDB file needed)
+    python scripts/maintenance/sync_gcs_lint_fixes.py \
+        --apply --pg-only
+
     # Custom bucket path
     python scripts/maintenance/sync_gcs_lint_fixes.py \
         --db data/duckdb/sword_v17c.duckdb \
@@ -330,6 +334,63 @@ def log_to_lint_fix_log(con, records: list[dict], action: str):
         fid += 1
 
 
+def get_existing_log_keys_pg(
+    pg_url: str,
+) -> tuple[dict[tuple, str | None], dict[tuple, str | None]]:
+    """Return dicts of {(check_id, reach_id): new_value} for fixes and skips from PostgreSQL."""
+    import psycopg2
+
+    conn = psycopg2.connect(pg_url)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'lint_fix_log'"
+        )
+        if not cur.fetchone():
+            return {}, {}
+
+        cur.execute(
+            "SELECT check_id, reach_id, new_value FROM lint_fix_log "
+            "WHERE action = 'fix' AND NOT undone"
+        )
+        fix_keys = {(r[0], r[1]): r[2] for r in cur.fetchall()}
+
+        cur.execute(
+            "SELECT check_id, reach_id, new_value FROM lint_fix_log "
+            "WHERE action = 'skip' AND NOT undone"
+        )
+        skip_keys = {(r[0], r[1]): r[2] for r in cur.fetchall()}
+        return fix_keys, skip_keys
+    finally:
+        conn.close()
+
+
+def log_to_lint_fix_log_pg(cur, records: list[dict], action: str):
+    """Batch-insert records into PostgreSQL lint_fix_log (uses SERIAL fix_id)."""
+    for rec in records:
+        notes = rec.get("notes", "") or ""
+        notes = f"[gcs_sync] {notes}".strip()
+        cur.execute(
+            """
+            INSERT INTO lint_fix_log
+                (check_id, reach_id, region, action,
+                 column_changed, old_value, new_value, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            [
+                rec.get("check_id"),
+                rec.get("reach_id"),
+                rec.get("region"),
+                action,
+                rec.get("column_changed"),
+                str(rec["old_value"]) if rec.get("old_value") is not None else None,
+                str(rec["new_value"]) if rec.get("new_value") is not None else None,
+                notes,
+            ],
+        )
+
+
 def resolve_pg_url(explicit_url: str | None) -> str | None:
     """Return PG connection string from explicit arg, env var, or None."""
     if explicit_url:
@@ -387,9 +448,14 @@ def main():
     parser = argparse.ArgumentParser(
         description="Sync lint fixes from GCS cloud reviewer to DuckDB and PostgreSQL"
     )
-    parser.add_argument("--db", required=True, help="Path to DuckDB database")
+    parser.add_argument("--db", default=None, help="Path to DuckDB database")
     parser.add_argument(
         "--apply", action="store_true", help="Apply fixes (dry-run without this)"
+    )
+    parser.add_argument(
+        "--pg-only",
+        action="store_true",
+        help="Skip DuckDB entirely — read dedup state from and apply fixes to PostgreSQL only",
     )
     parser.add_argument(
         "--sync-pg",
@@ -408,16 +474,22 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.sync_pg:
+    if not args.pg_only and not args.db:
+        print("ERROR: --db is required unless --pg-only is set")
+        sys.exit(1)
+
+    if args.pg_only or args.sync_pg:
         pg_url = resolve_pg_url(args.pg_url)
         if not pg_url:
-            print("ERROR: --sync-pg requires --pg-url or SWORD_POSTGRES_URL env var")
+            print(
+                "ERROR: --pg-only/--sync-pg requires --pg-url or SWORD_POSTGRES_URL env var"
+            )
             sys.exit(1)
         try:
             import psycopg2  # noqa: F401
         except ImportError:
             print(
-                "ERROR: --sync-pg requires psycopg2. Run: uv pip install psycopg2-binary"
+                "ERROR: --pg-only/--sync-pg requires psycopg2. Run: uv pip install psycopg2-binary"
             )
             sys.exit(1)
     else:
@@ -446,8 +518,11 @@ def main():
     fixes = deduplicate_within_batch(fixes)
     skips = deduplicate_within_batch(skips)
 
-    # Then: deduplicate against existing lint_fix_log in the DB
-    existing_fix_keys, existing_skip_keys = get_existing_log_keys(args.db)
+    # Then: deduplicate against existing lint_fix_log
+    if args.pg_only:
+        existing_fix_keys, existing_skip_keys = get_existing_log_keys_pg(pg_url)
+    else:
+        existing_fix_keys, existing_skip_keys = get_existing_log_keys(args.db)
 
     new_fixes, dupe_fixes = deduplicate(fixes, existing_fix_keys)
     new_skips, dupe_skips = deduplicate(skips, existing_skip_keys)
@@ -476,8 +551,135 @@ def main():
             print(f"\nWould log {len(new_skips)} skips (no reach modification)")
         return
 
-    # --- 5. Apply fixes via direct SQL (bypasses SWORD class in-memory arrays,
-    #         which don't expose all columns like 'type') ---
+    if args.pg_only:
+        _apply_pg_only(
+            args, pg_url, new_fixes, new_skips, dupe_fixes, dupe_skips, defer_count
+        )
+    else:
+        _apply_duckdb(
+            args, pg_url, new_fixes, new_skips, dupe_fixes, dupe_skips, defer_count
+        )
+
+
+def _apply_pg_only(
+    args, pg_url, new_fixes, new_skips, dupe_fixes, dupe_skips, defer_count
+):
+    """Apply all fixes and skips directly to PostgreSQL (no DuckDB)."""
+    import psycopg2
+    from psycopg2 import sql as pg_sql
+
+    # --- 5. Apply fixes ---
+    print("\n=== Applying fixes to PostgreSQL ===")
+    by_region: dict[str, list[dict]] = {}
+    for fix in new_fixes:
+        by_region.setdefault(fix.get("region", "UNKNOWN"), []).append(fix)
+
+    applied_count = 0
+    mismatch_count = 0
+    all_applied: list[dict] = []
+
+    conn = psycopg2.connect(pg_url)
+    try:
+        conn.autocommit = False
+        cur = conn.cursor()
+
+        for region, region_fixes in sorted(by_region.items()):
+            if region not in VALID_REGIONS:
+                print(f"\nSKIP region '{region}': not in {sorted(VALID_REGIONS)}")
+                mismatch_count += len(region_fixes)
+                continue
+
+            print(f"\nRegion {region}: {len(region_fixes)} fixes")
+
+            for fix in region_fixes:
+                reach_id = fix["reach_id"]
+                column = fix["column_changed"]
+                old_value = fix.get("old_value")
+                new_value = fix["new_value"]
+
+                if column not in ALLOWED_COLUMN_NAMES:
+                    print(
+                        f"  SKIP reach {reach_id}: "
+                        f"column '{column}' not in allowlist {sorted(ALLOWED_COLUMN_NAMES)}"
+                    )
+                    continue
+
+                # Verify current value matches expected old_value
+                cur.execute(
+                    pg_sql.SQL(
+                        "SELECT {} FROM reaches WHERE reach_id = %s AND region = %s"
+                    ).format(pg_sql.Identifier(column)),
+                    [reach_id, region],
+                )
+                row = cur.fetchone()
+
+                if row is None:
+                    print(f"  SKIP reach {reach_id}: not found in region {region}")
+                    continue
+
+                current = row[0]
+                if old_value is not None and str(current) != str(old_value):
+                    print(
+                        f"  SKIP reach {reach_id}: {column} is {current}, "
+                        f"expected {old_value} (already modified elsewhere?)"
+                    )
+                    mismatch_count += 1
+                    continue
+
+                try:
+                    val = _cast_column_value(column, new_value)
+                except (ValueError, TypeError):
+                    print(
+                        f"  SKIP reach {reach_id}: cannot cast {new_value!r} for {column}"
+                    )
+                    mismatch_count += 1
+                    continue
+
+                cur.execute(
+                    pg_sql.SQL(
+                        "UPDATE reaches SET {} = %s WHERE reach_id = %s AND region = %s"
+                    ).format(pg_sql.Identifier(column)),
+                    [val, reach_id, region],
+                )
+                all_applied.append(fix)
+                applied_count += 1
+                print(f"  Applied: reach {reach_id}: {column} = {val}")
+
+        # Log fixes to lint_fix_log
+        if all_applied:
+            log_to_lint_fix_log_pg(cur, all_applied, "fix")
+
+        # Log skips
+        if new_skips:
+            print(f"\nLogging {len(new_skips)} skips to lint_fix_log...")
+            log_to_lint_fix_log_pg(cur, new_skips, "skip")
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    # --- Summary ---
+    print("\n=== Summary ===")
+    print(f"  PostgreSQL fixes applied: {applied_count}")
+    print(f"  Fixes skipped (dedup):    {len(dupe_fixes)}")
+    print(f"  Fixes skipped (mismatch): {mismatch_count}")
+    print(f"  Skips logged:             {len(new_skips)}")
+    print(f"  Skips skipped (dedup):    {len(dupe_skips)}")
+    print(f"  Defers in GCS:            {defer_count}")
+    if args.db:
+        print(
+            "\n  NOTE: DuckDB was NOT updated (--pg-only). Sync DuckDB later with --db."
+        )
+
+
+def _apply_duckdb(
+    args, pg_url, new_fixes, new_skips, dupe_fixes, dupe_skips, defer_count
+):
+    """Original path: apply to DuckDB, optionally sync to PostgreSQL."""
+    # --- 5. Apply fixes via direct SQL ---
     print("\n=== Applying fixes to DuckDB ===")
     by_region: dict[str, list[dict]] = {}
     for fix in new_fixes:
@@ -558,7 +760,6 @@ def main():
                         mismatch_count += 1
                         continue
 
-                    # Direct SQL UPDATE
                     con.execute(
                         f"UPDATE reaches SET {column} = ? "  # noqa: S608 — column validated against ALLOWED_COLUMNS above
                         "WHERE reach_id = ? AND region = ?",
@@ -568,7 +769,6 @@ def main():
                     applied_count += 1
                     print(f"  Applied: reach {reach_id}: {column} = {val}")
 
-                # Log fixes
                 if applied_this_region:
                     con.execute(LINT_FIX_LOG_DDL)
                     log_to_lint_fix_log(con, applied_this_region, "fix")
