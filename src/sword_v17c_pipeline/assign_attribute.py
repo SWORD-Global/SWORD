@@ -25,16 +25,12 @@ import gc
 from functools import lru_cache
 from datetime import datetime
 
-# Region offsets for globally unique main_path_id values.
-# Each region gets a 1M-wide ID band so IDs never collide across regions.
-REGION_OFFSETS = {
-    "AF": 1_000_000,
-    "AS": 2_000_000,
-    "EU": 3_000_000,
-    "NA": 4_000_000,
-    "OC": 5_000_000,
-    "SA": 6_000_000,
-}
+# Pfafstetter-based offsets for globally unique IDs.
+# Uses the continent's first Pfafstetter digit (same as reach_id first digit)
+# so that IDs are self-documenting: main_path_id=3000042 -> AS.
+from pfaf_offsets import PFAF_CONTINENT_CODE
+
+REGION_OFFSETS = {k: v * 1_000_000 for k, v in PFAF_CONTINENT_CODE.items()}
 
 print("[IMPORT] Importing SWORD_graph...", file=sys.stderr, flush=True)
 from SWORD_graph import load_sword_data, create_edges_gdf, create_network_nodes_gdf

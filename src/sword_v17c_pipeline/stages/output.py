@@ -20,6 +20,7 @@ def save_to_duckdb(
     is_mainstem: Dict[int, bool],
     main_neighbors: Optional[Dict[int, Dict]] = None,
     path_vars: Optional[Dict[int, Dict]] = None,
+    subnetwork_ids: Optional[Dict[int, int]] = None,
 ) -> int:
     """
     Save computed v17c attributes to DuckDB reaches table.
@@ -33,6 +34,7 @@ def save_to_duckdb(
     rows = []
     mn = main_neighbors or {}
     pv = path_vars or {}
+    sn = subnetwork_ids or {}
     for reach_id in hydro_dist.keys():
         hd = hydro_dist.get(reach_id, {})
         ho = hw_out.get(reach_id, {})
@@ -57,6 +59,8 @@ def save_to_duckdb(
             row["stream_order"] = pvar.get("stream_order")
             row["path_segs"] = pvar.get("path_segs")
             row["path_order"] = pvar.get("path_order")
+        if reach_id in sn:
+            row["subnetwork_id"] = sn[reach_id]
         rows.append(row)
 
     if not rows:
@@ -100,6 +104,8 @@ def save_to_duckdb(
                 "path_order = u.path_order",
             ]
         )
+    if subnetwork_ids:
+        set_clauses.append("subnetwork_id = u.subnetwork_id")
 
     # Register DataFrame, update, and always unregister + recreate RTREE indexes
     conn.register("v17c_updates", update_df)

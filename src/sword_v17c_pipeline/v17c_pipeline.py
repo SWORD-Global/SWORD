@@ -53,6 +53,7 @@ from .stages.distances import compute_hydro_distances, compute_best_headwater_ou
 from .stages.mainstem import compute_mainstem, compute_main_neighbors
 from .stages.output import save_to_duckdb, save_sections_to_duckdb, apply_swot_slopes
 from .stages._logging import log
+from .pfaf_offsets import compute_subnetwork_ids
 
 __all__ = [
     "REGIONS",
@@ -70,6 +71,7 @@ __all__ = [
     "compute_best_headwater_outlet",
     "compute_mainstem",
     "compute_main_neighbors",
+    "compute_subnetwork_ids",
     "save_to_duckdb",
     "save_sections_to_duckdb",
     "apply_swot_slopes",
@@ -380,7 +382,7 @@ def _process_region_inner(
     # Compute path variables (path_freq, stream_order, path_segs, path_order)
     path_vars = None
     if not skip_path_vars:
-        path_vars = compute_path_variables(G, sections_df)
+        path_vars = compute_path_variables(G, sections_df, region=region)
 
     # Compute junction-level validation (uses WSE data)
     has_wse = False
@@ -451,6 +453,10 @@ def _process_region_inner(
     is_mainstem = compute_mainstem(G, hw_out)
     main_neighbors = compute_main_neighbors(G)
 
+    # Compute subnetwork_id (weakly connected components, Pfafstetter-offset)
+    subnetwork_ids = compute_subnetwork_ids(G, region=region)
+    log(f"subnetwork_id: {len(set(subnetwork_ids.values())):,} components")
+
     # Log changes in best_headwater/best_outlet assignments
     if old_hw_out:
         n_hw_changed = 0
@@ -476,6 +482,7 @@ def _process_region_inner(
             is_mainstem,
             main_neighbors,
             path_vars=path_vars,
+            subnetwork_ids=subnetwork_ids,
         )
         save_sections_to_duckdb(conn, region, sections_df, validation_df)
 

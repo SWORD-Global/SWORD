@@ -10,7 +10,9 @@ import pandas as pd
 from ._logging import log
 
 
-def compute_path_variables(G: nx.DiGraph, sections_df: pd.DataFrame) -> Dict[int, Dict]:
+def compute_path_variables(
+    G: nx.DiGraph, sections_df: pd.DataFrame, region: str = ""
+) -> Dict[int, Dict]:
     """
     Compute path_freq, stream_order, path_segs, and path_order for every reach.
 
@@ -23,6 +25,9 @@ def compute_path_variables(G: nx.DiGraph, sections_df: pd.DataFrame) -> Dict[int
     sections_df : pd.DataFrame
         Output of ``build_section_graph`` with columns
         ``section_id``, ``reach_ids``, etc.
+    region : str
+        Region code (e.g. 'NA'). When provided, path_segs IDs are offset by
+        the Pfafstetter continent code for global uniqueness.
 
     Returns
     -------
@@ -144,19 +149,23 @@ def compute_path_variables(G: nx.DiGraph, sections_df: pd.DataFrame) -> Dict[int
     # ------------------------------------------------------------------
     # 3. path_segs  (section-based segment identifier)
     # ------------------------------------------------------------------
+    from ..pfaf_offsets import pfaf_offset
+
+    seg_offset = pfaf_offset(region) if region else 0
+
     ps: Dict[int, int] = {}
     reach_to_section: Dict[int, int] = {}
 
     if sections_df is not None and len(sections_df) > 0:
         for _, row in sections_df.iterrows():
-            sid = int(row["section_id"]) + 1  # 1-based
+            sid = seg_offset + int(row["section_id"]) + 1  # 1-based + offset
             for rid in row["reach_ids"]:
                 rid = int(rid)
                 reach_to_section[rid] = sid
                 ps[rid] = sid
 
     # Junction reaches not in any section get unique IDs
-    max_seg = max(ps.values()) if ps else 0
+    max_seg = max(ps.values()) if ps else seg_offset
     next_seg = max_seg + 1
     for node in G.nodes():
         if node not in ps:
