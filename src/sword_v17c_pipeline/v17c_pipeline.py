@@ -447,11 +447,29 @@ def _process_region_inner(
     except Exception:
         log("No existing best_headwater/outlet assignments (first run)")
 
+    # Load backwater QC overrides (human-reviewed routing corrections)
+    overrides: Dict[int, Dict] = {}
+    try:
+        override_rows = conn.execute(
+            """
+            SELECT junction_reach_id, new_rch_id_up_main
+            FROM backwater_routing_fixes
+            WHERE region = ? AND fix_type = 'reroute'
+        """,
+            [region.upper()],
+        ).fetchall()
+        for jrid, new_up in override_rows:
+            overrides[int(jrid)] = {"rch_id_up_main": int(new_up)}
+        if overrides:
+            log(f"Loaded {len(overrides)} backwater routing overrides for {region}")
+    except duckdb.CatalogException:
+        pass  # table doesn't exist yet
+
     # Compute new attributes
     hydro_dist = compute_hydro_distances(G)
-    hw_out = compute_best_headwater_outlet(G)
+    hw_out = compute_best_headwater_outlet(G, overrides=overrides)
     is_mainstem = compute_mainstem(G, hw_out)
-    main_neighbors = compute_main_neighbors(G)
+    main_neighbors = compute_main_neighbors(G, overrides=overrides)
 
     # Compute subnetwork_id (weakly connected components, Pfafstetter-offset)
     subnetwork_ids = compute_subnetwork_ids(G, region=region)
@@ -568,6 +586,27 @@ def create_v17c_tables(conn: duckdb.DuckDBPyConnection) -> None:
             direction_valid BOOLEAN,
             likely_cause VARCHAR,
             PRIMARY KEY (section_id, region)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS backwater_routing_fixes (
+            fix_id VARCHAR PRIMARY KEY,
+            outlet_id BIGINT NOT NULL,
+            fix_type VARCHAR NOT NULL,
+            junction_reach_id BIGINT,
+            old_rch_id_up_main BIGINT,
+            new_rch_id_up_main BIGINT,
+            old_branch_facc DOUBLE,
+            new_branch_facc DOUBLE,
+            old_branch_width DOUBLE,
+            new_branch_width DOUBLE,
+            user_id VARCHAR,
+            region VARCHAR(2),
+            network INTEGER,
+            import_run_id VARCHAR NOT NULL,
+            applied_at TIMESTAMP DEFAULT current_timestamp,
+            pipeline_rerun BOOLEAN DEFAULT FALSE
         )
     """)
 
