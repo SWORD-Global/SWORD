@@ -1,68 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
-  <defs>
-    <marker id="arrowR" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6" fill="#5a7bad"/>
-    </marker>
-    <marker id="arrowL" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
-      <path d="M8,0 L0,3 L8,6" fill="#5a7bad"/>
-    </marker>
-    <marker id="flowArrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7" fill="#2980b9"/>
-    </marker>
-  </defs>
-
-  <!-- Background -->
-  <rect width="720" height="260" rx="6" fill="#fafbfc" stroke="#e1e4e8" stroke-width="1"/>
-
-  <!-- Title -->
-  <text x="360" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#24292e">Figure 1. Node ordering within a reach</text>
-
-  <!-- Flow arrow -->
-  <line x1="105" y1="62" x2="170" y2="62" stroke="#2980b9" stroke-width="1.5" marker-end="url(#flowArrow)"/>
-  <text x="138" y="56" text-anchor="middle" font-size="10" fill="#2980b9">flow</text>
-
-  <!-- Centerline (curved path for realism) -->
-  <path d="M100,110 C160,95 200,125 270,105 C340,85 380,130 450,110 C520,90 560,120 630,105"
-        fill="none" stroke="#d1d9e0" stroke-width="14" stroke-linecap="round"/>
-  <path d="M100,110 C160,95 200,125 270,105 C340,85 380,130 450,110 C520,90 560,120 630,105"
-        fill="none" stroke="#e8edf2" stroke-width="10" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" font-family="sans-serif">
+  <!-- Straight Line -->
+  <line x1="100" y1="100" x2="630" y2="100" stroke="#ccc" stroke-width="12" stroke-linecap="round"/>
 
   <!-- Nodes -->
-  <circle cx="100" cy="110" r="9" fill="#e74c3c" stroke="white" stroke-width="2"/>
-  <circle cx="195" cy="107" r="9" fill="#95a5a6" stroke="white" stroke-width="2"/>
-  <circle cx="280" cy="104" r="9" fill="#95a5a6" stroke="white" stroke-width="2"/>
-  <circle cx="370" cy="112" r="9" fill="#95a5a6" stroke="white" stroke-width="2"/>
-  <circle cx="460" cy="108" r="9" fill="#95a5a6" stroke="white" stroke-width="2"/>
-  <circle cx="545" cy="102" r="9" fill="#95a5a6" stroke="white" stroke-width="2"/>
-  <circle cx="630" cy="105" r="9" fill="#27ae60" stroke="white" stroke-width="2"/>
+  <circle cx="100" cy="100" r="8" fill="#e74c3c"/> <!-- dn_node -->
+  <circle cx="190" cy="100" r="6" fill="#95a5a6"/>
+  <circle cx="280" cy="100" r="6" fill="#95a5a6"/>
+  <circle cx="370" cy="100" r="6" fill="#95a5a6"/>
+  <circle cx="460" cy="100" r="6" fill="#95a5a6"/>
+  <circle cx="540" cy="100" r="6" fill="#95a5a6"/>
+  <circle cx="630" cy="100" r="8" fill="#27ae60"/> <!-- up_node -->
 
-  <!-- node_order labels above -->
-  <text x="100" y="82" text-anchor="middle" font-size="12" font-weight="600" fill="#24292e">1</text>
-  <text x="195" y="82" text-anchor="middle" font-size="12" font-weight="600" fill="#24292e">2</text>
-  <text x="280" y="82" text-anchor="middle" font-size="12" font-weight="600" fill="#24292e">3</text>
-  <text x="370" y="82" text-anchor="middle" font-size="12" font-weight="600" fill="#24292e">4</text>
-  <text x="460" y="82" text-anchor="middle" font-size="12" font-weight="600" fill="#24292e">5</text>
-  <text x="545" y="82" text-anchor="middle" font-size="12" font-weight="600" fill="#24292e">6</text>
-  <text x="630" y="82" text-anchor="middle" font-size="12" font-weight="600" fill="#24292e">n</text>
+  <!-- Labels: node_order -->
+  <text x="100" y="75" text-anchor="middle" font-size="12" font-weight="bold">1</text>
+  <text x="190" y="75" text-anchor="middle" font-size="12">2</text>
+  <text x="280" y="75" text-anchor="middle" font-size="12">3</text>
+  <text x="370" y="75" text-anchor="middle" font-size="12">4</text>
+  <text x="460" y="75" text-anchor="middle" font-size="12">5</text>
+  <text x="540" y="75" text-anchor="middle" font-size="12">6</text>
+  <text x="630" y="75" text-anchor="middle" font-size="12" font-weight="bold">n</text>
 
-  <!-- node_order header -->
-  <text x="365" y="70" text-anchor="middle" font-size="10" fill="#6a737d" font-style="italic">node_order</text>
+  <text x="365" y="55" text-anchor="middle" font-size="11" fill="#666" font-style="italic">node_order</text>
 
-  <!-- dn_node_id label -->
-  <line x1="100" y1="130" x2="100" y2="155" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="3,2"/>
-  <text x="100" y="170" text-anchor="middle" font-size="11" font-weight="600" fill="#e74c3c">dn_node_id</text>
-  <text x="100" y="184" text-anchor="middle" font-size="9" fill="#6a737d">(lowest dist_out)</text>
+  <!-- Node IDs -->
+  <text x="100" y="130" text-anchor="middle" font-size="11" font-weight="bold" fill="#e74c3c">dn_node_id</text>
+  <text x="100" y="145" text-anchor="middle" font-size="9" fill="#999">lowest dist_out</text>
 
-  <!-- up_node_id label -->
-  <line x1="630" y1="125" x2="630" y2="155" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="3,2"/>
-  <text x="630" y="170" text-anchor="middle" font-size="11" font-weight="600" fill="#27ae60">up_node_id</text>
-  <text x="630" y="184" text-anchor="middle" font-size="9" fill="#6a737d">(highest dist_out)</text>
+  <text x="630" y="130" text-anchor="middle" font-size="11" font-weight="bold" fill="#27ae60">up_node_id</text>
+  <text x="630" y="145" text-anchor="middle" font-size="9" fill="#999">highest dist_out</text>
 
-  <!-- dist_out arrow -->
-  <line x1="130" y1="220" x2="600" y2="220" stroke="#5a7bad" stroke-width="1.5"
-        marker-start="url(#arrowL)" marker-end="url(#arrowR)"/>
-  <text x="365" y="215" text-anchor="middle" font-size="10" fill="#5a7bad">dist_out increases upstream</text>
-
-  <!-- Legend -->
-  <text x="365" y="248" text-anchor="middle" font-size="9.5" fill="#6a737d">Node IDs may not follow dist_out order after flow-direction corrections; node_order provides the authoritative sequence.</text>
+  <!-- Legend / Flow -->
+  <text x="365" y="165" text-anchor="middle" font-size="10" fill="#666">dist_out increases upstream (opposite flow)</text>
+  <text x="50" y="105" text-anchor="end" font-size="11" fill="#999" font-style="italic">flow &#8594;</text>
 </svg>
