@@ -117,7 +117,7 @@ def check_hydro_dist_out_monotonicity(
     "V002",
     Category.V17C,
     Severity.INFO,
-    "hydro_dist_out vs pathlen_out difference tracking",
+    "hydro_dist_out vs (pathlen_out + reach_length) difference tracking",
 )
 def check_hydro_dist_vs_pathlen(
     conn: duckdb.DuckDBPyConnection,
@@ -125,13 +125,12 @@ def check_hydro_dist_vs_pathlen(
     threshold: Optional[float] = None,
 ) -> CheckResult:
     """
-    Track difference between hydro_dist_out and pathlen_out.
+    Track difference between hydro_dist_out and (pathlen_out + reach_length).
 
-    These use different algorithms:
-    - hydro_dist_out: Dijkstra to ANY outlet
-    - pathlen_out: Path to SPECIFIC best_outlet
-
-    Differences are EXPECTED, this check documents them.
+    hydro_dist_out walks rch_id_dn_main accumulating reach_length (including
+    self), so it should equal pathlen_out + reach_length for all reaches.
+    Large differences indicate rch_id_dn_main chain diverges from the
+    best_outlet path used by pathlen_out.
     """
     where_clause = f"AND r.region = '{region}'" if region else ""
 
@@ -156,16 +155,18 @@ def check_hydro_dist_vs_pathlen(
         r.reach_id, r.region, r.river_name, r.x, r.y,
         r.hydro_dist_out,
         r.pathlen_out,
-        ABS(r.hydro_dist_out - r.pathlen_out) as diff,
+        r.reach_length,
+        r.pathlen_out + r.reach_length as expected,
+        ABS(r.hydro_dist_out - (r.pathlen_out + r.reach_length)) as diff,
         CASE
             WHEN r.hydro_dist_out > 0
-            THEN 100.0 * ABS(r.hydro_dist_out - r.pathlen_out) / r.hydro_dist_out
+            THEN 100.0 * ABS(r.hydro_dist_out - (r.pathlen_out + r.reach_length)) / r.hydro_dist_out
             ELSE 0
         END as diff_pct
     FROM reaches r
     WHERE r.hydro_dist_out IS NOT NULL
         AND r.pathlen_out IS NOT NULL
-        AND ABS(r.hydro_dist_out - r.pathlen_out) > 1000  -- >1km difference
+        AND ABS(r.hydro_dist_out - (r.pathlen_out + r.reach_length)) > 1000  -- >1km difference
         {where_clause}
     ORDER BY diff DESC
     LIMIT 1000
@@ -189,7 +190,7 @@ def check_hydro_dist_vs_pathlen(
         issues_found=len(issues),
         issue_pct=100 * len(issues) / total if total > 0 else 0,
         details=issues,
-        description=f"Reaches with >1km difference between hydro_dist_out and pathlen_out ({len(issues)} found)",
+        description=f"Reaches with >1km difference between hydro_dist_out and pathlen_out + reach_length ({len(issues)} found)",
     )
 
 
@@ -715,4 +716,93 @@ def check_main_path_id_global_uniqueness(
         issue_pct=100 * len(issues) / total if total > 0 else 0,
         details=issues,
         description=f"main_path_id values mapping to multiple (best_headwater, best_outlet) tuples ({len(issues)} collisions)",
+    )
+
+
+@register_check(
+    "V009",
+    Category.V17C,
+    Severity.WARNING,
+    "dist_out_dijkstra must decrease downstream (min of all downstream neighbors)",
+    default_threshold=100.0,
+)
+def check_dist_out_dijkstra_monotonicity(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check that dist_out_dijkstra decreases downstream.
+
+    Dijkstra computes shortest path to ANY outlet, so violations are
+    expected at multi-outlet bifurcations where one branch leads to a
+    more distant outlet. ~1,210 violations expected globally.
+    """
+    tolerance = threshold if threshold is not None else 100.0
+    where_clause = f"AND r1.region = '{region}'" if region else ""
+
+    try:
+        conn.execute("SELECT dist_out_dijkstra FROM reaches LIMIT 1")
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V009",
+            name="dist_out_dijkstra_monotonicity",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Column dist_out_dijkstra not found (v17c pipeline not run)",
+        )
+
+    query = f"""
+    WITH min_downstream AS (
+        SELECT
+            r1.reach_id,
+            r1.region,
+            r1.dist_out_dijkstra as dist_up,
+            MIN(r2.dist_out_dijkstra) as min_dist_down,
+            r1.river_name,
+            r1.x, r1.y,
+            r1.n_rch_down
+        FROM reaches r1
+        JOIN reach_topology rt ON r1.reach_id = rt.reach_id AND r1.region = rt.region
+        JOIN reaches r2 ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
+        WHERE rt.direction = 'down'
+            AND r1.dist_out_dijkstra IS NOT NULL
+            AND r2.dist_out_dijkstra IS NOT NULL
+            {where_clause}
+        GROUP BY r1.reach_id, r1.region, r1.dist_out_dijkstra, r1.river_name, r1.x, r1.y, r1.n_rch_down
+    )
+    SELECT
+        reach_id, region, river_name, x, y,
+        dist_up, min_dist_down,
+        (min_dist_down - dist_up) as dist_increase,
+        n_rch_down
+    FROM min_downstream
+    WHERE min_dist_down > dist_up + {tolerance}
+    ORDER BY dist_increase DESC
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r1
+    WHERE dist_out_dijkstra IS NOT NULL
+    {where_clause.replace("r1.", "")}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V009",
+        name="dist_out_dijkstra_monotonicity",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Reaches where min(downstream dist_out_dijkstra) increases (expected at multi-outlet bifurcations)",
+        threshold=tolerance,
     )

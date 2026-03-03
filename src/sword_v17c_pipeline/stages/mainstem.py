@@ -45,20 +45,27 @@ def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict[int, Dict]) -> Dict[int, 
 
 
 def compute_main_neighbors(
-    G: nx.DiGraph, overrides: Dict[int, Dict] | None = None
+    G: nx.DiGraph,
+    hw_out_attrs: Dict[int, Dict] | None = None,
+    overrides: Dict[int, Dict] | None = None,
 ) -> Dict[int, Dict]:
     """
     Compute rch_id_up_main and rch_id_dn_main for each reach.
 
     For each node, selects the main upstream predecessor and main downstream
-    successor using the same (effective_width, log_facc) ranking used by
-    best_headwater/best_outlet, ensuring consistent routing across all v17c
-    columns.
+    successor using the same (effective_width, log_facc, pathlen) ranking
+    used by best_headwater/best_outlet, ensuring consistent routing across
+    all v17c columns.
 
     Parameters
     ----------
     G : nx.DiGraph
         Reach-level directed graph.
+    hw_out_attrs : dict, optional
+        Output from ``compute_best_headwater_outlet``.  Provides
+        ``pathlen_hw`` and ``pathlen_out`` per reach as a third tiebreaker
+        so that width/facc ties are resolved identically to the best-outlet
+        algorithm.
     overrides : dict, optional
         Human-reviewed corrections from backwater QC.
         ``{junction_reach_id: {"rch_id_up_main": corrected_reach_id}}``.
@@ -68,9 +75,26 @@ def compute_main_neighbors(
     Returns dict {reach_id: {'rch_id_up_main': int|None, 'rch_id_dn_main': int|None}}.
     """
     overrides = overrides or {}
+    hw_out_attrs = hw_out_attrs or {}
     n_overrides_applied = 0
 
     log("Computing main neighbors (rch_id_up_main / rch_id_dn_main)...")
+
+    def _up_key(n: int) -> tuple:
+        return (
+            G.nodes[n].get("effective_width", 0) or 0,
+            G.nodes[n].get("log_facc", 0) or 0,
+            (hw_out_attrs.get(n, {}).get("pathlen_hw", 0) or 0)
+            + (G.nodes[n].get("reach_length", 0) or 0),
+        )
+
+    def _dn_key(n: int) -> tuple:
+        return (
+            G.nodes[n].get("effective_width", 0) or 0,
+            G.nodes[n].get("log_facc", 0) or 0,
+            (hw_out_attrs.get(n, {}).get("pathlen_out", 0) or 0)
+            + (G.nodes[n].get("reach_length", 0) or 0),
+        )
 
     results = {}
 
@@ -90,35 +114,16 @@ def compute_main_neighbors(
                         f"rch_id_up_main={candidate} but it is not a "
                         f"predecessor (preds={preds}), falling back to ranking"
                     )
-                    rch_id_up_main = max(
-                        preds,
-                        key=lambda n: (
-                            G.nodes[n].get("effective_width", 0) or 0,
-                            G.nodes[n].get("log_facc", 0) or 0,
-                        ),
-                    )
+                    rch_id_up_main = max(preds, key=_up_key)
             else:
-                rch_id_up_main = max(
-                    preds,
-                    key=lambda n: (
-                        G.nodes[n].get("effective_width", 0) or 0,
-                        G.nodes[n].get("log_facc", 0) or 0,
-                    ),
-                )
+                rch_id_up_main = max(preds, key=_up_key)
         else:
             rch_id_up_main = None
 
         # Main downstream neighbor: pick best successor
         succs = list(G.successors(node))
         if succs:
-            best_dn = max(
-                succs,
-                key=lambda n: (
-                    G.nodes[n].get("effective_width", 0) or 0,
-                    G.nodes[n].get("log_facc", 0) or 0,
-                ),
-            )
-            rch_id_dn_main = best_dn
+            rch_id_dn_main = max(succs, key=_dn_key)
         else:
             rch_id_dn_main = None
 

@@ -2,7 +2,8 @@
 Tests for v17c pipeline attribute computation functions.
 
 Tests the core attribute computation functions from v17c_pipeline.py:
-- compute_hydro_distances(G)
+- compute_dijkstra_distances(G) (shortest to any outlet)
+- compute_mainstem_distances(G, main_neighbors) (follow rch_id_dn_main)
 - compute_best_headwater_outlet(G)
 - compute_mainstem(G, hw_out_attrs)
 
@@ -16,9 +17,11 @@ from pathlib import Path
 
 from src.sword_v17c_pipeline.v17c_pipeline import (
     build_reach_graph,
-    compute_hydro_distances,
+    compute_dijkstra_distances,
     compute_best_headwater_outlet,
     compute_mainstem,
+    compute_main_neighbors,
+    compute_mainstem_distances,
     load_topology,
     load_reaches,
 )
@@ -66,9 +69,9 @@ def reach_graph(topology_df, reaches_df):
 
 
 @pytest.fixture
-def hydro_distances(reach_graph):
-    """Compute hydrologic distances."""
-    return compute_hydro_distances(reach_graph)
+def dijkstra_distances(reach_graph):
+    """Compute Dijkstra distances to any outlet."""
+    return compute_dijkstra_distances(reach_graph)
 
 
 @pytest.fixture
@@ -81,6 +84,18 @@ def hw_out_attrs(reach_graph):
 def mainstem(reach_graph, hw_out_attrs):
     """Compute mainstem classification."""
     return compute_mainstem(reach_graph, hw_out_attrs)
+
+
+@pytest.fixture
+def main_neighbors(reach_graph):
+    """Compute main neighbors."""
+    return compute_main_neighbors(reach_graph)
+
+
+@pytest.fixture
+def mainstem_distances(reach_graph, main_neighbors):
+    """Compute mainstem distances via rch_id_dn_main chain."""
+    return compute_mainstem_distances(reach_graph, main_neighbors)
 
 
 # =============================================================================
@@ -121,85 +136,84 @@ class TestBuildReachGraph:
 # =============================================================================
 
 
-class TestComputeHydroDistances:
-    """Tests for compute_hydro_distances function."""
+class TestComputeDijkstraDistances:
+    """Tests for compute_dijkstra_distances function."""
 
-    def test_returns_dict_for_all_nodes(self, reach_graph, hydro_distances):
+    def test_returns_dict_for_all_nodes(self, reach_graph, dijkstra_distances):
         """Should return results for all nodes in graph."""
-        assert len(hydro_distances) == reach_graph.number_of_nodes()
+        assert len(dijkstra_distances) == reach_graph.number_of_nodes()
 
-    def test_contains_required_keys(self, hydro_distances):
-        """Each result should have hydro_dist_out and hydro_dist_hw."""
-        for node, attrs in hydro_distances.items():
-            assert "hydro_dist_out" in attrs
-            assert "hydro_dist_hw" in attrs
+    def test_contains_required_keys(self, dijkstra_distances):
+        """Each result should have dist_out_dijkstra."""
+        for node, attrs in dijkstra_distances.items():
+            assert "dist_out_dijkstra" in attrs
 
-    def test_hydro_dist_out_at_outlet_is_zero(self, reach_graph, hydro_distances):
-        """hydro_dist_out should be 0 at outlets (no outgoing edges)."""
+    def test_dist_out_dijkstra_at_outlet_is_zero(self, reach_graph, dijkstra_distances):
+        """dist_out_dijkstra should be 0 at outlets (no outgoing edges)."""
         outlets = [n for n in reach_graph.nodes() if reach_graph.out_degree(n) == 0]
         assert len(outlets) > 0, "Should have at least one outlet"
 
         for outlet in outlets:
-            dist_out = hydro_distances[outlet]["hydro_dist_out"]
+            dist_out = dijkstra_distances[outlet]["dist_out_dijkstra"]
             assert dist_out == 0, (
-                f"Outlet {outlet} should have hydro_dist_out=0, got {dist_out}"
+                f"Outlet {outlet} should have dist_out_dijkstra=0, got {dist_out}"
             )
 
-    def test_hydro_dist_out_increases_upstream(self, reach_graph, hydro_distances):
-        """hydro_dist_out should increase as we go upstream."""
+    def test_dist_out_dijkstra_increases_upstream(
+        self, reach_graph, dijkstra_distances
+    ):
+        """dist_out_dijkstra should increase as we go upstream."""
         outlets = [n for n in reach_graph.nodes() if reach_graph.out_degree(n) == 0]
         headwaters = [n for n in reach_graph.nodes() if reach_graph.in_degree(n) == 0]
 
         for outlet in outlets:
-            outlet_dist = hydro_distances[outlet]["hydro_dist_out"]
+            outlet_dist = dijkstra_distances[outlet]["dist_out_dijkstra"]
             for hw in headwaters:
-                hw_dist = hydro_distances[hw]["hydro_dist_out"]
-                # Headwater should have larger dist_out than outlet
-                # (unless they're the same node in a single-node network)
+                hw_dist = dijkstra_distances[hw]["dist_out_dijkstra"]
                 if hw != outlet:
                     assert hw_dist > outlet_dist, (
-                        f"Headwater {hw} dist_out ({hw_dist}) should be > outlet {outlet} dist_out ({outlet_dist})"
+                        f"Headwater {hw} dist ({hw_dist}) should be > outlet {outlet} dist ({outlet_dist})"
                     )
 
-    def test_hydro_dist_hw_at_headwater_is_zero(self, reach_graph, hydro_distances):
-        """hydro_dist_hw should be 0 at headwaters (no incoming edges)."""
-        headwaters = [n for n in reach_graph.nodes() if reach_graph.in_degree(n) == 0]
-        assert len(headwaters) > 0, "Should have at least one headwater"
-
-        for hw in headwaters:
-            dist_hw = hydro_distances[hw]["hydro_dist_hw"]
-            assert dist_hw == 0, (
-                f"Headwater {hw} should have hydro_dist_hw=0, got {dist_hw}"
-            )
-
-    def test_hydro_dist_hw_increases_downstream(self, reach_graph, hydro_distances):
-        """hydro_dist_hw should increase as we go downstream."""
-        outlets = [n for n in reach_graph.nodes() if reach_graph.out_degree(n) == 0]
-        headwaters = [n for n in reach_graph.nodes() if reach_graph.in_degree(n) == 0]
-
-        for hw in headwaters:
-            hw_dist = hydro_distances[hw]["hydro_dist_hw"]
-            for outlet in outlets:
-                outlet_dist = hydro_distances[outlet]["hydro_dist_hw"]
-                # Outlet should have larger dist_hw than headwater
-                if outlet != hw:
-                    assert outlet_dist > hw_dist, (
-                        f"Outlet {outlet} dist_hw ({outlet_dist}) should be > headwater {hw} dist_hw ({hw_dist})"
-                    )
-
-    def test_hydro_dist_values_are_non_negative(self, hydro_distances):
+    def test_dist_out_dijkstra_values_are_non_negative(self, dijkstra_distances):
         """All distance values should be non-negative."""
-        for node, attrs in hydro_distances.items():
-            dist_out = attrs["hydro_dist_out"]
-            dist_hw = attrs["hydro_dist_hw"]
-
-            # dist_out can be inf for unreachable nodes, but should not be negative
+        for node, attrs in dijkstra_distances.items():
+            dist_out = attrs["dist_out_dijkstra"]
             assert dist_out >= 0 or dist_out == float("inf"), (
-                f"Node {node}: hydro_dist_out should be >= 0, got {dist_out}"
+                f"Node {node}: dist_out_dijkstra should be >= 0, got {dist_out}"
             )
-            assert dist_hw >= 0, (
-                f"Node {node}: hydro_dist_hw should be >= 0, got {dist_hw}"
+
+
+class TestComputeMainstemDistances:
+    """Tests for compute_mainstem_distances function."""
+
+    def test_returns_dict_for_all_nodes(self, reach_graph, mainstem_distances):
+        """Should return results for all nodes in graph."""
+        assert len(mainstem_distances) == reach_graph.number_of_nodes()
+
+    def test_contains_hydro_dist_out_key(self, mainstem_distances):
+        """Each result should have hydro_dist_out."""
+        for node, attrs in mainstem_distances.items():
+            assert "hydro_dist_out" in attrs
+
+    def test_hydro_dist_out_positive(self, mainstem_distances):
+        """hydro_dist_out should be positive (includes own reach_length)."""
+        for node, attrs in mainstem_distances.items():
+            assert attrs["hydro_dist_out"] >= 0, (
+                f"Node {node}: hydro_dist_out should be >= 0"
             )
+
+    def test_outlet_hydro_dist_out_equals_reach_length(
+        self, reach_graph, main_neighbors, mainstem_distances
+    ):
+        """Outlet (NULL rch_id_dn_main) hydro_dist_out = own reach_length."""
+        for rid, nb in main_neighbors.items():
+            if nb.get("rch_id_dn_main") is None:
+                expected = reach_graph.nodes[rid].get("reach_length", 0)
+                actual = mainstem_distances[rid]["hydro_dist_out"]
+                assert actual == pytest.approx(expected, abs=0.01), (
+                    f"Terminal reach {rid}: expected {expected}, got {actual}"
+                )
 
 
 # =============================================================================
@@ -364,36 +378,6 @@ class TestComputeMainstem:
 class TestIntegration:
     """Integration tests verifying consistency between computed attributes."""
 
-    def test_hydro_dist_sum_approximates_total_length(
-        self, reach_graph, hydro_distances
-    ):
-        """hydro_dist_out + hydro_dist_hw should approximate total path length."""
-        # For nodes on a linear path, dist_out + dist_hw should be roughly constant
-        # (equal to total path length from HW to outlet)
-
-        # Get headwater and outlet
-        headwaters = [n for n in reach_graph.nodes() if reach_graph.in_degree(n) == 0]
-        outlets = [n for n in reach_graph.nodes() if reach_graph.out_degree(n) == 0]
-
-        if not headwaters or not outlets:
-            pytest.skip("Need headwater and outlet for this test")
-
-        hw = headwaters[0]
-        outlet = outlets[0]
-
-        # For linear network, the sum should be the same for all nodes
-        # We test that the headwater dist_out equals the outlet dist_hw
-        hw_dist_out = hydro_distances[hw]["hydro_dist_out"]
-        outlet_dist_hw = hydro_distances[outlet]["hydro_dist_hw"]
-
-        # These should be approximately equal (both represent total path length)
-        # Allow for floating point differences
-        if hw_dist_out < float("inf") and outlet_dist_hw > 0:
-            ratio = hw_dist_out / outlet_dist_hw if outlet_dist_hw > 0 else 0
-            assert 0.9 <= ratio <= 1.1, (
-                f"Total path lengths should match: HW dist_out={hw_dist_out}, outlet dist_hw={outlet_dist_hw}"
-            )
-
     def test_mainstem_path_exists_between_best_hw_and_outlet(
         self, reach_graph, hw_out_attrs, mainstem
     ):
@@ -403,23 +387,19 @@ class TestIntegration:
         if not mainstem_nodes:
             pytest.skip("No mainstem nodes found")
 
-        # Find the headwater and outlet on the mainstem
         mainstem_headwaters = [
             n for n in mainstem_nodes if reach_graph.in_degree(n) == 0
         ]
         mainstem_outlets = [n for n in mainstem_nodes if reach_graph.out_degree(n) == 0]
 
         if not mainstem_headwaters or not mainstem_outlets:
-            # Mainstem might not reach the true ends in complex networks
             return
 
         hw = mainstem_headwaters[0]
         outlet = mainstem_outlets[0]
 
-        # Verify a path exists
         try:
             path = nx.shortest_path(reach_graph, hw, outlet)
-            # All nodes on this path should be on mainstem
             for node in path:
                 assert mainstem[node], (
                     f"Node {node} on HW-outlet path should be mainstem"
@@ -427,11 +407,8 @@ class TestIntegration:
         except nx.NetworkXNoPath:
             pytest.fail(f"No path found from mainstem HW {hw} to outlet {outlet}")
 
-    def test_consistency_across_linear_chain(
-        self, reach_graph, hydro_distances, hw_out_attrs, mainstem
-    ):
-        """For a linear chain, verify consistent attribute progression."""
-        # Get topological order
+    def test_dijkstra_decreases_along_topo_order(self, reach_graph, dijkstra_distances):
+        """For a linear chain, dist_out_dijkstra should decrease downstream."""
         try:
             topo_order = list(nx.topological_sort(reach_graph))
         except nx.NetworkXUnfeasible:
@@ -440,24 +417,22 @@ class TestIntegration:
         if len(topo_order) < 2:
             return
 
-        # hydro_dist_out should decrease along topological order (upstream to downstream)
         prev_dist_out = float("inf")
         for node in topo_order:
-            curr_dist_out = hydro_distances[node]["hydro_dist_out"]
+            curr_dist_out = dijkstra_distances[node]["dist_out_dijkstra"]
             if curr_dist_out < float("inf"):
                 assert curr_dist_out <= prev_dist_out, (
-                    f"hydro_dist_out should decrease downstream: {prev_dist_out} -> {curr_dist_out}"
+                    f"dist_out_dijkstra should decrease downstream: {prev_dist_out} -> {curr_dist_out}"
                 )
                 prev_dist_out = curr_dist_out
 
-        # hydro_dist_hw should increase along topological order
-        prev_dist_hw = -1
-        for node in topo_order:
-            curr_dist_hw = hydro_distances[node]["hydro_dist_hw"]
-            assert curr_dist_hw >= prev_dist_hw, (
-                f"hydro_dist_hw should increase downstream: {prev_dist_hw} -> {curr_dist_hw}"
-            )
-            prev_dist_hw = curr_dist_hw
+    def test_mainstem_dist_ge_dijkstra(self, dijkstra_distances, mainstem_distances):
+        """hydro_dist_out (mainstem walk) should be >= dist_out_dijkstra (shortest)."""
+        for rid in dijkstra_distances:
+            dij = dijkstra_distances[rid]["dist_out_dijkstra"]
+            ms = mainstem_distances[rid]["hydro_dist_out"]
+            if dij < float("inf"):
+                assert ms >= dij - 0.01, f"Reach {rid}: mainstem {ms} < dijkstra {dij}"
 
 
 # =============================================================================
@@ -473,10 +448,9 @@ class TestEdgeCases:
         G = nx.DiGraph()
         G.add_node(1, reach_length=1000, width=50)
 
-        hydro_dist = compute_hydro_distances(G)
-        assert 1 in hydro_dist
-        assert hydro_dist[1]["hydro_dist_out"] == 0
-        assert hydro_dist[1]["hydro_dist_hw"] == 0
+        dij = compute_dijkstra_distances(G)
+        assert 1 in dij
+        assert dij[1]["dist_out_dijkstra"] == 0
 
         hw_out = compute_best_headwater_outlet(G)
         assert hw_out[1]["best_headwater"] == 1
@@ -484,8 +458,13 @@ class TestEdgeCases:
         assert hw_out[1]["pathlen_hw"] == 0
         assert hw_out[1]["pathlen_out"] == 0
 
-        mainstem = compute_mainstem(G, hw_out)
-        assert mainstem[1] is True
+        ms = compute_mainstem(G, hw_out)
+        assert ms[1] is True
+
+        mn = compute_main_neighbors(G)
+        md = compute_mainstem_distances(G, mn)
+        # Single node, terminal → hydro_dist_out = own reach_length
+        assert md[1]["hydro_dist_out"] == 1000
 
     def test_two_node_linear_graph(self):
         """Test with a simple two-node linear graph."""
@@ -494,27 +473,29 @@ class TestEdgeCases:
         G.add_node(2, reach_length=1500, width=60)
         G.add_edge(1, 2)
 
-        hydro_dist = compute_hydro_distances(G)
-        # Node 1 is headwater, node 2 is outlet
-        assert hydro_dist[1]["hydro_dist_hw"] == 0
-        assert hydro_dist[2]["hydro_dist_out"] == 0
+        dij = compute_dijkstra_distances(G)
+        assert dij[2]["dist_out_dijkstra"] == 0
 
         hw_out = compute_best_headwater_outlet(G)
         assert hw_out[1]["best_headwater"] == 1
         assert hw_out[2]["best_outlet"] == 2
 
-        mainstem = compute_mainstem(G, hw_out)
-        assert mainstem[1] is True
-        assert mainstem[2] is True
+        ms = compute_mainstem(G, hw_out)
+        assert ms[1] is True
+        assert ms[2] is True
+
+        mn = compute_main_neighbors(G)
+        md = compute_mainstem_distances(G, mn)
+        # Node 2 is terminal: 1500
+        assert md[2]["hydro_dist_out"] == 1500
+        # Node 1 walks to 2: 1000 + 1500 = 2500
+        assert md[1]["hydro_dist_out"] == 2500
 
     def test_y_shaped_network(self):
         """Test with a Y-shaped network (two tributaries merging)."""
         G = nx.DiGraph()
-        # Two headwaters (1, 2) merge at 3, flow to outlet 4
         G.add_node(1, reach_length=1000, width=30, effective_width=30, log_facc=0)
-        G.add_node(
-            2, reach_length=1200, width=40, effective_width=40, log_facc=0
-        )  # Wider tributary
+        G.add_node(2, reach_length=1200, width=40, effective_width=40, log_facc=0)
         G.add_node(3, reach_length=800, width=60, effective_width=60, log_facc=0)
         G.add_node(4, reach_length=900, width=70, effective_width=70, log_facc=0)
 
@@ -522,33 +503,37 @@ class TestEdgeCases:
         G.add_edge(2, 3)
         G.add_edge(3, 4)
 
-        hydro_dist = compute_hydro_distances(G)
-        # Both headwaters should have hydro_dist_hw = 0
-        assert hydro_dist[1]["hydro_dist_hw"] == 0
-        assert hydro_dist[2]["hydro_dist_hw"] == 0
-        # Outlet should have hydro_dist_out = 0
-        assert hydro_dist[4]["hydro_dist_out"] == 0
+        dij = compute_dijkstra_distances(G)
+        assert dij[4]["dist_out_dijkstra"] == 0
 
         hw_out = compute_best_headwater_outlet(G)
-        # Node 3 should pick the wider tributary (node 2) as best_headwater
-        # (width is used as tiebreaker)
         assert hw_out[3]["best_headwater"] == 2
         assert hw_out[4]["best_outlet"] == 4
 
-        mainstem = compute_mainstem(G, hw_out)
-        # At least nodes 3 and 4 should be on mainstem
-        assert mainstem[3] is True
-        assert mainstem[4] is True
+        ms = compute_mainstem(G, hw_out)
+        assert ms[3] is True
+        assert ms[4] is True
+
+        mn = compute_main_neighbors(G)
+        md = compute_mainstem_distances(G, mn)
+        # Node 4 terminal: 900
+        assert md[4]["hydro_dist_out"] == 900
+        # Node 3 → 4: 800 + 900 = 1700
+        assert md[3]["hydro_dist_out"] == 1700
 
     def test_empty_graph(self):
         """Test with an empty graph."""
         G = nx.DiGraph()
 
-        hydro_dist = compute_hydro_distances(G)
-        assert len(hydro_dist) == 0
+        dij = compute_dijkstra_distances(G)
+        assert len(dij) == 0
 
         hw_out = compute_best_headwater_outlet(G)
         assert len(hw_out) == 0
 
-        mainstem = compute_mainstem(G, hw_out)
-        assert len(mainstem) == 0
+        ms = compute_mainstem(G, hw_out)
+        assert len(ms) == 0
+
+        mn = compute_main_neighbors(G)
+        md = compute_mainstem_distances(G, mn)
+        assert len(md) == 0

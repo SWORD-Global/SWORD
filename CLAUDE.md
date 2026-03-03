@@ -175,7 +175,8 @@ workflow.close()
 
 ### v17c (Our Additions) - Computed by Us
 **New variables we compute via `v17c_pipeline.py`:**
-- `hydro_dist_out`, `hydro_dist_hw` - Dijkstra-based distances
+- `dist_out_dijkstra` - Dijkstra shortest-path distance to any outlet
+- `hydro_dist_out` - mainstem distance to best_outlet via rch_id_dn_main chain
 - `best_headwater`, `best_outlet` - width-prioritized endpoints
 - `pathlen_hw`, `pathlen_out` - cumulative path lengths
 - `is_mainstem_edge`, `main_path_id` - mainstem identification
@@ -210,8 +211,8 @@ workflow.close()
 
 | Attribute | Description |
 |-----------|-------------|
-| hydro_dist_out | Dijkstra distance to nearest outlet (m) |
-| hydro_dist_hw | Max distance from any headwater (m) |
+| dist_out_dijkstra | Dijkstra shortest-path distance to any outlet (m) |
+| hydro_dist_out | Mainstem distance to best_outlet via rch_id_dn_main (m) |
 | best_headwater | Width-prioritized upstream headwater reach_id |
 | best_outlet | Width-prioritized downstream outlet reach_id |
 | is_mainstem_edge | TRUE if on mainstem path |

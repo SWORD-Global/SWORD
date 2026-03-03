@@ -1,75 +1,125 @@
 """Hydrologic distance computation stage for v17c pipeline."""
 
-from typing import Dict
+from typing import Dict, Optional
 
 import networkx as nx
 
 from ._logging import log
 
 
-def compute_hydro_distances(G: nx.DiGraph) -> Dict[int, Dict]:
+def compute_dijkstra_distances(G: nx.DiGraph) -> Dict[int, Dict]:
     """
-    Compute hydrologic distances for each reach.
+    Compute shortest-path distance to any outlet via Dijkstra.
 
-    - hydro_dist_out: Distance to outlet following main channel
-    - hydro_dist_hw: Distance from headwater following main channel
+    Returns ``{reach_id: {"dist_out_dijkstra": float}}``.
     """
-    log("Computing hydrologic distances...")
+    log("Computing Dijkstra distances to outlets...")
 
-    # Handle empty graph
     if G.number_of_nodes() == 0:
         log("Empty graph, returning empty results")
         return {}
 
-    # Identify outlets (no outgoing edges)
     outlets = [n for n in G.nodes() if G.out_degree(n) == 0]
     log(f"Found {len(outlets):,} outlets")
 
-    # Compute dist_out using Dijkstra from outlets (reversed graph)
     R = G.reverse()
 
-    dist_out = {}
-    for node in G.nodes():
-        dist_out[node] = float("inf")
-
+    dist_out: Dict[int, float] = {n: float("inf") for n in G.nodes()}
     for outlet in outlets:
         dist_out[outlet] = 0
 
-    # Multi-source Dijkstra (only if we have outlets)
     if outlets:
         lengths = nx.multi_source_dijkstra_path_length(
             R, outlets, weight=lambda u, v, d: G.nodes[v].get("reach_length", 0)
         )
         dist_out.update(lengths)
 
-    # Compute dist_hw (distance from furthest headwater)
-    headwaters = [n for n in G.nodes() if G.in_degree(n) == 0]
-    log(f"Found {len(headwaters):,} headwaters")
-
-    dist_hw = {}
-    for node in G.nodes():
-        dist_hw[node] = 0
-
-    # For each node, find max distance from any headwater
-    for hw in headwaters:
-        try:
-            lengths = nx.single_source_dijkstra_path_length(
-                G, hw, weight=lambda u, v, d: G.nodes[v].get("reach_length", 0)
-            )
-            for node, dist in lengths.items():
-                if dist > dist_hw[node]:
-                    dist_hw[node] = dist
-        except nx.NetworkXError:
-            continue
-
     results = {}
     for node in G.nodes():
         results[node] = {
-            "hydro_dist_out": dist_out.get(node, float("inf")),
-            "hydro_dist_hw": dist_hw.get(node, 0),
+            "dist_out_dijkstra": dist_out.get(node, float("inf")),
         }
 
-    log("Hydrologic distances computed")
+    log("Dijkstra distances computed")
+    return results
+
+
+# Keep old name as alias for backwards compatibility during transition
+compute_hydro_distances = compute_dijkstra_distances
+
+
+def compute_mainstem_distances(
+    G: nx.DiGraph,
+    main_neighbors: Dict[int, Dict],
+) -> Dict[int, Dict]:
+    """
+    Compute distance to best_outlet by walking the rch_id_dn_main chain.
+
+    For each reach, follow rch_id_dn_main until a terminal reach (NULL
+    downstream or missing from graph), accumulating reach_length (including
+    self).  Convention matches v17b dist_out: outlet reach gets its own
+    reach_length, not 0.
+
+    Returns ``{reach_id: {"hydro_dist_out": float}}``.
+    """
+    log("Computing mainstem distances (rch_id_dn_main chain walk)...")
+
+    if G.number_of_nodes() == 0:
+        return {}
+
+    # Build lookup: reach_id → rch_id_dn_main
+    dn_main: Dict[int, Optional[int]] = {}
+    for rid, nb in main_neighbors.items():
+        dn = nb.get("rch_id_dn_main")
+        if dn is not None and dn in G.nodes:
+            dn_main[rid] = dn
+        else:
+            dn_main[rid] = None
+
+    # Cache: once a reach's distance is known, reuse it
+    cache: Dict[int, float] = {}
+
+    def _walk(start: int) -> float:
+        """Walk downstream from *start*, return total distance."""
+        if start in cache:
+            return cache[start]
+
+        path: list[int] = []
+        visited: set[int] = set()
+        cur = start
+
+        while cur is not None and cur not in cache:
+            if cur in visited:
+                raise RuntimeError(f"Cycle in rch_id_dn_main chain: {path + [cur]}")
+            visited.add(cur)
+            path.append(cur)
+            cur = dn_main.get(cur)
+
+        # cur is either None (terminal) or already cached
+        suffix = cache[cur] if cur is not None else 0.0
+
+        # Walk backwards through path, filling cache
+        cumulative = suffix
+        for rid in reversed(path):
+            cumulative += G.nodes[rid].get("reach_length", 0)
+            cache[rid] = cumulative
+
+        return cache[start]
+
+    results: Dict[int, Dict] = {}
+    for rid in G.nodes():
+        if rid not in dn_main:
+            # Reach not in main_neighbors (e.g. ghost) — use own length
+            dist = G.nodes[rid].get("reach_length", 0)
+        else:
+            dist = _walk(rid)
+        results[rid] = {"hydro_dist_out": dist}
+
+    n_terminal = sum(1 for r in dn_main.values() if r is None)
+    log(
+        f"Mainstem distances: {len(results):,} reaches, "
+        f"{n_terminal:,} terminal (NULL rch_id_dn_main)"
+    )
     return results
 
 

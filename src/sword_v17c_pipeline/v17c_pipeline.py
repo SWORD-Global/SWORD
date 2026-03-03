@@ -49,7 +49,12 @@ from .stages.graph import (
     build_section_graph,
 )
 from .stages.path_variables import compute_path_variables
-from .stages.distances import compute_hydro_distances, compute_best_headwater_outlet
+from .stages.distances import (
+    compute_dijkstra_distances,
+    compute_hydro_distances,  # noqa: F401 — alias kept for backwards compat
+    compute_best_headwater_outlet,
+    compute_mainstem_distances,
+)
 from .stages.mainstem import compute_mainstem, compute_main_neighbors
 from .stages.output import save_to_duckdb, save_sections_to_duckdb, apply_swot_slopes
 from .stages._logging import log
@@ -67,8 +72,10 @@ __all__ = [
     "identify_junctions",
     "build_section_graph",
     "compute_path_variables",
+    "compute_dijkstra_distances",
     "compute_hydro_distances",
     "compute_best_headwater_outlet",
+    "compute_mainstem_distances",
     "compute_mainstem",
     "compute_main_neighbors",
     "compute_subnetwork_ids",
@@ -466,10 +473,11 @@ def _process_region_inner(
         pass  # table doesn't exist yet
 
     # Compute new attributes
-    hydro_dist = compute_hydro_distances(G)
+    dijkstra_dist = compute_dijkstra_distances(G)
     hw_out = compute_best_headwater_outlet(G, overrides=overrides)
     is_mainstem = compute_mainstem(G, hw_out)
-    main_neighbors = compute_main_neighbors(G, overrides=overrides)
+    main_neighbors = compute_main_neighbors(G, hw_out_attrs=hw_out, overrides=overrides)
+    hydro_dist = compute_mainstem_distances(G, main_neighbors)
 
     # Compute subnetwork_id (weakly connected components, Pfafstetter-offset)
     subnetwork_ids = compute_subnetwork_ids(G, region=region)
@@ -501,6 +509,7 @@ def _process_region_inner(
             main_neighbors,
             path_vars=path_vars,
             subnetwork_ids=subnetwork_ids,
+            dijkstra_dist=dijkstra_dist,
         )
         save_sections_to_duckdb(conn, region, sections_df, validation_df)
 

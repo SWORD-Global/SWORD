@@ -15,8 +15,8 @@ Note: The original MILP-based phi optimization files have been archived in _arch
 The v17c pipeline now uses the original v17b topology instead.
 
 New Columns Added by Pipeline:
-- hydro_dist_out: Hydrologic distance to outlet (m)
-- hydro_dist_hw: Hydrologic distance from headwater (m)
+- dist_out_dijkstra: Dijkstra shortest-path distance to any outlet (m)
+- hydro_dist_out: Mainstem distance to best_outlet via rch_id_dn_main chain (m)
 - best_headwater: Chosen headwater reach ID upstream
 - best_outlet: Chosen outlet reach ID downstream
 - pathlen_hw: Path length to headwater
@@ -51,9 +51,11 @@ from .v17c_pipeline import (
     build_reach_graph,
     build_section_graph,
     compute_best_headwater_outlet,
-    compute_hydro_distances,
+    compute_dijkstra_distances,
+    compute_hydro_distances,  # noqa: F401 — alias for compute_dijkstra_distances
     compute_junction_slopes,
     compute_mainstem,
+    compute_mainstem_distances,
     compute_main_neighbors,
     compute_path_variables,
     create_v17c_tables,
@@ -79,9 +81,11 @@ __all__ = [
     "build_reach_graph",
     "build_section_graph",
     "compute_best_headwater_outlet",
+    "compute_dijkstra_distances",
     "compute_hydro_distances",
     "compute_junction_slopes",
     "compute_mainstem",
+    "compute_mainstem_distances",
     "compute_main_neighbors",
     "compute_path_variables",
     "create_v17c_tables",

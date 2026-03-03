@@ -21,6 +21,7 @@ def save_to_duckdb(
     main_neighbors: Optional[Dict[int, Dict]] = None,
     path_vars: Optional[Dict[int, Dict]] = None,
     subnetwork_ids: Optional[Dict[int, int]] = None,
+    dijkstra_dist: Optional[Dict[int, Dict]] = None,
 ) -> int:
     """
     Save computed v17c attributes to DuckDB reaches table.
@@ -35,17 +36,19 @@ def save_to_duckdb(
     mn = main_neighbors or {}
     pv = path_vars or {}
     sn = subnetwork_ids or {}
+    dd = dijkstra_dist or {}
     for reach_id in hydro_dist.keys():
         hd = hydro_dist.get(reach_id, {})
         ho = hw_out.get(reach_id, {})
         ms = is_mainstem.get(reach_id, False)
         nb = mn.get(reach_id, {})
         pvar = pv.get(reach_id, {})
+        dij = dd.get(reach_id, {})
 
         row = {
             "reach_id": reach_id,
             "hydro_dist_out": hd.get("hydro_dist_out"),
-            "hydro_dist_hw": hd.get("hydro_dist_hw"),
+            "dist_out_dijkstra": dij.get("dist_out_dijkstra"),
             "best_headwater": ho.get("best_headwater"),
             "best_outlet": ho.get("best_outlet"),
             "pathlen_hw": ho.get("pathlen_hw"),
@@ -86,7 +89,7 @@ def save_to_duckdb(
     # Build SET clause - always include base v17c columns
     set_clauses = [
         "hydro_dist_out = u.hydro_dist_out",
-        "hydro_dist_hw = u.hydro_dist_hw",
+        "dist_out_dijkstra = u.dist_out_dijkstra",
         "best_headwater = u.best_headwater",
         "best_outlet = u.best_outlet",
         "pathlen_hw = u.pathlen_hw",

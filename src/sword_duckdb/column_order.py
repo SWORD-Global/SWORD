@@ -50,8 +50,8 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     "facc",
     "facc_quality",
     "dist_out",
+    "dist_out_dijkstra",
     "hydro_dist_out",
-    "hydro_dist_hw",
     # Topology
     "n_rch_up",
     "n_rch_down",

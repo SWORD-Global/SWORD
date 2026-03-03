@@ -140,8 +140,8 @@ class TestSaveToDuckDB:
         """Add v17c columns to reaches table."""
         # Add the columns that save_to_duckdb expects to update
         v17c_columns = [
+            ("dist_out_dijkstra", "DOUBLE"),
             ("hydro_dist_out", "DOUBLE"),
-            ("hydro_dist_hw", "DOUBLE"),
             ("best_headwater", "BIGINT"),
             ("best_outlet", "BIGINT"),
             ("pathlen_hw", "DOUBLE"),
@@ -165,7 +165,8 @@ class TestSaveToDuckDB:
         conn = db_with_v17c_columns
         reach_id = sample_reach_ids[0]
 
-        hydro_dist = {reach_id: {"hydro_dist_out": 1000.5, "hydro_dist_hw": 500.25}}
+        hydro_dist = {reach_id: {"hydro_dist_out": 1000.5}}
+        dijkstra_dist = {reach_id: {"dist_out_dijkstra": 900.0}}
         hw_out = {
             reach_id: {
                 "best_headwater": 11000000099,
@@ -176,20 +177,22 @@ class TestSaveToDuckDB:
         }
         is_mainstem = {reach_id: True}
 
-        n_updated = save_to_duckdb(conn, "NA", hydro_dist, hw_out, is_mainstem)
+        n_updated = save_to_duckdb(
+            conn, "NA", hydro_dist, hw_out, is_mainstem, dijkstra_dist=dijkstra_dist
+        )
 
         assert n_updated == 1
 
         # Verify the values were written
         row = conn.execute(
-            "SELECT hydro_dist_out, hydro_dist_hw, best_headwater, best_outlet, "
+            "SELECT hydro_dist_out, dist_out_dijkstra, best_headwater, best_outlet, "
             "pathlen_hw, pathlen_out, is_mainstem_edge "
             "FROM reaches WHERE reach_id = ?",
             [reach_id],
         ).fetchone()
 
         assert row[0] == pytest.approx(1000.5)
-        assert row[1] == pytest.approx(500.25)
+        assert row[1] == pytest.approx(900.0)
         assert row[2] == 11000000099
         assert row[3] == 11000000001
         assert row[4] == pytest.approx(2000.0)
@@ -209,13 +212,16 @@ class TestSaveToDuckDB:
         conn = db_with_v17c_columns
 
         hydro_dist = {}
+        dijkstra_dist = {}
         hw_out = {}
         is_mainstem = {}
 
         for i, reach_id in enumerate(sample_reach_ids[:5]):
             hydro_dist[reach_id] = {
                 "hydro_dist_out": 1000.0 * i,
-                "hydro_dist_hw": 500.0 * i,
+            }
+            dijkstra_dist[reach_id] = {
+                "dist_out_dijkstra": 500.0 * i,
             }
             hw_out[reach_id] = {
                 "best_headwater": sample_reach_ids[-1],
@@ -225,7 +231,9 @@ class TestSaveToDuckDB:
             }
             is_mainstem[reach_id] = i % 2 == 0
 
-        n_updated = save_to_duckdb(conn, "NA", hydro_dist, hw_out, is_mainstem)
+        n_updated = save_to_duckdb(
+            conn, "NA", hydro_dist, hw_out, is_mainstem, dijkstra_dist=dijkstra_dist
+        )
 
         assert n_updated == 5
 
@@ -234,9 +242,7 @@ class TestSaveToDuckDB:
         conn = db_with_v17c_columns
         reach_id = sample_reach_ids[0]
 
-        hydro_dist = {
-            reach_id: {"hydro_dist_out": float("inf"), "hydro_dist_hw": 500.0}
-        }
+        hydro_dist = {reach_id: {"hydro_dist_out": float("inf")}}
         hw_out = {
             reach_id: {
                 "best_headwater": None,
@@ -264,7 +270,7 @@ class TestSaveToDuckDB:
         conn = db_with_v17c_columns
         reach_id = sample_reach_ids[0]
 
-        hydro_dist = {reach_id: {"hydro_dist_out": 999.0, "hydro_dist_hw": 111.0}}
+        hydro_dist = {reach_id: {"hydro_dist_out": 999.0}}
         hw_out = {
             reach_id: {
                 "best_headwater": None,
@@ -513,8 +519,8 @@ class TestSaveToDuckdbWithPathVars:
     def db_with_v17c_columns(self, writable_db):
         """Add v17c columns to reaches table."""
         v17c_columns = [
+            ("dist_out_dijkstra", "DOUBLE"),
             ("hydro_dist_out", "DOUBLE"),
-            ("hydro_dist_hw", "DOUBLE"),
             ("best_headwater", "BIGINT"),
             ("best_outlet", "BIGINT"),
             ("pathlen_hw", "DOUBLE"),
@@ -537,7 +543,7 @@ class TestSaveToDuckdbWithPathVars:
         conn = db_with_v17c_columns
         rid = sample_reach_ids[0]
 
-        hydro_dist = {rid: {"hydro_dist_out": 1000.0, "hydro_dist_hw": 500.0}}
+        hydro_dist = {rid: {"hydro_dist_out": 1000.0}}
         hw_out = {
             rid: {
                 "best_headwater": None,
@@ -581,7 +587,7 @@ class TestSaveToDuckdbWithPathVars:
             "SELECT path_freq FROM reaches WHERE reach_id = ?", [rid]
         ).fetchone()[0]
 
-        hydro_dist = {rid: {"hydro_dist_out": 999.0, "hydro_dist_hw": 111.0}}
+        hydro_dist = {rid: {"hydro_dist_out": 999.0}}
         hw_out = {
             rid: {
                 "best_headwater": None,

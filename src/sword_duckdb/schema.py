@@ -234,8 +234,8 @@ CREATE TABLE IF NOT EXISTS reaches (
     facc DOUBLE,                 -- flow accumulation (km^2)
     facc_quality VARCHAR,        -- facc correction status flag (v17c)
     dist_out DOUBLE,             -- distance from outlet (m)
-    hydro_dist_out DOUBLE,       -- hydrologic distance to outlet (via main channel)
-    hydro_dist_hw DOUBLE,        -- hydrologic distance to headwater (via main channel)
+    dist_out_dijkstra DOUBLE,    -- Dijkstra shortest-path distance to any outlet (m)
+    hydro_dist_out DOUBLE,       -- mainstem distance to best_outlet via rch_id_dn_main (m)
 
     -- Topology
     n_rch_up INTEGER,            -- number of upstream neighbors
@@ -879,8 +879,8 @@ def add_v17c_columns(db) -> bool:
         ("pathlen_out", "DOUBLE"),
         ("main_path_id", "BIGINT"),
         ("is_mainstem_edge", "BOOLEAN DEFAULT FALSE"),
+        ("dist_out_dijkstra", "DOUBLE"),
         ("hydro_dist_out", "DOUBLE"),
-        ("hydro_dist_hw", "DOUBLE"),
         ("rch_id_up_main", "BIGINT"),
         ("rch_id_dn_main", "BIGINT"),
         # NOTE: swot_slope columns removed - pipeline incomplete (Issue #117)
