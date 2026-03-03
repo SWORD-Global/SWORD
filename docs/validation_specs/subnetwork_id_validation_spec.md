@@ -13,27 +13,27 @@
 - **Purpose:** Identifies connected subgraphs where reaches are connected via topology
 - **Relationship to `network`:** Different ID schemes - `subnetwork_id` may span multiple `network` values
 
-## Summary Statistics (2026-02-02)
+## Summary Statistics (2026-03-03)
 
 ### Global Distribution
 
 | Metric | Value |
 |--------|-------|
-| Total reaches | 248,674 |
-| Distinct subnetwork_id values | 855 |
+| Total reaches | 248,673 |
+| Distinct subnetwork_id values | 3,027 (globally unique via Pfafstetter offsets) |
 | Distinct network values | 247 |
-| Reaches where subnetwork_id = network | 571 (0.23%) |
+| Reaches where subnetwork_id = network | 0 (Pfafstetter offsets make numerical match impossible) |
 
 ### By Region
 
-| Region | Reaches | Subnetworks | Networks | Equal Count | Pct Equal |
-|--------|---------|-------------|----------|-------------|-----------|
-| AF | 21,441 | 230 | 79 | 443 | 2.07% |
-| AS | 100,185 | 855 | 246 | 55 | 0.05% |
-| EU | 31,103 | 436 | 103 | 63 | 0.2% |
-| NA | 38,696 | 586 | 105 | 0 | 0.0% |
-| OC | 15,090 | 676 | 211 | 10 | 0.07% |
-| SA | 42,159 | 245 | 53 | 0 | 0.0% |
+| Region | Reaches | Subnetworks | Networks | Pfafstetter Band |
+|--------|---------|-------------|----------|-----------------|
+| AF | 21,441 | 230 | 79 | 1,000,001 - 1,000,230 |
+| AS | 100,185 | 854 | 246 | 3,000,001 - 3,000,854 |
+| EU | 31,103 | 436 | 103 | 2,000,001 - 2,000,436 |
+| NA | 38,696 | 586 | 105 | 7,000,001 - 7,000,586 |
+| OC | 15,089 | 676 | 211 | 5,000,001 - 5,000,676 |
+| SA | 42,159 | 245 | 53 | 6,000,001 - 6,000,245 |
 
 ## Algorithm Details
 
@@ -134,57 +134,16 @@ subnetwork_id=3 contains only network=2 (691 reaches)
 
 ## Proposed Lint Checks
 
-### New Checks (C0xx - Classification Category)
+### Implemented Checks (V0xx - v17c Category)
 
-| ID | Severity | Rule | Rationale |
-|----|----------|------|-----------|
-| C005 | INFO | subnetwork_id coverage | All reaches should have subnetwork_id |
-| C006 | WARNING | subnetwork_id vs network consistency | Check if subnetwork_id spans multiple networks (investigate discrepancies) |
-| C007 | WARNING | Isolated reaches in subnetwork_id | Reaches with subnetwork_id but no topology neighbors |
-
-### C005: subnetwork_id Coverage
-
-```sql
--- Check for NULL or missing subnetwork_id
-SELECT COUNT(*) as missing_subnetwork_id
-FROM reaches
-WHERE subnetwork_id IS NULL;
-
--- Expected: 0
-```
-
-### C006: subnetwork_id vs network Cross-Validation
-
-```sql
--- Find subnetwork_ids that span multiple networks
--- (May indicate intentional topology refinement or data issues)
-SELECT
-    subnetwork_id,
-    COUNT(DISTINCT network) as num_networks,
-    COUNT(*) as reach_count,
-    STRING_AGG(DISTINCT CAST(network AS VARCHAR), ',') as networks
-FROM reaches
-GROUP BY subnetwork_id
-HAVING COUNT(DISTINCT network) > 1
-ORDER BY reach_count DESC;
-
--- Expected: May have some, but should be documented why
-```
-
-### C007: Isolated Subnetwork Reaches
-
-```sql
--- Find reaches in a subnetwork_id with no topology neighbors
-SELECT
-    r.reach_id, r.region, r.subnetwork_id,
-    r.n_rch_up, r.n_rch_down
-FROM reaches r
-WHERE r.n_rch_up = 0 AND r.n_rch_down = 0
-  AND r.subnetwork_id IS NOT NULL
-ORDER BY r.subnetwork_id, r.region;
-
--- Expected: Only reaches with end_reach flag (headwaters/outlets) should appear
-```
+| ID | Severity | Rule | Status (2026-03-03) |
+|----|----------|------|---------------------|
+| V026 | ERROR | subnetwork_id coverage (no NULLs on connected reaches) | PASS (0/210,682) |
+| V027 | ERROR | subnetwork_id within Pfafstetter band for region | PASS (0/248,673) |
+| V028 | ERROR | Topology-connected reaches share same subnetwork_id | PASS (0/495,620 edges) |
+| V029 | ERROR | No subnetwork_id appears in multiple regions | PASS (0/3,027) |
+| V030 | INFO | Isolated reaches form singleton components | PASS (0 isolated) |
+| V031 | INFO | Size distribution statistics | 3,027 components, 0 singletons |
 
 ## Interpretation Guidance
 
@@ -315,9 +274,10 @@ Through the pipeline:
 
 ## Known Issues
 
-### None Currently Identified
+### None Identified
 
-**Status:** subnetwork_id appears to be correctly computed and completely populated.
+**Status:** subnetwork_id correctly computed and completely populated. All 6 lint checks pass.
+See `docs/technical/subnetwork_id_audit_2026-03-03.md` for full production results.
 
 ## References
 
@@ -326,6 +286,7 @@ Through the pipeline:
 - **SWORD_graph.py implementation:** `src/sword_v17c_pipeline/SWORD_graph.py:541-553`
 - **Related validation spec:** `validation_spec_v17c_mainstem_variables.md` (mentions subnetwork relationships)
 
-## Audit Date
+## Audit History
 
-**2026-02-02** - Initial validation spec creation based on database audit
+- **2026-02-02** - Initial validation spec creation based on database audit
+- **2026-03-03** - Full audit with V026-V031 lint checks. All pass. Updated stats for Pfafstetter offsets.

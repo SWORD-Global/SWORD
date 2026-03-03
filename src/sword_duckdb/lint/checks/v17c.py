@@ -1903,3 +1903,432 @@ def check_pathlen_direction(
         details=issues,
         description=desc,
     )
+
+
+# subnetwork_id checks (V026-V031)
+# =============================================================================
+
+# Pfafstetter offset bands per region (from pfaf_offsets.py)
+_PFAF_BANDS = {
+    "AF": (1_000_001, 1_999_999),
+    "EU": (2_000_001, 2_999_999),
+    "AS": (3_000_001, 3_999_999),
+    "OC": (5_000_001, 5_999_999),
+    "SA": (6_000_001, 6_999_999),
+    "NA": (7_000_001, 7_999_999),
+}
+
+
+def _has_column(conn: duckdb.DuckDBPyConnection, table: str, column: str) -> bool:
+    """Check whether *column* exists in *table* without raising."""
+    try:
+        conn.execute(f"SELECT {column} FROM {table} LIMIT 0")
+        return True
+    except (duckdb.CatalogException, duckdb.BinderException):
+        return False
+
+
+def _column_missing_result(check_id: str, name: str, severity: Severity) -> CheckResult:
+    return CheckResult(
+        check_id=check_id,
+        name=name,
+        severity=severity,
+        passed=True,
+        total_checked=0,
+        issues_found=0,
+        issue_pct=0,
+        details=pd.DataFrame(),
+        description="Column subnetwork_id not found (v17c pipeline not run)",
+    )
+
+
+@register_check(
+    "V026",
+    Category.V17C,
+    Severity.ERROR,
+    "subnetwork_id must not be NULL for connected non-ghost reaches",
+)
+def check_subnetwork_id_coverage(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Every connected, non-ghost reach must have a subnetwork_id assigned."""
+    if not _has_column(conn, "reaches", "subnetwork_id"):
+        return _column_missing_result("V026", "subnetwork_id_coverage", Severity.ERROR)
+
+    where_clause = f"AND r.region = '{region}'" if region else ""
+    has_type = _has_column(conn, "reaches", "type")
+    type_filter = "AND r.type NOT IN (5, 6)" if has_type else ""
+
+    query = f"""
+    SELECT
+        r.reach_id, r.region, r.river_name, r.x, r.y,
+        r.n_rch_up, r.n_rch_down, r.network
+    FROM reaches r
+    WHERE r.subnetwork_id IS NULL
+        AND (r.n_rch_up > 0 OR r.n_rch_down > 0)
+        {type_filter}
+        {where_clause}
+    ORDER BY r.reach_id
+    """
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r
+    WHERE (n_rch_up > 0 OR n_rch_down > 0) {type_filter}
+    {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V026",
+        name="subnetwork_id_coverage",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Connected non-ghost reaches missing subnetwork_id",
+    )
+
+
+@register_check(
+    "V027",
+    Category.V17C,
+    Severity.ERROR,
+    "subnetwork_id must fall within Pfafstetter band for its region",
+)
+def check_subnetwork_id_pfafstetter_range(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Verify subnetwork_id is in the correct Pfafstetter-offset band.
+
+    NA should be 7_000_001..7_999_999, AF 1_000_001..1_999_999, etc.
+    Values outside the band indicate missing or wrong offset application.
+    """
+    if not _has_column(conn, "reaches", "subnetwork_id"):
+        return _column_missing_result("V027", "subnetwork_id_pfafstetter_range", Severity.ERROR)
+
+    where_clause = f"AND r.region = '{region}'" if region else ""
+
+    # Build per-region range conditions
+    range_conditions = " OR ".join(
+        f"(r.region = '{rgn}' AND (r.subnetwork_id < {lo} OR r.subnetwork_id > {hi}))"
+        for rgn, (lo, hi) in _PFAF_BANDS.items()
+    )
+
+    query = f"""
+    SELECT
+        r.reach_id, r.region, r.subnetwork_id, r.river_name, r.x, r.y
+    FROM reaches r
+    WHERE r.subnetwork_id IS NOT NULL
+        AND ({range_conditions})
+        {where_clause}
+    ORDER BY r.region, r.subnetwork_id
+    LIMIT 1000
+    """
+    issues = conn.execute(query).fetchdf()
+
+    count_query = f"""
+    SELECT COUNT(*) FROM reaches r
+    WHERE r.subnetwork_id IS NOT NULL
+        AND ({range_conditions})
+        {where_clause}
+    """
+    n_issues = conn.execute(count_query).fetchone()[0]
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r
+    WHERE subnetwork_id IS NOT NULL
+    {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V027",
+        name="subnetwork_id_pfafstetter_range",
+        severity=Severity.ERROR,
+        passed=n_issues == 0,
+        total_checked=total,
+        issues_found=n_issues,
+        issue_pct=100 * n_issues / total if total > 0 else 0,
+        details=issues,
+        description="Reaches with subnetwork_id outside Pfafstetter band for their region",
+    )
+
+
+@register_check(
+    "V028",
+    Category.V17C,
+    Severity.ERROR,
+    "Topology-connected reaches must share the same subnetwork_id",
+)
+def check_subnetwork_id_topology_consistency(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """If A→B in reach_topology, then subnetwork_id(A) must equal subnetwork_id(B).
+
+    This is both necessary and sufficient for verifying weakly-connected-component
+    assignment: if all topology edges preserve subnetwork_id, then each component
+    is correctly labeled.
+    """
+    if not _has_column(conn, "reaches", "subnetwork_id"):
+        return _column_missing_result("V028", "subnetwork_id_topology_consistency", Severity.ERROR)
+
+    where_clause = f"AND r1.region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT
+        r1.reach_id as reach_a,
+        r2.reach_id as reach_b,
+        r1.region,
+        rt.direction,
+        r1.subnetwork_id as subnetwork_a,
+        r2.subnetwork_id as subnetwork_b,
+        r1.river_name, r1.x, r1.y
+    FROM reaches r1
+    JOIN reach_topology rt
+        ON r1.reach_id = rt.reach_id AND r1.region = rt.region
+    JOIN reaches r2
+        ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
+    WHERE r1.subnetwork_id IS NOT NULL
+        AND r2.subnetwork_id IS NOT NULL
+        AND r1.subnetwork_id != r2.subnetwork_id
+        {where_clause}
+    ORDER BY r1.reach_id
+    LIMIT 1000
+    """
+    issues = conn.execute(query).fetchdf()
+
+    count_query = f"""
+    SELECT COUNT(*) FROM reaches r1
+    JOIN reach_topology rt
+        ON r1.reach_id = rt.reach_id AND r1.region = rt.region
+    JOIN reaches r2
+        ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
+    WHERE r1.subnetwork_id IS NOT NULL
+        AND r2.subnetwork_id IS NOT NULL
+        AND r1.subnetwork_id != r2.subnetwork_id
+        {where_clause}
+    """
+    n_issues = conn.execute(count_query).fetchone()[0]
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r1
+    JOIN reach_topology rt
+        ON r1.reach_id = rt.reach_id AND r1.region = rt.region
+    JOIN reaches r2
+        ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
+    WHERE r1.subnetwork_id IS NOT NULL
+        AND r2.subnetwork_id IS NOT NULL
+        {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V028",
+        name="subnetwork_id_topology_consistency",
+        severity=Severity.ERROR,
+        passed=n_issues == 0,
+        total_checked=total,
+        issues_found=n_issues,
+        issue_pct=100 * n_issues / total if total > 0 else 0,
+        details=issues,
+        description="Topology edges where neighbors have different subnetwork_id (WCC violation)",
+    )
+
+
+@register_check(
+    "V029",
+    Category.V17C,
+    Severity.ERROR,
+    "subnetwork_id must not appear in multiple regions (Pfafstetter uniqueness)",
+)
+def check_subnetwork_id_cross_region_uniqueness(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Verify no subnetwork_id value is shared across regions.
+
+    Pfafstetter offsets should guarantee disjoint ID bands. If a value
+    appears in two regions, the offset was not applied or was corrupted.
+    """
+    if not _has_column(conn, "reaches", "subnetwork_id"):
+        return _column_missing_result("V029", "subnetwork_id_cross_region_uniqueness", Severity.ERROR)
+
+    # Single-region queries can't find cross-region collisions,
+    # but we run anyway for consistency (will always pass).
+    where_clause = f"WHERE r.region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT
+        subnetwork_id,
+        COUNT(DISTINCT region) as n_regions,
+        ARRAY_AGG(DISTINCT region) as regions,
+        COUNT(*) as n_reaches
+    FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} subnetwork_id IS NOT NULL
+    GROUP BY subnetwork_id
+    HAVING COUNT(DISTINCT region) > 1
+    ORDER BY n_reaches DESC
+    LIMIT 500
+    """
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(DISTINCT subnetwork_id) FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} subnetwork_id IS NOT NULL
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V029",
+        name="subnetwork_id_cross_region_uniqueness",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="subnetwork_id values appearing in multiple regions (Pfafstetter collision)",
+    )
+
+
+@register_check(
+    "V030",
+    Category.V17C,
+    Severity.INFO,
+    "Isolated reaches (no neighbors) should form singleton subnetwork components",
+)
+def check_subnetwork_id_singleton_consistency(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Reaches with n_rch_up=0 AND n_rch_down=0 should be the sole member
+    of their subnetwork_id (component size = 1).
+    """
+    if not _has_column(conn, "reaches", "subnetwork_id"):
+        return _column_missing_result("V030", "subnetwork_id_singleton_consistency", Severity.INFO)
+
+    where_clause = f"AND r.region = '{region}'" if region else ""
+
+    query = f"""
+    WITH isolated AS (
+        SELECT reach_id, region, subnetwork_id
+        FROM reaches r
+        WHERE n_rch_up = 0 AND n_rch_down = 0
+            AND subnetwork_id IS NOT NULL
+            {where_clause}
+    ),
+    component_sizes AS (
+        SELECT subnetwork_id, region, COUNT(*) as comp_size
+        FROM reaches
+        WHERE subnetwork_id IS NOT NULL
+        GROUP BY subnetwork_id, region
+    )
+    SELECT
+        i.reach_id, i.region, i.subnetwork_id,
+        cs.comp_size
+    FROM isolated i
+    JOIN component_sizes cs
+        ON i.subnetwork_id = cs.subnetwork_id AND i.region = cs.region
+    WHERE cs.comp_size > 1
+    ORDER BY cs.comp_size DESC
+    """
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r
+    WHERE n_rch_up = 0 AND n_rch_down = 0
+        AND subnetwork_id IS NOT NULL
+        {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V030",
+        name="subnetwork_id_singleton_consistency",
+        severity=Severity.INFO,
+        passed=True,  # Informational
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"Isolated reaches sharing subnetwork_id with other reaches ({len(issues)} found)",
+    )
+
+
+@register_check(
+    "V031",
+    Category.V17C,
+    Severity.INFO,
+    "subnetwork_id size distribution statistics",
+)
+def check_subnetwork_id_distribution(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Report component size distribution by region."""
+    if not _has_column(conn, "reaches", "subnetwork_id"):
+        return _column_missing_result("V031", "subnetwork_id_distribution", Severity.INFO)
+
+    where_clause = f"WHERE r.region = '{region}'" if region else ""
+
+    query = f"""
+    WITH comp_sizes AS (
+        SELECT
+            region,
+            subnetwork_id,
+            COUNT(*) as comp_size
+        FROM reaches r
+        {where_clause}
+        {"AND" if where_clause else "WHERE"} subnetwork_id IS NOT NULL
+        GROUP BY region, subnetwork_id
+    )
+    SELECT
+        region,
+        COUNT(*) as n_components,
+        SUM(comp_size) as n_reaches,
+        MIN(comp_size) as min_size,
+        CAST(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY comp_size) AS INTEGER) as median_size,
+        MAX(comp_size) as max_size,
+        ROUND(AVG(comp_size), 1) as mean_size,
+        SUM(CASE WHEN comp_size = 1 THEN 1 ELSE 0 END) as singletons
+    FROM comp_sizes
+    GROUP BY region
+    ORDER BY region
+    """
+    stats = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(DISTINCT subnetwork_id) FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} subnetwork_id IS NOT NULL
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    n_components = int(stats["n_components"].sum()) if len(stats) > 0 else 0
+    n_singletons = int(stats["singletons"].sum()) if len(stats) > 0 else 0
+
+    return CheckResult(
+        check_id="V031",
+        name="subnetwork_id_distribution",
+        severity=Severity.INFO,
+        passed=True,  # Informational
+        total_checked=total,
+        issues_found=n_singletons,
+        issue_pct=100 * n_singletons / n_components if n_components > 0 else 0,
+        details=stats,
+        description=f"subnetwork_id: {n_components} components, {n_singletons} singletons",
+    )

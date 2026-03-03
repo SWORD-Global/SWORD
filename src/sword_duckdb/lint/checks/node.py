@@ -67,7 +67,7 @@ def check_node_spacing_gap(
     total = conn.execute(total_query).fetchone()[0]
 
     return CheckResult(
-        check_id="N003",
+        check_id="N009",
         name="node_spacing_gap",
         severity=Severity.WARNING,
         passed=len(issues) == 0,
