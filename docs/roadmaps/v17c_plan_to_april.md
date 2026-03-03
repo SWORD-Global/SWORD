@@ -38,13 +38,15 @@
 - Investigate causes: lake sandwiches? actual topology errors?
 
 ### Mainstem lint (#83)
-- V004: mainstem continuity
-- V006: mainstem coverage
-- V007/V008: best_headwater/outlet validity
+- ✅ V004: mainstem continuity
+- ✅ V006: mainstem coverage
+- ✅ V007/V008: best_headwater/outlet validity
+- ✅ V011/T019/T020/A011-A014: river_name audit and formatting fixes (2026-03-03)
+- ✅ V013/V014/V015: main_path_id audit and documentation (2026-03-03)
 
 ### Validation (#70, #71, #72)
-- Run full lint suite, document baseline
-- Create tracking spreadsheet for violations by region
+- [x] Run full lint suite, document baseline (Progressing: path_topology, river_name audits complete)
+- [ ] Create tracking spreadsheet for violations by region
 
 ---
 

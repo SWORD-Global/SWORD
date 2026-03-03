@@ -182,9 +182,18 @@ The correction pipeline uses v17c routing (`is_mainstem_edge`) to preserve mains
 | is_mainstem_edge | ✅ | Continuous paths |
 | v17c_sections | ✅ | 42,607 junction-to-junction segments |
 
-### Known Issues
-- **#69**: Mississippi/Ohio mainstem algorithm bug at Cairo confluence ✅ FIXED (2026-02-26)
-- **#111**: 1,210 hydro_dist_out monotonicity violations (closed, documented as expected)
+### Audits (2026-03-03)
+
+**Path Topology (V007, V012-V015):**
+- **V007 best_headwater**: 80 cases in NA pointing to non-headwaters. Needs triage.
+- **V013-V015 main_path_id**: 3,134 consistency issues detected (path collisions).
+- **Next Step**: Recompute `main_path_id` from current `(best_headwater, best_outlet)` tuples globally.
+
+**River Names (V011, T019, T020, A011-A014):**
+- **T019 Coverage**: 51.2% unnamed (NODATA). Asia poorest (89.5%), Europe best (7.8%).
+- **V011 Continuity**: 2.6% OSM name flicker on 1:1 mainstem links.
+- **A011/A014 Formatting**: 291 issues (wrong separators, trailing whitespace) ✅ FIXED 2026-03-03.
+- **A012/A013 Order/ASCII**: 100% PASS.
 
 ---
 
