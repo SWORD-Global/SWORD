@@ -44,7 +44,9 @@ def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict[int, Dict]) -> Dict[int, 
     return is_mainstem
 
 
-def compute_main_neighbors(G: nx.DiGraph) -> Dict[int, Dict]:
+def compute_main_neighbors(
+    G: nx.DiGraph, overrides: Dict[int, Dict] | None = None
+) -> Dict[int, Dict]:
     """
     Compute rch_id_up_main and rch_id_dn_main for each reach.
 
@@ -53,8 +55,21 @@ def compute_main_neighbors(G: nx.DiGraph) -> Dict[int, Dict]:
     best_headwater/best_outlet, ensuring consistent routing across all v17c
     columns.
 
+    Parameters
+    ----------
+    G : nx.DiGraph
+        Reach-level directed graph.
+    overrides : dict, optional
+        Human-reviewed corrections from backwater QC.
+        ``{junction_reach_id: {"rch_id_up_main": corrected_reach_id}}``.
+        When a node appears in overrides, the override value is used instead
+        of the algorithmic ranking.
+
     Returns dict {reach_id: {'rch_id_up_main': int|None, 'rch_id_dn_main': int|None}}.
     """
+    overrides = overrides or {}
+    n_overrides_applied = 0
+
     log("Computing main neighbors (rch_id_up_main / rch_id_dn_main)...")
 
     results = {}
@@ -63,14 +78,33 @@ def compute_main_neighbors(G: nx.DiGraph) -> Dict[int, Dict]:
         # Main upstream neighbor: pick best predecessor
         preds = list(G.predecessors(node))
         if preds:
-            best_up = max(
-                preds,
-                key=lambda n: (
-                    G.nodes[n].get("effective_width", 0) or 0,
-                    G.nodes[n].get("log_facc", 0) or 0,
-                ),
-            )
-            rch_id_up_main = best_up
+            override = overrides.get(node)
+            if override and "rch_id_up_main" in override:
+                candidate = override["rch_id_up_main"]
+                if candidate in preds:
+                    rch_id_up_main = candidate
+                    n_overrides_applied += 1
+                else:
+                    log(
+                        f"WARNING: override for {node} specifies "
+                        f"rch_id_up_main={candidate} but it is not a "
+                        f"predecessor (preds={preds}), falling back to ranking"
+                    )
+                    rch_id_up_main = max(
+                        preds,
+                        key=lambda n: (
+                            G.nodes[n].get("effective_width", 0) or 0,
+                            G.nodes[n].get("log_facc", 0) or 0,
+                        ),
+                    )
+            else:
+                rch_id_up_main = max(
+                    preds,
+                    key=lambda n: (
+                        G.nodes[n].get("effective_width", 0) or 0,
+                        G.nodes[n].get("log_facc", 0) or 0,
+                    ),
+                )
         else:
             rch_id_up_main = None
 
@@ -96,5 +130,7 @@ def compute_main_neighbors(G: nx.DiGraph) -> Dict[int, Dict]:
     n_with_up = sum(1 for v in results.values() if v["rch_id_up_main"] is not None)
     n_with_dn = sum(1 for v in results.values() if v["rch_id_dn_main"] is not None)
     log(f"Main neighbors: {n_with_up:,} with up_main, {n_with_dn:,} with dn_main")
+    if n_overrides_applied:
+        log(f"  ({n_overrides_applied} overrides applied from backwater QC)")
 
     return results
