@@ -83,7 +83,7 @@ Tests 1-5 confirm that the core topology graph is clean: no duplicates, full rec
 **Test 7b — dist_out should not jump >30km between connected reaches.**
 **Result: FINDINGS.** 553 reach pairs (0.2% of connected pairs) exceed the 30km threshold. ([T017](https://github.com/SWORD-Global/SWORD/issues/191))
 
-![Figure 2. At a braided-channel bifurcation, the dist_out algorithm assigns max(downstream) + own length, creating a gap on the shorter branch equal to the path-length difference between channels.](figures/junction_dist_out.svg)
+![Figure 2. Why dist_out gaps are unavoidable at braided-channel bifurcations. D's dist_out is calculated as max(52, 27) + 3 = 55 km, which keeps the long-channel edge smooth (55 → 52, 3 km gap) but creates a 28 km gap on the short-channel edge (55 → 27). No single scalar can be close to both neighbors.](figures/junction_dist_out.svg)
 
 - Root cause: At bifurcation-rejoin structures (braided channels), a river splits into two channels of different lengths and later rejoins. The `dist_out` algorithm assigns the upstream reach `max(downstream dist_out) + own length` to preserve monotonicity on the longer branch, but the assignment creates a gap on the edge to the shorter branch equal to the path-length difference between channels (see Figure 2). All 553 cases occur at bifurcation or multi-path junctions, not along linear chains. No single-scalar distance metric can be monotonic on all edges of a multi-path network — the gap is a mathematical limitation, not a data error.
 - Verification: Spatial verification confirmed all flagged pairs are <20km apart geographically (T022).

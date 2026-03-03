@@ -1,101 +1,98 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 430" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
   <defs>
-    <marker id="flowA" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L8,3 L0,6" fill="#3498db"/>
+    <marker id="flowArrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#95a5a6"/>
     </marker>
   </defs>
 
   <!-- Background -->
-  <rect width="720" height="380" rx="6" fill="#fafbfc" stroke="#e1e4e8" stroke-width="1"/>
+  <rect width="720" height="430" rx="6" fill="#fafbfc" stroke="#e1e4e8" stroke-width="1"/>
 
   <!-- Title -->
-  <text x="360" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#24292e">Figure 2. dist_out discontinuity at a braided-channel bifurcation</text>
+  <text x="360" y="26" text-anchor="middle" font-size="13" font-weight="600" fill="#24292e">Figure 2. Why dist_out gaps are unavoidable at braided-channel bifurcations</text>
 
-  <!-- Upstream reach entering from left -->
-  <path d="M60,180 C100,180 120,180 155,180"
-        fill="none" stroke="#2c3e50" stroke-width="6" stroke-linecap="round" opacity="0.25"/>
-  <path d="M60,180 C100,180 120,180 155,180"
-        fill="none" stroke="#2c3e50" stroke-width="3" stroke-linecap="round"/>
+  <!-- Flow direction indicator -->
+  <text x="582" y="50" text-anchor="end" font-size="9.5" fill="#95a5a6" font-style="italic">flow direction</text>
+  <line x1="588" y1="47" x2="648" y2="47" stroke="#95a5a6" stroke-width="1.3" marker-end="url(#flowArrow)"/>
 
-  <!-- Bifurcation node D (left) -->
-  <circle cx="165" cy="180" r="10" fill="#8e44ad" stroke="white" stroke-width="2.5"/>
-  <text x="165" y="168" text-anchor="middle" font-size="11" font-weight="700" fill="#8e44ad">D</text>
+  <!-- ===== NETWORK DIAGRAM ===== -->
 
-  <!-- Channel E (long, upper arc) -->
-  <path d="M175,174 C220,130 300,95 380,95 C460,95 530,130 555,174"
-        fill="none" stroke="#3498db" stroke-width="6" stroke-linecap="round" opacity="0.2"/>
-  <path d="M175,174 C220,130 300,95 380,95 C460,95 530,130 555,174"
-        fill="none" stroke="#3498db" stroke-width="3" stroke-linecap="round"/>
+  <!-- Upstream reach -->
+  <path d="M55,195 L140,195" fill="none" stroke="#bdc3c7" stroke-width="5" stroke-linecap="round"/>
+  <text x="47" y="199" text-anchor="end" font-size="9" fill="#bdc3c7">upstream</text>
 
-  <!-- Channel F (short, lower arc) -->
-  <path d="M175,186 C220,220 300,240 380,240 C460,240 530,220 555,186"
-        fill="none" stroke="#e67e22" stroke-width="6" stroke-linecap="round" opacity="0.2"/>
-  <path d="M175,186 C220,220 300,240 380,240 C460,240 530,220 555,186"
-        fill="none" stroke="#e67e22" stroke-width="3" stroke-linecap="round"/>
+  <!-- ── Node D (bifurcation) ── -->
+  <circle cx="155" cy="195" r="16" fill="#8e44ad" stroke="white" stroke-width="3"/>
+  <text x="155" y="200" text-anchor="middle" font-size="13" font-weight="700" fill="white">D</text>
 
-  <!-- Rejoin node G (right) -->
-  <circle cx="565" cy="180" r="10" fill="#2c3e50" stroke="white" stroke-width="2.5"/>
-  <text x="565" y="168" text-anchor="middle" font-size="11" font-weight="700" fill="#2c3e50">G</text>
+  <!-- D dist_out badge (left of D) -->
+  <rect x="68" y="210" width="72" height="22" rx="11" fill="#8e44ad" opacity="0.12" stroke="#8e44ad" stroke-width="0.7"/>
+  <text x="104" y="225" text-anchor="middle" font-size="10.5" fill="#8e44ad" font-weight="700">55 km</text>
 
-  <!-- Downstream to outlet -->
-  <path d="M575,180 C600,180 630,180 660,180"
-        fill="none" stroke="#2c3e50" stroke-width="6" stroke-linecap="round" opacity="0.25"/>
-  <path d="M575,180 C600,180 630,180 660,180"
-        fill="none" stroke="#2c3e50" stroke-width="3" stroke-linecap="round" marker-end="url(#flowA)"/>
-  <text x="683" y="177" font-size="10" fill="#3498db">to outlet</text>
+  <!-- ── Long channel E (upper arc) ── -->
+  <path d="M170,187 C215,130 300,88 370,88 C440,88 525,130 550,187"
+        fill="none" stroke="#3498db" stroke-width="5" stroke-linecap="round" opacity="0.18"/>
+  <path d="M170,187 C215,130 300,88 370,88 C440,88 525,130 550,187"
+        fill="none" stroke="#3498db" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="370" y="76" text-anchor="middle" font-size="11" fill="#2471a3" font-weight="600">Long channel (40 km)</text>
 
-  <!-- Channel E label -->
-  <rect x="320" y="64" width="126" height="22" rx="3" fill="#3498db" opacity="0.1" stroke="#3498db" stroke-width="0.5"/>
-  <text x="383" y="79" text-anchor="middle" font-size="11" fill="#2471a3" font-weight="600">E channel (40 km)</text>
+  <!-- Node on E channel (first reach upstream of G on E) -->
+  <circle cx="230" cy="128" r="6" fill="#3498db" stroke="white" stroke-width="2"/>
 
-  <!-- Channel F label -->
-  <rect x="315" y="250" width="120" height="22" rx="3" fill="#e67e22" opacity="0.1" stroke="#e67e22" stroke-width="0.5"/>
-  <text x="375" y="265" text-anchor="middle" font-size="11" fill="#d35400" font-weight="600">F channel (15 km)</text>
+  <!-- E-node dist_out badge -->
+  <rect x="244" y="112" width="58" height="20" rx="10" fill="#3498db" opacity="0.12" stroke="#3498db" stroke-width="0.7"/>
+  <text x="273" y="126" text-anchor="middle" font-size="10" fill="#2471a3" font-weight="700">52 km</text>
 
-  <!-- E1 node (top of E, near D) -->
-  <circle cx="240" cy="125" r="5" fill="#3498db" stroke="white" stroke-width="1.5"/>
-  <text x="253" y="122" font-size="9.5" fill="#2471a3" font-weight="600">E&#8321;</text>
+  <!-- ── Short channel F (lower arc) ── -->
+  <path d="M170,203 C215,260 300,302 370,302 C440,302 525,260 550,203"
+        fill="none" stroke="#e67e22" stroke-width="5" stroke-linecap="round" opacity="0.18"/>
+  <path d="M170,203 C215,260 300,302 370,302 C440,302 525,260 550,203"
+        fill="none" stroke="#e67e22" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="370" y="323" text-anchor="middle" font-size="11" fill="#d35400" font-weight="600">Short channel (15 km)</text>
 
-  <!-- F1 node (top of F, near D) -->
-  <circle cx="240" cy="225" r="5" fill="#e67e22" stroke="white" stroke-width="1.5"/>
-  <text x="253" y="228" font-size="9.5" fill="#d35400" font-weight="600">F&#8321;</text>
+  <!-- Node on F channel (first reach upstream of G on F) -->
+  <circle cx="230" cy="260" r="6" fill="#e67e22" stroke="white" stroke-width="2"/>
 
-  <!-- dist_out value annotations -->
+  <!-- F-node dist_out badge -->
+  <rect x="244" y="253" width="58" height="20" rx="10" fill="#e67e22" opacity="0.12" stroke="#e67e22" stroke-width="0.7"/>
+  <text x="273" y="267" text-anchor="middle" font-size="10" fill="#d35400" font-weight="700">27 km</text>
 
-  <!-- E1 dist_out (right side of figure, clean) -->
-  <line x1="500" y1="108" x2="500" y2="50" stroke="#3498db" stroke-width="1" stroke-dasharray="3,2"/>
-  <circle cx="500" cy="108" r="4" fill="#3498db" opacity="0.4"/>
-  <text x="500" y="46" text-anchor="middle" font-size="10.5" fill="#2471a3" font-weight="600">E&#8321;: dist_out = 52 km</text>
+  <!-- ── Node G (rejoin) ── -->
+  <circle cx="565" cy="195" r="16" fill="#2c3e50" stroke="white" stroke-width="3"/>
+  <text x="565" y="200" text-anchor="middle" font-size="13" font-weight="700" fill="white">G</text>
 
-  <!-- F1 dist_out -->
-  <line x1="500" y1="232" x2="500" y2="278" stroke="#e67e22" stroke-width="1" stroke-dasharray="3,2"/>
-  <circle cx="500" cy="232" r="4" fill="#e67e22" opacity="0.4"/>
-  <text x="500" y="292" text-anchor="middle" font-size="10.5" fill="#d35400" font-weight="600">F&#8321;: dist_out = 27 km</text>
+  <!-- G dist_out badge -->
+  <rect x="590" y="184" width="58" height="20" rx="10" fill="#2c3e50" opacity="0.12" stroke="#2c3e50" stroke-width="0.7"/>
+  <text x="619" y="198" text-anchor="middle" font-size="10" fill="#2c3e50" font-weight="700">10 km</text>
 
-  <!-- G dist_out -->
-  <line x1="605" y1="180" x2="605" y2="142" stroke="#2c3e50" stroke-width="1" stroke-dasharray="3,2"/>
-  <text x="605" y="137" text-anchor="middle" font-size="10" fill="#2c3e50" font-weight="600">G: 10 km</text>
+  <!-- Downstream reach to outlet -->
+  <path d="M581,195 L665,195" fill="none" stroke="#bdc3c7" stroke-width="5" stroke-linecap="round" marker-end="url(#flowArrow)"/>
+  <text x="680" y="199" font-size="9" fill="#bdc3c7">outlet</text>
 
-  <!-- D dist_out -->
-  <line x1="110" y1="180" x2="110" y2="142" stroke="#8e44ad" stroke-width="1" stroke-dasharray="3,2"/>
-  <text x="110" y="132" text-anchor="middle" font-size="10" fill="#8e44ad" font-weight="600">D: 55 km</text>
-  <text x="110" y="145" text-anchor="middle" font-size="8.5" fill="#6a737d">max(52, 27) + 3</text>
+  <!-- ===== EDGE GAP ANNOTATIONS ===== -->
 
-  <!-- Gap annotation: D to F1 (bad edge) -->
-  <path d="M135,200 C145,225 195,240 232,228" fill="none" stroke="#c0392b" stroke-width="1.4" stroke-dasharray="4,3"/>
-  <circle cx="232" cy="228" r="2" fill="#c0392b"/>
-  <rect x="120" y="244" width="84" height="20" rx="3" fill="#fdedec" stroke="#c0392b" stroke-width="0.7"/>
-  <text x="162" y="258" text-anchor="middle" font-size="10" font-weight="600" fill="#c0392b">gap: 28 km</text>
+  <!-- D → E edge: smooth (green) -->
+  <line x1="168" y1="183" x2="225" y2="133" stroke="#27ae60" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.5"/>
+  <rect x="155" y="147" width="92" height="20" rx="4" fill="#eafaf1" stroke="#27ae60" stroke-width="0.8"/>
+  <text x="201" y="161" text-anchor="middle" font-size="9.5" font-weight="600" fill="#27ae60">55 → 52 = 3 km</text>
 
-  <!-- OK annotation: D to E1 (good edge) -->
-  <path d="M148,168 C162,148 195,132 232,127" fill="none" stroke="#27ae60" stroke-width="1.2" stroke-dasharray="4,3"/>
-  <circle cx="232" cy="127" r="2" fill="#27ae60"/>
-  <rect x="165" y="110" width="52" height="18" rx="3" fill="#eafaf1" stroke="#27ae60" stroke-width="0.7"/>
-  <text x="191" y="122" text-anchor="middle" font-size="9.5" font-weight="600" fill="#27ae60">gap: 3</text>
+  <!-- D → F edge: problematic (red) -->
+  <line x1="168" y1="207" x2="225" y2="255" stroke="#e74c3c" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.5"/>
+  <rect x="148" y="222" width="108" height="20" rx="4" fill="#fdedec" stroke="#e74c3c" stroke-width="0.8"/>
+  <text x="202" y="236" text-anchor="middle" font-size="9.5" font-weight="700" fill="#e74c3c">55 → 27 = 28 km !</text>
 
-  <!-- Explanation box -->
-  <rect x="40" y="314" width="640" height="55" rx="4" fill="#f6f8fa" stroke="#e1e4e8" stroke-width="0.7"/>
-  <text x="360" y="332" text-anchor="middle" font-size="9.5" fill="#586069">D takes max(downstream dist_out) + own length to preserve monotonicity on the longer branch.</text>
-  <text x="360" y="348" text-anchor="middle" font-size="9.5" fill="#586069">The edge D&#x2192;F&#x2081; inherits a gap equal to the path-length difference between channels E and F (25 km).</text>
-  <text x="360" y="364" text-anchor="middle" font-size="9.5" fill="#586069">No single-scalar distance can avoid this on all edges of a multi-path network.</text>
+  <!-- ===== BOTTOM: ALGORITHM + EXPLANATION ===== -->
+
+  <!-- Algorithm box (left) -->
+  <rect x="40" y="350" width="300" height="60" rx="5" fill="#f5eef8" stroke="#8e44ad" stroke-width="0.8"/>
+  <text x="55" y="369" font-size="10.5" fill="#6c3483" font-weight="700">How D's dist_out is calculated</text>
+  <text x="55" y="387" font-size="11" fill="#4a235a" font-family="'SF Mono', 'Fira Code', Consolas, monospace">D = max(52, 27) + own_length(3)</text>
+  <text x="55" y="402" font-size="11" fill="#4a235a" font-family="'SF Mono', 'Fira Code', Consolas, monospace">D = 52 + 3 = <tspan font-weight="700">55 km</tspan></text>
+
+  <!-- Explanation box (right) -->
+  <rect x="360" y="350" width="320" height="60" rx="5" fill="#f6f8fa" stroke="#e1e4e8" stroke-width="0.8"/>
+  <text x="375" y="369" font-size="10.5" fill="#24292e" font-weight="700">Why the 28 km gap is unavoidable</text>
+  <text x="375" y="387" font-size="9.5" fill="#586069">D needs one value, but its two downstream</text>
+  <text x="375" y="401" font-size="9.5" fill="#586069">neighbors differ by 25 km. No single number</text>
+  <text x="375" y="415" font-size="9.5" fill="#586069">can be close to both 52 and 27.</text>
 </svg>
