@@ -37,7 +37,7 @@ path_freq  <---- [T002: monotonicity check]
 stream_order = round(np.log(path_freq)) + 1  # where path_freq > 0
 ```
 
-**VERIFIED:** Formula produces exact match with v17b data (100% match rate tested).
+**VERIFIED:** Formula produces exact match with v17c data (0 mismatches). v17b has 1,911 mismatches — UNC used a different/augmented algorithm.
 
 ### Code Reference
 - **File:** `/Users/jakegearon/projects/SWORD/src/sword_duckdb/reconstruction.py`
@@ -95,12 +95,19 @@ result_df['stream_order'] = result_df['stream_order'].astype(int)
 | 8 | 48 |
 
 ### Side Channel Handling
-From v17b data analysis:
+
+**v17b behavior:**
 - `main_side = 0` (main channel): 37,488 reaches, ALL have valid stream_order > 0
 - `main_side = 1` (side channel): 627 reaches, ALL have stream_order = -9999
 - `main_side = 2` (secondary outlet): 581 reaches, ALL have stream_order = -9999
 
-**IMPORTANT:** Side channels (`main_side = 1` or `2`) have `path_freq = -9999`, which propagates to `stream_order = -9999`. This is by design.
+**v17c divergence:** 11,400 side-channel reaches (main_side 1 or 2) now get computed stream_order values. v17b gave them all -9999. This is a deliberate v17c change — side channels now have valid path_freq and therefore valid stream_order.
+
+**v17c range extends to 11** (v17b max was 9) because v17c path_freq reaches 26,670 (v17b max was 1,836).
+
+**N002 passes clean:** 0 violations. All 21,971 main_side=0 reaches with stream_order=-9999 are type=6 ghosts.
+
+**IMPORTANT:** In v17b, side channels (`main_side = 1` or `2`) have `path_freq = -9999`, which propagates to `stream_order = -9999`. In v17c, side channels have computed path_freq and stream_order.
 
 ### Reactive Recalculation
 - **File:** `/Users/jakegearon/projects/SWORD/src/sword_duckdb/reactive.py`
@@ -220,7 +227,10 @@ From the PDD and data analysis:
 | ... | 3 | 1 | ... | 0 |
 (11 reaches total, all path_freq=1, contiguous)
 
-### Proposed Correct Algorithm
+### v17c path_segs
+v17c uses section-based assignment from the `v17c_sections` table plus Pfafstetter offsets for global uniqueness. 38,689 unique segments (v17b had 4,376) — finer segmentation at junctions. Contiguity verified on sample: 107-reach segment maps to v17b path_segs=3 (106/107 match, 1 junction boundary difference).
+
+### Proposed Correct Algorithm (reconstruction.py)
 ```python
 def _reconstruct_reach_path_segs_correct():
     """
@@ -233,6 +243,8 @@ def _reconstruct_reach_path_segs_correct():
     """
     pass  # TODO: Implement correct algorithm
 ```
+
+**Note:** v17c path_segs computation is in `src/sword_v17c_pipeline/v17c_pipeline.py`, not in reconstruction.py. The reconstruction.py implementation remains incorrect and should not be used.
 
 ---
 
@@ -264,48 +276,29 @@ def _reconstruct_reach_path_segs_correct():
 
 ---
 
-## Proposed Consistency Checks
+## Implemented Lint Checks
 
-### New Lint Checks
+| ID | Severity | Rule | File |
+|----|----------|------|------|
+| N002 | ERROR | main_side=0 should have valid stream_order | `src/sword_duckdb/lint/checks/network.py` |
+| N014 | ERROR | `stream_order == round(ln(path_freq)) + 1` (excludes type 5,6) | `src/sword_duckdb/lint/checks/network.py` |
+| N015 | WARNING | stream_order >= 1 when not -9999 (no 0 or negative) | `src/sword_duckdb/lint/checks/network.py` |
+| N016 | WARNING | path_segs group contiguity (edge-count check) | `src/sword_duckdb/lint/checks/network.py` |
+| N017 | INFO | Junction reaches should differ from at least one neighbor's path_segs | `src/sword_duckdb/lint/checks/network.py` |
 
-| ID | Severity | Rule | SQL |
-|----|----------|------|-----|
-| A011 | ERROR | stream_order matches formula | See below |
-| A012 | WARNING | Side channels have stream_order = -9999 | See below |
-| A013 | WARNING | Main channels have valid stream_order | See below |
-| A014 | INFO | path_segs contiguity | Complex topology check |
-
-### A011: stream_order Formula Check
+### N014: stream_order Formula Check
 ```sql
 SELECT reach_id, path_freq, stream_order,
-       ROUND(LN(path_freq)) + 1 as expected
+       CAST(ROUND(LN(path_freq)) + 1 AS INTEGER) AS expected_stream_order
 FROM reaches
-WHERE region = ?
-  AND path_freq > 0
-  AND path_freq != -9999
+WHERE path_freq > 0 AND path_freq != -9999
   AND stream_order != -9999
-  AND stream_order != ROUND(LN(path_freq)) + 1
+  AND type NOT IN (5, 6)
+  AND stream_order != CAST(ROUND(LN(path_freq)) + 1 AS INTEGER)
 ```
 
-### A012: Side Channel stream_order Check
-```sql
-SELECT reach_id, main_side, stream_order
-FROM reaches
-WHERE region = ?
-  AND main_side IN (1, 2)  -- side or secondary outlet
-  AND stream_order != -9999
-```
-
-### A013: Main Channel stream_order Check
-```sql
-SELECT reach_id, main_side, stream_order, path_freq
-FROM reaches
-WHERE region = ?
-  AND main_side = 0  -- main channel
-  AND stream_order = -9999
-  AND path_freq > 0
-  AND path_freq != -9999
-```
+### N016: path_segs Contiguity Check
+For a linear chain of N reaches sharing a path_segs value, there should be 2*(N-1) directed topology edges where both endpoints share that path_segs. Fewer edges means the segment is disconnected.
 
 ---
 
@@ -350,17 +343,19 @@ Add to `DependencyGraph`:
 
 ## Recommendations
 
-### Immediate Actions
+### Completed
 
-1. **Add A011 as ERROR** - Formula validation is critical
-2. **Add A012 and A013 as WARNING** - Side channel handling validation
-3. **Document path_segs bug** - Current reconstruction is incorrect
+1. **N014 (ERROR)** — stream_order formula validation: `round(ln(path_freq)) + 1`
+2. **N015 (WARNING)** — stream_order range validation: >= 1 when not -9999
+3. **N016 (WARNING)** — path_segs contiguity via topology edge counting
+4. **N017 (INFO)** — path_segs junction boundary check
 
 ### Code Fixes Needed
 
 1. **reconstruction.py:3744-3782** - `_reconstruct_reach_path_segs()` needs complete rewrite
    - Current: Counts reaches per path_freq (WRONG)
    - Correct: Assigns unique IDs to contiguous segments between junctions
+   - v17c uses `v17c_pipeline.py` which has the correct implementation
 
 2. **reactive.py** - Add stream_order recalculation trigger
    - When `path_freq` changes, mark `stream_order` dirty
@@ -369,7 +364,7 @@ Add to `DependencyGraph`:
 
 1. Verify path_order algorithm against original SWORD construction code
 2. Determine if path_segs should be reconstructed at all (may be purely static ID)
-3. Test stream_order formula with natural log vs log10 (currently uses natural log)
+3. Test stream_order formula with natural log vs log10 (currently uses natural log — confirmed correct)
 
 ---
 
