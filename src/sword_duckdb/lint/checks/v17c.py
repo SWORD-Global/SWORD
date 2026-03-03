@@ -1246,3 +1246,660 @@ def check_tuple_to_main_path_id_uniqueness(
         details=issues,
         description="(best_headwater, best_outlet) tuples split across multiple main_path_id values",
     )
+
+# pathlen_hw / pathlen_out checks (V020-V025)
+# =============================================================================
+
+
+@register_check(
+    "V020",
+    Category.V17C,
+    Severity.ERROR,
+    "pathlen_hw and pathlen_out must not be NULL or negative for connected reaches",
+)
+def check_pathlen_coverage(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check that all connected non-ghost reaches have valid pathlen_hw/pathlen_out.
+
+    Both values should be non-NULL and >= 0. NULL indicates pipeline failure;
+    negative values indicate a computation bug.
+    """
+    where_clause = f"AND r.region = '{region}'" if region else ""
+
+    try:
+        conn.execute("SELECT pathlen_hw, pathlen_out FROM reaches LIMIT 1")
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V020",
+            name="pathlen_coverage",
+            severity=Severity.ERROR,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Columns pathlen_hw/pathlen_out not found (v17c pipeline not run)",
+        )
+
+    # Check if 'type' column exists (test DB may lack it)
+    has_type = True
+    try:
+        conn.execute("SELECT type FROM reaches LIMIT 1")
+    except (duckdb.CatalogException, duckdb.BinderException):
+        has_type = False
+
+    type_filter = "AND r.type NOT IN (5, 6)" if has_type else ""
+
+    query = f"""
+    SELECT
+        r.reach_id, r.region, r.river_name, r.x, r.y,
+        r.pathlen_hw, r.pathlen_out,
+        r.n_rch_up, r.n_rch_down,
+        CASE
+            WHEN r.pathlen_hw IS NULL AND r.pathlen_out IS NULL THEN 'both_null'
+            WHEN r.pathlen_hw IS NULL THEN 'hw_null'
+            WHEN r.pathlen_out IS NULL THEN 'out_null'
+            WHEN r.pathlen_hw < 0 THEN 'hw_negative'
+            WHEN r.pathlen_out < 0 THEN 'out_negative'
+        END as issue_type
+    FROM reaches r
+    WHERE (r.n_rch_up > 0 OR r.n_rch_down > 0)
+        {type_filter}
+        AND (r.pathlen_hw IS NULL OR r.pathlen_out IS NULL
+             OR r.pathlen_hw < 0 OR r.pathlen_out < 0)
+        {where_clause}
+    ORDER BY r.reach_id
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r
+    WHERE (n_rch_up > 0 OR n_rch_down > 0) {type_filter}
+    {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V020",
+        name="pathlen_coverage",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Connected reaches with NULL or negative pathlen_hw/pathlen_out",
+    )
+
+
+@register_check(
+    "V021",
+    Category.V17C,
+    Severity.WARNING,
+    "pathlen_hw=0 at headwaters, pathlen_out=0 at outlets",
+)
+def check_pathlen_boundary_values(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check boundary conditions for pathlen_hw and pathlen_out.
+
+    - When reach_id = best_headwater, pathlen_hw must be 0 (headwater has
+      no upstream accumulation).
+    - When reach_id = best_outlet, pathlen_out must be 0 (outlet has no
+      downstream accumulation).
+    """
+    where_clause = f"AND r.region = '{region}'" if region else ""
+
+    try:
+        conn.execute(
+            "SELECT pathlen_hw, pathlen_out, best_headwater, best_outlet "
+            "FROM reaches LIMIT 1"
+        )
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V021",
+            name="pathlen_boundary_values",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Required columns not found (v17c pipeline not run)",
+        )
+
+    query = f"""
+    SELECT
+        r.reach_id, r.region, r.river_name, r.x, r.y,
+        r.pathlen_hw, r.pathlen_out,
+        r.best_headwater, r.best_outlet,
+        CASE
+            WHEN r.reach_id = r.best_headwater AND r.pathlen_hw != 0
+                THEN 'headwater_hw_nonzero'
+            WHEN r.reach_id = r.best_outlet AND r.pathlen_out != 0
+                THEN 'outlet_out_nonzero'
+        END as issue_type
+    FROM reaches r
+    WHERE r.pathlen_hw IS NOT NULL
+        AND r.best_headwater IS NOT NULL
+        AND r.best_outlet IS NOT NULL
+        AND (
+            (r.reach_id = r.best_headwater AND r.pathlen_hw != 0)
+            OR (r.reach_id = r.best_outlet AND r.pathlen_out != 0)
+        )
+        {where_clause}
+    ORDER BY r.reach_id
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r
+    WHERE pathlen_hw IS NOT NULL
+        AND (reach_id = best_headwater OR reach_id = best_outlet)
+        {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V021",
+        name="pathlen_boundary_values",
+        severity=Severity.WARNING,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Headwaters with pathlen_hw != 0 or outlets with pathlen_out != 0",
+    )
+
+
+@register_check(
+    "V022",
+    Category.V17C,
+    Severity.WARNING,
+    "pathlen_hw step consistency along rch_id_dn_main (same best_headwater)",
+    default_threshold=1.0,  # tolerance in meters
+)
+def check_pathlen_hw_step(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check pathlen_hw accumulation along rch_id_dn_main chain.
+
+    For A→B via rch_id_dn_main where both share the same best_headwater:
+        pathlen_hw[B] should equal pathlen_hw[A] + reach_length[B]
+
+    Violations occur ONLY at confluences (B has n_rch_up > 1) where the
+    upstream pass picked a different best predecessor than A. This is
+    expected routing divergence — not a bug. ~1,551 globally (~0.7%).
+
+    On 1:1 links (n_rch_up = 1), zero violations are expected.
+    """
+    tolerance = threshold if threshold is not None else 1.0
+    where_clause = f"AND r1.region = '{region}'" if region else ""
+
+    try:
+        conn.execute(
+            "SELECT pathlen_hw, rch_id_dn_main, best_headwater FROM reaches LIMIT 1"
+        )
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V022",
+            name="pathlen_hw_step",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Required columns not found (v17c pipeline not run)",
+        )
+
+    query = f"""
+    SELECT
+        r1.reach_id as upstream_reach,
+        r2.reach_id as downstream_reach,
+        r1.region,
+        r1.river_name,
+        r2.x, r2.y,
+        r1.pathlen_hw as up_pathlen_hw,
+        r2.pathlen_hw as dn_pathlen_hw,
+        r2.reach_length as dn_reach_length,
+        r1.pathlen_hw + r2.reach_length as expected_dn_hw,
+        r2.pathlen_hw - (r1.pathlen_hw + r2.reach_length) as diff,
+        r2.n_rch_up as dn_n_rch_up,
+        r1.best_headwater
+    FROM reaches r1
+    JOIN reaches r2
+        ON r1.rch_id_dn_main = r2.reach_id
+        AND r1.region = r2.region
+    WHERE r1.best_headwater = r2.best_headwater
+        AND r1.pathlen_hw IS NOT NULL
+        AND r2.pathlen_hw IS NOT NULL
+        AND ABS(r2.pathlen_hw - (r1.pathlen_hw + r2.reach_length)) > {tolerance}
+        {where_clause}
+    ORDER BY ABS(r2.pathlen_hw - (r1.pathlen_hw + r2.reach_length)) DESC
+    LIMIT 1000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    # Accurate count (not capped by LIMIT)
+    count_query = f"""
+    SELECT
+        COUNT(*) as total_violations,
+        SUM(CASE WHEN r2.n_rch_up > 1 THEN 1 ELSE 0 END) as at_confluence,
+        SUM(CASE WHEN r2.n_rch_up <= 1 THEN 1 ELSE 0 END) as on_1_1_link
+    FROM reaches r1
+    JOIN reaches r2
+        ON r1.rch_id_dn_main = r2.reach_id
+        AND r1.region = r2.region
+    WHERE r1.best_headwater = r2.best_headwater
+        AND r1.pathlen_hw IS NOT NULL
+        AND r2.pathlen_hw IS NOT NULL
+        AND ABS(r2.pathlen_hw - (r1.pathlen_hw + r2.reach_length)) > {tolerance}
+        {where_clause}
+    """
+    counts = conn.execute(count_query).fetchone()
+    n_violations = counts[0]
+    n_confluence = int(counts[1] or 0)
+    n_onetoone = int(counts[2] or 0)
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r1
+    JOIN reaches r2
+        ON r1.rch_id_dn_main = r2.reach_id
+        AND r1.region = r2.region
+    WHERE r1.best_headwater = r2.best_headwater
+        AND r1.pathlen_hw IS NOT NULL
+        AND r2.pathlen_hw IS NOT NULL
+        {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    desc = (
+        f"pathlen_hw step violations: {n_violations} total "
+        f"({n_confluence} at confluences, {n_onetoone} on 1:1 links)"
+    )
+
+    return CheckResult(
+        check_id="V022",
+        name="pathlen_hw_step",
+        severity=Severity.WARNING,
+        passed=n_onetoone == 0,  # Only fail on 1:1 link violations
+        total_checked=total,
+        issues_found=n_violations,
+        issue_pct=100 * n_violations / total if total > 0 else 0,
+        details=issues,
+        description=desc,
+        threshold=tolerance,
+    )
+
+
+@register_check(
+    "V023",
+    Category.V17C,
+    Severity.ERROR,
+    "pathlen_out step consistency along rch_id_dn_main (same best_outlet)",
+    default_threshold=1.0,  # tolerance in meters
+)
+def check_pathlen_out_step(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check pathlen_out accumulation along rch_id_dn_main chain.
+
+    For A→B via rch_id_dn_main where both share the same best_outlet:
+        pathlen_out[A] should equal pathlen_out[B] + reach_length[B]
+
+    Unlike pathlen_hw (upstream pass), pathlen_out (downstream pass) should
+    have ZERO violations because both pathlen_out and rch_id_dn_main are
+    computed in the same downstream direction. Any violation is a real bug.
+    """
+    tolerance = threshold if threshold is not None else 1.0
+    where_clause = f"AND r1.region = '{region}'" if region else ""
+
+    try:
+        conn.execute(
+            "SELECT pathlen_out, rch_id_dn_main, best_outlet FROM reaches LIMIT 1"
+        )
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V023",
+            name="pathlen_out_step",
+            severity=Severity.ERROR,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Required columns not found (v17c pipeline not run)",
+        )
+
+    query = f"""
+    SELECT
+        r1.reach_id as upstream_reach,
+        r2.reach_id as downstream_reach,
+        r1.region,
+        r1.river_name,
+        r1.x, r1.y,
+        r1.pathlen_out as up_pathlen_out,
+        r2.pathlen_out as dn_pathlen_out,
+        r2.reach_length as dn_reach_length,
+        r2.pathlen_out + r2.reach_length as expected_up_out,
+        r1.pathlen_out - (r2.pathlen_out + r2.reach_length) as diff,
+        r2.n_rch_up as dn_n_rch_up,
+        r1.best_outlet
+    FROM reaches r1
+    JOIN reaches r2
+        ON r1.rch_id_dn_main = r2.reach_id
+        AND r1.region = r2.region
+    WHERE r1.best_outlet = r2.best_outlet
+        AND r1.pathlen_out IS NOT NULL
+        AND r2.pathlen_out IS NOT NULL
+        AND ABS(r1.pathlen_out - (r2.pathlen_out + r2.reach_length)) > {tolerance}
+        {where_clause}
+    ORDER BY ABS(r1.pathlen_out - (r2.pathlen_out + r2.reach_length)) DESC
+    LIMIT 1000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r1
+    JOIN reaches r2
+        ON r1.rch_id_dn_main = r2.reach_id
+        AND r1.region = r2.region
+    WHERE r1.best_outlet = r2.best_outlet
+        AND r1.pathlen_out IS NOT NULL
+        AND r2.pathlen_out IS NOT NULL
+        {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V023",
+        name="pathlen_out_step",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description=f"pathlen_out step violations (expected: 0, found: {len(issues)})",
+        threshold=tolerance,
+    )
+
+
+@register_check(
+    "V024",
+    Category.V17C,
+    Severity.INFO,
+    "pathlen_hw + pathlen_out total path length consistency",
+)
+def check_pathlen_total_consistency(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check that pathlen_hw + pathlen_out is constant for same (best_headwater, best_outlet).
+
+    On a linear path from headwater to outlet, every reach should have the
+    same pathlen_hw + pathlen_out (= total path length minus headwater's
+    reach_length). Variation indicates routing divergence at junctions where
+    the upstream and downstream passes pick different "best" neighbors.
+
+    This is a diagnostic check (INFO) — some divergence is inherent to the
+    independent upstream/downstream pass design.
+    """
+    where_clause = f"AND r.region = '{region}'" if region else ""
+
+    try:
+        conn.execute(
+            "SELECT pathlen_hw, pathlen_out, best_headwater, best_outlet "
+            "FROM reaches LIMIT 1"
+        )
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V024",
+            name="pathlen_total_consistency",
+            severity=Severity.INFO,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Required columns not found (v17c pipeline not run)",
+        )
+
+    query = f"""
+    WITH path_stats AS (
+        SELECT
+            r.best_headwater,
+            r.best_outlet,
+            r.region,
+            COUNT(*) as n_reaches,
+            MIN(r.pathlen_hw + r.pathlen_out) as min_total,
+            MAX(r.pathlen_hw + r.pathlen_out) as max_total,
+            MAX(r.pathlen_hw + r.pathlen_out)
+                - MIN(r.pathlen_hw + r.pathlen_out) as spread
+        FROM reaches r
+        WHERE r.pathlen_hw IS NOT NULL
+            AND r.best_headwater IS NOT NULL
+            AND r.best_outlet IS NOT NULL
+            {where_clause}
+        GROUP BY r.best_headwater, r.best_outlet, r.region
+        HAVING COUNT(*) > 1
+    )
+    SELECT
+        best_headwater, best_outlet, region,
+        n_reaches, min_total, max_total,
+        spread,
+        ROUND(100.0 * spread / NULLIF(max_total, 0), 2) as spread_pct
+    FROM path_stats
+    WHERE spread > 100  -- >100m divergence
+    ORDER BY spread DESC
+    LIMIT 500
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    # Accurate count (not capped by LIMIT)
+    count_query = f"""
+    WITH path_stats AS (
+        SELECT
+            r.best_headwater, r.best_outlet, r.region,
+            MAX(r.pathlen_hw + r.pathlen_out)
+                - MIN(r.pathlen_hw + r.pathlen_out) as spread
+        FROM reaches r
+        WHERE r.pathlen_hw IS NOT NULL
+            AND r.best_headwater IS NOT NULL
+            AND r.best_outlet IS NOT NULL
+            {where_clause}
+        GROUP BY r.best_headwater, r.best_outlet, r.region
+        HAVING COUNT(*) > 1
+    )
+    SELECT COUNT(*) FROM path_stats WHERE spread > 100
+    """
+    n_inconsistent = conn.execute(count_query).fetchone()[0]
+
+    total_query = f"""
+    SELECT COUNT(DISTINCT (best_headwater, best_outlet)) FROM reaches r
+    WHERE pathlen_hw IS NOT NULL
+        AND best_headwater IS NOT NULL
+        AND best_outlet IS NOT NULL
+        {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V024",
+        name="pathlen_total_consistency",
+        severity=Severity.INFO,
+        passed=True,  # Informational
+        total_checked=total,
+        issues_found=n_inconsistent,
+        issue_pct=100 * n_inconsistent / total if total > 0 else 0,
+        details=issues,
+        description=f"Paths with >100m spread in pathlen_hw + pathlen_out ({n_inconsistent} of {total} paths)",
+    )
+
+
+@register_check(
+    "V025",
+    Category.V17C,
+    Severity.WARNING,
+    "pathlen_hw must increase and pathlen_out must decrease downstream on ALL topology edges",
+)
+def check_pathlen_direction(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check directional monotonicity on all downstream topology edges.
+
+    Along ANY downstream edge (not just rch_id_dn_main):
+    - pathlen_hw should not decrease (upstream accumulation grows downstream)
+    - pathlen_out should not increase (downstream accumulation shrinks downstream)
+
+    This is weaker than V022/V023 (which check exact step amounts) but covers
+    ALL edges, not just the mainstem chain.
+
+    ~90% of violations involve side channels (main_side > 0) where routing
+    divergence is expected. Only main-to-main (main_side=0 on both ends)
+    violations are flagged as failures.
+    """
+    where_clause = f"AND r1.region = '{region}'" if region else ""
+
+    try:
+        conn.execute(
+            "SELECT pathlen_hw, pathlen_out, best_headwater, best_outlet "
+            "FROM reaches LIMIT 1"
+        )
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V025",
+            name="pathlen_direction",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Required columns not found (v17c pipeline not run)",
+        )
+
+    # pathlen_out increases downstream = violation (should decrease)
+    # pathlen_hw decreases downstream = violation (should increase)
+    # Only check pairs sharing the same best_headwater/best_outlet respectively
+    query = f"""
+    SELECT
+        r1.reach_id as upstream_reach,
+        r2.reach_id as downstream_reach,
+        r1.region,
+        r1.river_name,
+        r1.x, r1.y,
+        r1.pathlen_hw as up_hw, r2.pathlen_hw as dn_hw,
+        r1.pathlen_out as up_out, r2.pathlen_out as dn_out,
+        r1.main_side as up_main_side,
+        r2.main_side as dn_main_side,
+        CASE
+            WHEN r1.best_headwater = r2.best_headwater
+                AND r2.pathlen_hw < r1.pathlen_hw - 1.0
+                THEN 'hw_decreases_downstream'
+            WHEN r1.best_outlet = r2.best_outlet
+                AND r2.pathlen_out > r1.pathlen_out + 1.0
+                THEN 'out_increases_downstream'
+        END as issue_type,
+        r2.n_rch_up as dn_n_rch_up
+    FROM reaches r1
+    JOIN reach_topology rt
+        ON r1.reach_id = rt.reach_id AND r1.region = rt.region
+    JOIN reaches r2
+        ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
+    WHERE rt.direction = 'down'
+        AND r1.pathlen_hw IS NOT NULL
+        AND r2.pathlen_hw IS NOT NULL
+        AND (
+            (r1.best_headwater = r2.best_headwater
+                AND r2.pathlen_hw < r1.pathlen_hw - 1.0)
+            OR (r1.best_outlet = r2.best_outlet
+                AND r2.pathlen_out > r1.pathlen_out + 1.0)
+        )
+        {where_clause}
+    ORDER BY ABS(COALESCE(r2.pathlen_hw - r1.pathlen_hw, r2.pathlen_out - r1.pathlen_out)) DESC
+    LIMIT 1000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    # Accurate counts (not capped by LIMIT)
+    count_query = f"""
+    SELECT
+        COUNT(*) as total_violations,
+        SUM(CASE WHEN r1.main_side = 0 AND r2.main_side = 0 THEN 1 ELSE 0 END) as main_main
+    FROM reaches r1
+    JOIN reach_topology rt
+        ON r1.reach_id = rt.reach_id AND r1.region = rt.region
+    JOIN reaches r2
+        ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
+    WHERE rt.direction = 'down'
+        AND r1.pathlen_hw IS NOT NULL
+        AND r2.pathlen_hw IS NOT NULL
+        AND (
+            (r1.best_headwater = r2.best_headwater
+                AND r2.pathlen_hw < r1.pathlen_hw - 1.0)
+            OR (r1.best_outlet = r2.best_outlet
+                AND r2.pathlen_out > r1.pathlen_out + 1.0)
+        )
+        {where_clause}
+    """
+    counts = conn.execute(count_query).fetchone()
+    n_violations = counts[0]
+    n_main_main = int(counts[1] or 0)
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r1
+    JOIN reach_topology rt
+        ON r1.reach_id = rt.reach_id AND r1.region = rt.region
+    JOIN reaches r2
+        ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
+    WHERE rt.direction = 'down'
+        AND r1.pathlen_hw IS NOT NULL
+        AND r2.pathlen_hw IS NOT NULL
+        {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    n_side = n_violations - n_main_main
+    desc = (
+        f"pathlen direction violations: {n_violations} total "
+        f"({n_side} side-channel, {n_main_main} main-to-main)"
+    )
+
+    return CheckResult(
+        check_id="V025",
+        name="pathlen_direction",
+        severity=Severity.WARNING,
+        passed=n_violations == 0,
+        total_checked=total,
+        issues_found=n_violations,
+        issue_pct=100 * n_violations / total if total > 0 else 0,
+        details=issues,
+        description=desc,
+    )

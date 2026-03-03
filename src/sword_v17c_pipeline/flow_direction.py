@@ -242,23 +242,73 @@ def flip_section_topology(
     """
     Flip direction='up'<->'down' for edges within a section.
 
-    Only flips rows where both reach_id and neighbor_reach_id are in the
-    section set (reaches + junctions), preserving external connections.
+    Safely handles neighbor_rank collisions by re-ranking all neighbors
+    for affected reaches after the flip.
     """
     section_set = list(set(reach_ids) | {upstream_junction, downstream_junction})
     section_df = pd.DataFrame({"rid": section_set})
     conn.register("_flip_ids", section_df)
-    result = conn.execute(
+
+    # 1. Extract ALL topology for these reaches
+    conn.execute(
         """
-        UPDATE reach_topology
-        SET direction = CASE WHEN direction = 'up' THEN 'down' ELSE 'up' END
+        CREATE TEMP TABLE _topo_to_process AS
+        SELECT * FROM reach_topology
         WHERE region = ?
           AND reach_id IN (SELECT rid FROM _flip_ids)
-          AND neighbor_reach_id IN (SELECT rid FROM _flip_ids)
     """,
         [region.upper()],
     )
+
+    # 2. Delete the rows we're about to replace
+    conn.execute(
+        """
+        DELETE FROM reach_topology
+        WHERE region = ?
+          AND reach_id IN (SELECT rid FROM _flip_ids)
+    """,
+        [region.upper()],
+    )
+
+    # 3. Flip direction for internal edges and re-rank everything
+    # We use ROW_NUMBER() to ensure contiguous 0-based ranks for each direction
+    conn.execute(
+        """
+        INSERT INTO reach_topology
+        SELECT
+            reach_id,
+            region,
+            CASE
+                WHEN neighbor_reach_id IN (SELECT rid FROM _flip_ids)
+                THEN (CASE WHEN direction = 'up' THEN 'down' ELSE 'up' END)
+                ELSE direction
+            END as direction,
+            CAST(ROW_NUMBER() OVER (
+                PARTITION BY reach_id, 
+                (CASE 
+                    WHEN neighbor_reach_id IN (SELECT rid FROM _flip_ids) 
+                    THEN (CASE WHEN direction = 'up' THEN 'down' ELSE 'up' END) 
+                    ELSE direction 
+                END)
+                ORDER BY neighbor_rank
+            ) - 1 AS TINYINT) as neighbor_rank,
+            neighbor_reach_id,
+            topology_suspect,
+            topology_approved
+        FROM _topo_to_process
+    """
+    )
+
+    # 4. Count how many internal edges were actually flipped
+    result = conn.execute(
+        """
+        SELECT COUNT(*) FROM _topo_to_process
+        WHERE neighbor_reach_id IN (SELECT rid FROM _flip_ids)
+    """
+    )
     n = result.fetchone()[0]
+
+    conn.execute("DROP TABLE _topo_to_process")
     conn.unregister("_flip_ids")
     return n
 
