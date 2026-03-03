@@ -2730,3 +2730,338 @@ class TestG023DuplicateCenterlines:
         assert result.passed is True
         assert result.total_checked == 0
         conn.close()
+
+
+# =============================================================================
+# V026-V031 subnetwork_id Checks
+# =============================================================================
+
+
+def _create_subnetwork_test_data(conn, reaches_rows, topology_rows=None):
+    """Create minimal reaches/reach_topology tables for subnetwork_id checks.
+
+    reaches_rows: list of tuples
+        (reach_id, region, x, y, river_name, n_rch_up, n_rch_down, subnetwork_id, network)
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reaches (
+            reach_id BIGINT,
+            region VARCHAR,
+            x DOUBLE,
+            y DOUBLE,
+            river_name VARCHAR,
+            n_rch_up INTEGER,
+            n_rch_down INTEGER,
+            subnetwork_id INTEGER,
+            network INTEGER
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reach_topology (
+            reach_id BIGINT,
+            region VARCHAR,
+            direction VARCHAR,
+            neighbor_rank INTEGER,
+            neighbor_reach_id BIGINT
+        )
+    """)
+
+    for row in reaches_rows:
+        conn.execute(
+            "INSERT INTO reaches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            list(row),
+        )
+    for row in topology_rows or []:
+        conn.execute(
+            "INSERT INTO reach_topology VALUES (?, ?, ?, ?, ?)",
+            list(row),
+        )
+
+
+@pytest.mark.db
+class TestV17CSubnetworkIdChecks:
+    """Tests for V026-V031 subnetwork_id checks."""
+
+    def test_v026_registered(self):
+        check = get_check("V026")
+        assert check is not None
+        assert check.name == "subnetwork_id_coverage"
+        assert check.category == Category.V17C
+        assert check.severity == Severity.ERROR
+
+    def test_v027_registered(self):
+        check = get_check("V027")
+        assert check is not None
+        assert check.name == "subnetwork_id_pfafstetter_range"
+
+    def test_v028_registered(self):
+        check = get_check("V028")
+        assert check is not None
+        assert check.name == "subnetwork_id_topology_consistency"
+
+    def test_v029_registered(self):
+        check = get_check("V029")
+        assert check is not None
+        assert check.name == "subnetwork_id_cross_region_uniqueness"
+
+    def test_v030_registered(self):
+        check = get_check("V030")
+        assert check is not None
+        assert check.name == "subnetwork_id_singleton_consistency"
+
+    def test_v031_registered(self):
+        check = get_check("V031")
+        assert check is not None
+        assert check.name == "subnetwork_id_distribution"
+
+    def test_v026_missing_column_passes(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v026_nocol.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        conn.execute("CREATE TABLE reaches (reach_id BIGINT, region VARCHAR)")
+        from src.sword_duckdb.lint.checks.v17c import check_subnetwork_id_coverage
+
+        result = check_subnetwork_id_coverage(conn)
+        assert result.passed is True
+        assert result.total_checked == 0
+        conn.close()
+
+    def test_v026_flags_null_subnetwork(self, tmp_path):
+        """Connected reaches with NULL subnetwork_id should be flagged."""
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v026_null.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "R", 0, 1, None, 1),
+                (2, "NA", -75.1, 45.1, "R", 1, 0, 7_000_001, 1),
+            ],
+            topology_rows=[
+                (1, "NA", "down", 0, 2),
+                (2, "NA", "up", 0, 1),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import check_subnetwork_id_coverage
+
+        result = check_subnetwork_id_coverage(conn, region="NA")
+        assert result.passed is False
+        assert result.issues_found == 1
+        conn.close()
+
+    def test_v026_passes_when_all_populated(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v026_ok.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "R", 0, 1, 7_000_001, 1),
+                (2, "NA", -75.1, 45.1, "R", 1, 0, 7_000_001, 1),
+            ],
+            topology_rows=[
+                (1, "NA", "down", 0, 2),
+                (2, "NA", "up", 0, 1),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import check_subnetwork_id_coverage
+
+        result = check_subnetwork_id_coverage(conn, region="NA")
+        assert result.passed is True
+        assert result.issues_found == 0
+        conn.close()
+
+    def test_v027_flags_out_of_band(self, tmp_path):
+        """subnetwork_id outside Pfafstetter band should be flagged."""
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v027_bad.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                # NA reach with AF-band subnetwork_id -> wrong
+                (1, "NA", -75.0, 45.0, "R", 0, 1, 1_000_001, 1),
+                (2, "NA", -75.1, 45.1, "R", 1, 0, 7_000_001, 1),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_subnetwork_id_pfafstetter_range,
+        )
+
+        result = check_subnetwork_id_pfafstetter_range(conn, region="NA")
+        assert result.passed is False
+        assert result.issues_found == 1
+        conn.close()
+
+    def test_v027_passes_correct_bands(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v027_ok.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "R", 0, 1, 7_000_001, 1),
+                (2, "NA", -75.1, 45.1, "R", 1, 0, 7_000_002, 1),
+                (3, "AF", 30.0, -5.0, "R", 0, 0, 1_000_001, 2),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_subnetwork_id_pfafstetter_range,
+        )
+
+        result = check_subnetwork_id_pfafstetter_range(conn)
+        assert result.passed is True
+        assert result.issues_found == 0
+        conn.close()
+
+    def test_v028_flags_mismatched_neighbors(self, tmp_path):
+        """Connected reaches with different subnetwork_id should be flagged."""
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v028_bad.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "R", 0, 1, 7_000_001, 1),
+                (2, "NA", -75.1, 45.1, "R", 1, 0, 7_000_002, 1),
+            ],
+            topology_rows=[
+                (1, "NA", "down", 0, 2),
+                (2, "NA", "up", 0, 1),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_subnetwork_id_topology_consistency,
+        )
+
+        result = check_subnetwork_id_topology_consistency(conn, region="NA")
+        assert result.passed is False
+        assert result.issues_found == 2  # Both directions
+        conn.close()
+
+    def test_v028_passes_matching_neighbors(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v028_ok.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "R", 0, 1, 7_000_001, 1),
+                (2, "NA", -75.1, 45.1, "R", 1, 0, 7_000_001, 1),
+            ],
+            topology_rows=[
+                (1, "NA", "down", 0, 2),
+                (2, "NA", "up", 0, 1),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_subnetwork_id_topology_consistency,
+        )
+
+        result = check_subnetwork_id_topology_consistency(conn, region="NA")
+        assert result.passed is True
+        assert result.issues_found == 0
+        conn.close()
+
+    def test_v029_flags_cross_region_collision(self, tmp_path):
+        """Same subnetwork_id in two regions should be flagged."""
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v029_bad.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "R", 0, 0, 42, 1),
+                (2, "AF", 30.0, -5.0, "R", 0, 0, 42, 2),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_subnetwork_id_cross_region_uniqueness,
+        )
+
+        result = check_subnetwork_id_cross_region_uniqueness(conn)
+        assert result.passed is False
+        assert result.issues_found == 1
+        conn.close()
+
+    def test_v029_passes_unique_ids(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v029_ok.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "R", 0, 0, 7_000_001, 1),
+                (2, "AF", 30.0, -5.0, "R", 0, 0, 1_000_001, 2),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_subnetwork_id_cross_region_uniqueness,
+        )
+
+        result = check_subnetwork_id_cross_region_uniqueness(conn)
+        assert result.passed is True
+        assert result.issues_found == 0
+        conn.close()
+
+    def test_v030_flags_isolated_in_large_component(self, tmp_path):
+        """Isolated reach sharing subnetwork_id with connected reaches."""
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v030_bad.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                # Isolated reach with same subnetwork_id as connected pair
+                (1, "NA", -75.0, 45.0, "R", 0, 0, 7_000_001, 1),
+                (2, "NA", -75.1, 45.1, "R", 0, 1, 7_000_001, 1),
+                (3, "NA", -75.2, 45.2, "R", 1, 0, 7_000_001, 1),
+            ],
+            topology_rows=[
+                (2, "NA", "down", 0, 3),
+                (3, "NA", "up", 0, 2),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_subnetwork_id_singleton_consistency,
+        )
+
+        result = check_subnetwork_id_singleton_consistency(conn, region="NA")
+        assert result.issues_found == 1
+        assert int(result.details.iloc[0]["reach_id"]) == 1
+        conn.close()
+
+    def test_v031_reports_distribution(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v031_stats.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_subnetwork_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "R", 0, 1, 7_000_001, 1),
+                (2, "NA", -75.1, 45.1, "R", 1, 0, 7_000_001, 1),
+                (3, "NA", -75.2, 45.2, "R", 0, 0, 7_000_002, 2),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_subnetwork_id_distribution,
+        )
+
+        result = check_subnetwork_id_distribution(conn, region="NA")
+        assert result.passed is True
+        assert result.total_checked == 2  # 2 distinct subnetwork_ids
+        assert len(result.details) == 1  # 1 region
+        assert int(result.details.iloc[0]["n_components"]) == 2
+        assert int(result.details.iloc[0]["singletons"]) == 1
+        conn.close()
