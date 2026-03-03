@@ -5,11 +5,11 @@
 
 ## Background
 
-Pierre-Olivier Malaterre (POM), INRAE, provided SWORD with `sword_validity.m` — a MATLAB validation script containing 15 test suites (with sub-tests) that check topology, node consistency, ID format, river naming, and type distribution. POM also requested two new columns (`dn_node_id`/`up_node_id` on reaches, `node_order` on nodes) needed because v17c flow direction changes mean node IDs can be decreasing within a reach.
+Pierre-Olivier Malaterre (POM), INRAE, provided SWORD with [`sword_validity.m`](../../src/_legacy/sword_validity.m) — a MATLAB validation script containing 15 test suites (with sub-tests) that check topology, node consistency, ID format, river naming, and type distribution. POM also requested two new columns (`dn_node_id`/`up_node_id` on reaches, `node_order` on nodes) needed because v17c flow direction changes mean node IDs can be decreasing within a reach.
 
 This document maps POM's original MATLAB tests to our Python lint framework and tracks implementation status.
 
-## New Columns (Issue #149)
+## New Columns ([Issue #149](https://github.com/SWORD-Global/SWORD/issues/149))
 
 | Column | Table | Type | Description |
 |--------|-------|------|-------------|
@@ -17,9 +17,9 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 | `up_node_id` | reaches | BIGINT | Upstream boundary node ID |
 | `node_order` | nodes | INTEGER | 1-based position within reach (1=downstream, n=upstream by dist_out) |
 
-**Status:** Implemented and deployed (PR #165). Verified on production v17c (248,674 reaches, 11.1M nodes).
+**Status:** Implemented and deployed ([PR #165](https://github.com/SWORD-Global/SWORD/pull/165)). Verified on production v17c (248,674 reaches, 11.1M nodes).
 
-**Source:** POM emails Feb 3 ("please also include `nodes_ids`") + Feb 4 ("Filled with an integer from 1 to n, 1 being for the first downstream, and n for the last upstream"). Already present in v17c NetCDF via `sword_read.m:83-86`.
+**Source:** POM emails Feb 3 ("please also include `nodes_ids`") + Feb 4 ("Filled with an integer from 1 to n, 1 being for the first downstream, and n for the last upstream"). Already present in v17c NetCDF via [`sword_read.m:83-86`](../../src/_legacy/sword_read.m).
 
 ## POM Test → Lint Check Mapping
 
@@ -59,10 +59,10 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 |----------|---------------|----------|--------|
 | 8a | First node index < last node index within reach | Implicit in node_order computation | Covered by column logic |
 | 8b | Node count matches n_nodes | **N008** (new) | Implemented |
-| 9a | Node geolocation within parent reach geometry | **N012** (new, 500m threshold) | Implemented (#185) |
+| 9a | Node geolocation within parent reach geometry | **N012** (new, 500m threshold) | Implemented ([#185](https://github.com/SWORD-Global/SWORD/issues/185)) |
 | 9b | Node indexes contiguous within reach | **N010** (new) | Implemented |
 | 9c | Centerline points allocated to correct reach | Not implemented | Unnecessary — CL points define reach geometry (distance always 0) |
-| 9d | Centerline points allocated to correct node | **N013** (new, 500m threshold) | Implemented (#186) |
+| 9d | Centerline points allocated to correct node | **N013** (new, 500m threshold) | Implemented ([#186](https://github.com/SWORD-Global/SWORD/issues/186)) |
 | 10a | Node dist_out increasing with node_id | **N004** (new) | Implemented |
 | 10b | Node dist_out jump >600m | **N005** (new) | Implemented |
 | 10c | Boundary node dist_out continuity across reaches | **N006** (new, 1000m threshold) | Implemented |
@@ -105,7 +105,7 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 | 15b_n–g_n | Type distribution (nodes) | Not separate check | Node-level type not tracked |
 | 15b_b–g_b | Reach length vs node length by type | G002 (pre-existing) | Implemented |
 
-### WSE Monotonicity (from `sword_validity.m` line 433)
+### WSE Monotonicity (from [`sword_validity.m`](../../src/_legacy/sword_validity.m) line 433)
 
 | POM Test | What it checks | Our Lint | Status |
 |----------|---------------|----------|--------|
@@ -182,7 +182,7 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 
 | Check | Violations | Sev | Investigation issue | Root cause summary |
 |-------|-----------|-----|--------------------|--------------------|
-| N013 | ~~89,364~~ → **311** | WARN | [#194](https://github.com/SWORD-Global/SWORD/issues/194) | **99.7% resolved.** Root cause: UNC's sequential cl_id-range grouping mismatches spatial order on sinuous reaches. Fixed by `sync_centerline_node_ids()` (commit 7b0ca71) which reassigns CLs via cl_id_min/max boundaries. Remaining 311 are structurally far (node sparsity), not misassigned — spatial-nearest reassignment only helps 89 of them and would break cl_id_min/max contiguity on 26 reaches. Accepted as residual. |
+| N013 | ~~89,364~~ → **311** | WARN | [#194](https://github.com/SWORD-Global/SWORD/issues/194) | **99.7% resolved.** Root cause: UNC's sequential cl_id-range grouping mismatches spatial order on sinuous reaches. Fixed by [`sync_centerline_node_ids()`](../../src/sword_duckdb/workflow.py) (commit 7b0ca71) which reassigns CLs via cl_id_min/max boundaries. Remaining 311 are structurally far (node sparsity), not misassigned — spatial-nearest reassignment only helps 89 of them and would break cl_id_min/max contiguity on 26 reaches. Accepted as residual. |
 | A030 | 4,816 | WARN | [#195](https://github.com/SWORD-Global/SWORD/issues/195) | **Closed.** Uses MERIT DEM `wse`, not SWOT — inversions are DEM noise. Not actionable. |
 | N003 | 3,456 | WARN | [#193](https://github.com/SWORD-Global/SWORD/issues/193) | **Closed.** v17b source data — UNC node placement, 0.03% of nodes. Defer to v18. |
 | N006 | 2,596 | WARN | [#192](https://github.com/SWORD-Global/SWORD/issues/192) | **Closed.** All violations are dist_out path-length artifacts at junctions, not bad topology. Spatial verification: all 76 "Type A" pairs are <20km apart. Inherent to single-scalar dist_out representation. |
@@ -206,7 +206,7 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 | 9c | Centerline-to-reach allocation — unnecessary (CL points define reach geometry, distance always 0) |
 | 11c/11d | Informational (tributary mitigation) — not an error condition |
 | 15b_n–g_n | Node-level type distribution — node type derived from reach type, redundant |
-| T016 (#152) | Closed — subsumed by pre-existing G012 (endpoint alignment at 500m) |
+| T016 ([#152](https://github.com/SWORD-Global/SWORD/issues/152)) | Closed — subsumed by pre-existing G012 (endpoint alignment at 500m) |
 
 ## GitHub Issues
 
@@ -214,18 +214,18 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 
 | Issue | Title | Status |
 |-------|-------|--------|
-| #149 | Add nodes_ids and node_order columns (POM request) | Closed (PR #165) |
-| #150 | Lint T013/T014: self-referencing and bidirectional topology | Closed |
-| #151 | Lint T015: redundant shortcut connections | Closed |
-| #152 | Lint T016: connected reach centroid distance >30km | Closed (subsumed by G012) |
-| #153 | Lint T017: dist_out excessive jump between neighbors | Closed |
-| #154 | Lint T018: reach and node ID format validation | Closed |
-| #155 | Lint T019/T020: river name validation | Closed |
-| #156 | Lint A030: WSE monotonicity downstream | Closed |
-| #157 | Node-level lint: dist_out, spacing, and boundary checks (N003-N007) | Closed |
-| #158 | Node/centerline allocation validation (POM Tests 8/9) | Closed |
-| #185 | Lint N012: node geolocation outside parent reach geometry (POM Test 9a) | Closed (12 violations, all ghost/Arctic — accepted) |
-| #186 | Lint N013: centerline point too far from assigned node (POM Test 9d) | Closed |
+| [#149](https://github.com/SWORD-Global/SWORD/issues/149) | Add nodes_ids and node_order columns (POM request) | Closed (PR [#165](https://github.com/SWORD-Global/SWORD/pull/165)) |
+| [#150](https://github.com/SWORD-Global/SWORD/issues/150) | Lint T013/T014: self-referencing and bidirectional topology | Closed |
+| [#151](https://github.com/SWORD-Global/SWORD/issues/151) | Lint T015: redundant shortcut connections | Closed |
+| [#152](https://github.com/SWORD-Global/SWORD/issues/152) | Lint T016: connected reach centroid distance >30km | Closed (subsumed by G012) |
+| [#153](https://github.com/SWORD-Global/SWORD/issues/153) | Lint T017: dist_out excessive jump between neighbors | Closed |
+| [#154](https://github.com/SWORD-Global/SWORD/issues/154) | Lint T018: reach and node ID format validation | Closed |
+| [#155](https://github.com/SWORD-Global/SWORD/issues/155) | Lint T019/T020: river name validation | Closed |
+| [#156](https://github.com/SWORD-Global/SWORD/issues/156) | Lint A030: WSE monotonicity downstream | Closed |
+| [#157](https://github.com/SWORD-Global/SWORD/issues/157) | Node-level lint: dist_out, spacing, and boundary checks (N003-N007) | Closed |
+| [#158](https://github.com/SWORD-Global/SWORD/issues/158) | Node/centerline allocation validation (POM Tests 8/9) | Closed |
+| [#185](https://github.com/SWORD-Global/SWORD/issues/185) | Lint N012: node geolocation outside parent reach geometry (POM Test 9a) | Closed (12 violations, all ghost/Arctic — accepted) |
+| [#186](https://github.com/SWORD-Global/SWORD/issues/186) | Lint N013: centerline point too far from assigned node (POM Test 9d) | Closed |
 
 ### Investigation (diagnose first, fix only after discussing with Jake)
 
@@ -246,9 +246,9 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 
 | File | Purpose |
 |------|---------|
-| `src/_legacy/sword_validity.m` | POM's original MATLAB validation (4300+ lines, 15 test suites) |
-| `src/_legacy/updates/formatting_scripts/pom_flag_edits.py` | Earlier POM corrections (node count, dist_out ordering, ghost reach fixes) |
-| `src/sword_duckdb/lint/checks/topology.py` | T013–T020 implementations |
-| `src/sword_duckdb/lint/checks/node.py` | N003–N013 implementations |
-| `src/sword_duckdb/lint/checks/attributes.py` | A030 implementation |
-| `src/sword_duckdb/column_order.py` | Canonical column ordering (includes dn_node_id, up_node_id, node_order) |
+| [`src/_legacy/sword_validity.m`](../../src/_legacy/sword_validity.m) | POM's original MATLAB validation (4300+ lines, 15 test suites) |
+| [`src/_legacy/updates/formatting_scripts/pom_flag_edits.py`](../../src/_legacy/updates/formatting_scripts/pom_flag_edits.py) | Earlier POM corrections (node count, dist_out ordering, ghost reach fixes) |
+| [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) | T013–T020 implementations |
+| [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) | N003–N013 implementations |
+| [`src/sword_duckdb/lint/checks/attributes.py`](../../src/sword_duckdb/lint/checks/attributes.py) | A030 implementation |
+| [`src/sword_duckdb/column_order.py`](../../src/sword_duckdb/column_order.py) | Canonical column ordering (includes dn_node_id, up_node_id, node_order) |

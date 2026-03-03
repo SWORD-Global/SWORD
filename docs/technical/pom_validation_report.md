@@ -4,7 +4,7 @@ Prepared for Pierre-Olivier Malaterre (INRAE), February 2026.
 
 ## 1. Introduction
 
-We received `sword_validity.m`, a 4,300-line MATLAB validation script containing 15 test suites. We ported all 15 suites to Python and ran them against the full v17c production database: 248,673 reaches, 11.1 million nodes, and 66.9 million centerlines across all 6 regions. Separately, we added the three columns you requested in your February 2025 emails. The results below confirm that v17c passes 10 of 15 test suites with zero or near-zero violations and identify the root causes of all remaining findings.
+We received [`sword_validity.m`](../../src/_legacy/sword_validity.m), a 4,300-line MATLAB validation script containing 15 test suites. We ported all 15 suites to Python and ran them against the full v17c production database: 248,673 reaches, 11.1 million nodes, and 66.9 million centerlines across all 6 regions. Separately, we added the three columns you requested in your February 2025 emails. The results below confirm that v17c passes 10 of 15 test suites with zero or near-zero violations and identify the root causes of all remaining findings.
 
 **Run configuration:** Database `sword_v17c.duckdb`, all 6 regions (NA, SA, EU, AF, AS, OC), run date 2026-02-26.
 
@@ -22,13 +22,13 @@ In v17c, flow direction corrections mean node IDs no longer monotonically increa
 
 ![Figure 1. Node ordering within a reach. node_order runs 1 (downstream) to n (upstream) by dist_out, independent of node_id.](figures/node_ordering.svg)
 
-**Status:** Deployed and verified across all 6 regions ([#149](https://github.com/SWORD-Global/SWORD/issues/149)). The `node_order` column matches the convention already present in `sword_read.m` (lines 83-86).
+**Status:** Deployed and verified across all 6 regions ([#149](https://github.com/SWORD-Global/SWORD/issues/149)). The `node_order` column matches the convention already present in [`sword_read.m`](../../src/_legacy/sword_read.m) (lines 83-86).
 
 With these columns in place, we ran the full validation suite to verify that the v17c schema additions and flow-direction corrections did not introduce topological regressions.
 
 ## 3. Results by Test
 
-Results are organized by your original test numbering from `sword_validity.m`. Each entry references our internal lint check ID in parentheses for cross-referencing.
+Results are organized by your original test numbering from [`sword_validity.m`](../../src/_legacy/sword_validity.m). Each entry references our internal lint check ID in parentheses for cross-referencing.
 
 **Result categories used below:**
 
@@ -53,7 +53,7 @@ Results are organized by your original test numbering from `sword_validity.m`. E
 
 **Result: PASS.** Zero self-references (T013), zero bidirectional paradoxes (T014), full reciprocity (T007).
 
-Tests 3e/4e are disabled by default in `sword_validity.m` (`opt_warning_3e=0`, `opt_warning_4e=0`); we did not implement them.
+Tests 3e/4e are disabled by default in [`sword_validity.m`](../../src/_legacy/sword_validity.m) (`opt_warning_3e=0`, `opt_warning_4e=0`); we did not implement them.
 
 ### Test 5: Orphan and Shortcut Connections
 
@@ -112,7 +112,7 @@ We did not implement this check. Centerline points define reach geometry by cons
 **Result: FINDINGS — RESOLVED.** Originally 89,364 violations; reduced to 311 after fix (99.7% resolved). ([N013](https://github.com/SWORD-Global/SWORD/issues/194))
 
 - Root cause: UNC assigns centerline points to nodes using sequential `cl_id` ranges (`cl_id_min` to `cl_id_max`). On sinuous reaches where the centerline doubles back, a node's `cl_id` range can include points that are spatially closer to an adjacent node.
-- Fix: `sync_centerline_node_ids()` reassigns centerline-to-node mappings using `cl_id_min`/`cl_id_max` boundary recalculation, correcting 89,053 of the original misallocations.
+- Fix: [`sync_centerline_node_ids()`](../../src/sword_duckdb/workflow.py) reassigns centerline-to-node mappings using `cl_id_min`/`cl_id_max` boundary recalculation, correcting 89,053 of the original misallocations.
 - Remaining 311: Structurally sparse nodes where spatial distance >500m is inherent to the node density. Reassignment would break `cl_id` range contiguity on 26 reaches. Accepted as residual.
 
 ### Test 10: Node dist_out Ordering
@@ -142,7 +142,7 @@ We did not implement this check. Centerline points define reach geometry by cons
 - Resolution: Code fix deployed for the measurement bugs. v17b geometry gaps deferred to v18 (requires reach geometry editing). Extreme cases documented for future topology review.
 
 **Tests 11c-d — Tributary mitigation (reach connecting at intermediate node).**
-We did not implement these as separate checks. They are informational annotations in `sword_validity.m` that mitigate 11a/11b findings by checking whether a tributary enters mid-reach rather than at a boundary node. Our N007 check accounts for this by testing all 4 boundary node pairings between connected reaches.
+We did not implement these as separate checks. They are informational annotations in [`sword_validity.m`](../../src/_legacy/sword_validity.m) that mitigate 11a/11b findings by checking whether a tributary enters mid-reach rather than at a boundary node. Our N007 check accounts for this by testing all 4 boundary node pairings between connected reaches.
 
 ### Test 12: ID Format Validation
 
@@ -187,7 +187,7 @@ We did not implement these as separate checks. They are informational annotation
 
 We did not implement node-level type distributions (15b_n through 15g_n) as separate checks because node type derives from reach type and is therefore redundant.
 
-### Water Surface Elevation (WSE) Monotonicity (sword_validity.m line 433)
+### Water Surface Elevation (WSE) Monotonicity ([`sword_validity.m`](../../src/_legacy/sword_validity.m) line 433)
 
 **What it checks:** WSE should decrease downstream between connected reaches.
 
@@ -203,7 +203,7 @@ We did not implement node-level type distributions (15b_n through 15g_n) as sepa
 
 - **Before:** 89,364 centerline points were >500m from their assigned node.
 - **After:** 311 remain (99.7% reduction).
-- **Method:** `sync_centerline_node_ids()` recalculates `cl_id_min`/`cl_id_max` boundaries for each node based on spatial clustering of centerline points, then updates the centerline-to-node mapping.
+- **Method:** [`sync_centerline_node_ids()`](../../src/sword_duckdb/workflow.py) recalculates `cl_id_min`/`cl_id_max` boundaries for each node based on spatial clustering of centerline points, then updates the centerline-to-node mapping.
 
 ### N007 Distance Formula Fix
 
@@ -211,7 +211,7 @@ We did not implement node-level type distributions (15b_n through 15g_n) as sepa
 - **After:** 467 violations remain (down from 582; 115 were false positives).
 - **Method:** Replaced haversine with `ST_Distance_Spheroid` and extended to all 4 endpoint combinations (up-dn, dn-up, up-up, dn-dn).
 
-### Historical Fixes (pom_flag_edits.py)
+### Historical Fixes ([`pom_flag_edits.py`](../../src/_legacy/updates/formatting_scripts/pom_flag_edits.py))
 
 Corrections applied before we built the lint framework:
 
@@ -237,52 +237,52 @@ Corrections applied before we built the lint framework:
 
 | POM Test | Description | Our Check | Source File |
 |----------|-------------|-----------|-------------|
-| 1a | Duplicate upstream neighbors | T005 | `src/sword_duckdb/lint/checks/topology.py` |
-| 1b | n_rch_up matches actual count | T005 | `src/sword_duckdb/lint/checks/topology.py` |
-| 1c | Upstream neighbor ID = 0 | T012 | `src/sword_duckdb/lint/checks/topology.py` |
-| 2a | Duplicate downstream neighbors | T005 | `src/sword_duckdb/lint/checks/topology.py` |
-| 2b | n_rch_down matches actual count | T005 | `src/sword_duckdb/lint/checks/topology.py` |
-| 2c | Downstream neighbor ID = 0 | T012 | `src/sword_duckdb/lint/checks/topology.py` |
-| 3a-b | Upstream reciprocity | T007, T012 | `src/sword_duckdb/lint/checks/topology.py` |
-| 3c | Self-referencing upstream | T013 | `src/sword_duckdb/lint/checks/topology.py` |
-| 3d | Same reach in both up and down | T014 | `src/sword_duckdb/lint/checks/topology.py` |
+| 1a | Duplicate upstream neighbors | T005 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 1b | n_rch_up matches actual count | T005 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 1c | Upstream neighbor ID = 0 | T012 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 2a | Duplicate downstream neighbors | T005 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 2b | n_rch_down matches actual count | T005 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 2c | Downstream neighbor ID = 0 | T012 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 3a-b | Upstream reciprocity | T007, T012 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 3c | Self-referencing upstream | T013 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 3d | Same reach in both up and down | T014 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
 | 3e | Suspicious upstream links | — | Not implemented (disabled in defaults) |
-| 4a-b | Downstream reciprocity | T007, T012 | `src/sword_duckdb/lint/checks/topology.py` |
-| 4c | Self-referencing downstream | T013 | `src/sword_duckdb/lint/checks/topology.py` |
-| 4d | Same reach in both up and down | T014 | `src/sword_duckdb/lint/checks/topology.py` |
+| 4a-b | Downstream reciprocity | T007, T012 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 4c | Self-referencing downstream | T013 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 4d | Same reach in both up and down | T014 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
 | 4e | Suspicious downstream links | — | Not implemented (disabled in defaults) |
-| 5a | Orphan reaches | T004 | `src/sword_duckdb/lint/checks/topology.py` |
-| 5b | Shortcut connections | T015 | `src/sword_duckdb/lint/checks/topology.py` |
-| 6a | Connected reach centroid distance | G012, T022 | `src/sword_duckdb/lint/checks/geometry.py`, `src/sword_duckdb/lint/checks/topology.py` |
-| 6b | Adjacent node spacing >400m | N003 | `src/sword_duckdb/lint/checks/node.py` |
-| 7a | dist_out monotonicity (reaches) | T001 | `src/sword_duckdb/lint/checks/topology.py` |
-| 7b | dist_out jump >30km (reaches) | T017 | `src/sword_duckdb/lint/checks/topology.py` |
+| 5a | Orphan reaches | T004 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 5b | Shortcut connections | T015 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 6a | Connected reach centroid distance | G012, T022 | [`src/sword_duckdb/lint/checks/geometry.py`](../../src/sword_duckdb/lint/checks/geometry.py), [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 6b | Adjacent node spacing >400m | N003 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 7a | dist_out monotonicity (reaches) | T001 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 7b | dist_out jump >30km (reaches) | T017 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
 | 8a | Node index first < last | — | Implicit in node_order computation |
-| 8b | Node count = n_nodes | N008 | `src/sword_duckdb/lint/checks/node.py` |
-| 9a | Node geolocation in parent reach | N012 | `src/sword_duckdb/lint/checks/node.py` |
-| 9b | Node index contiguity | N010 | `src/sword_duckdb/lint/checks/node.py` |
+| 8b | Node count = n_nodes | N008 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 9a | Node geolocation in parent reach | N012 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 9b | Node index contiguity | N010 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
 | 9c | CL point in correct reach | — | Not implemented (tautological) |
-| 9d | CL point in correct node | N013 | `src/sword_duckdb/lint/checks/node.py` |
-| 10a | Node dist_out monotonicity | N004 | `src/sword_duckdb/lint/checks/node.py` |
-| 10b | Node dist_out jump >600m | N005 | `src/sword_duckdb/lint/checks/node.py` |
-| 10c | Boundary node dist_out continuity | N006 | `src/sword_duckdb/lint/checks/node.py` |
-| 10d | Boundary node dist_out jump >600m | N006 | `src/sword_duckdb/lint/checks/node.py` |
-| 11a | Boundary geolocation upstream | N007 | `src/sword_duckdb/lint/checks/node.py` |
-| 11b | Boundary geolocation downstream | N007 | `src/sword_duckdb/lint/checks/node.py` |
+| 9d | CL point in correct node | N013 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 10a | Node dist_out monotonicity | N004 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 10b | Node dist_out jump >600m | N005 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 10c | Boundary node dist_out continuity | N006 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 10d | Boundary node dist_out jump >600m | N006 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 11a | Boundary geolocation upstream | N007 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 11b | Boundary geolocation downstream | N007 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
 | 11c | Tributary mitigation upstream | — | Informational (not error condition) |
 | 11d | Tributary mitigation downstream | — | Informational (not error condition) |
-| 12a | Node order coherent with ID | N004 | `src/sword_duckdb/lint/checks/node.py` |
-| 12b | Reach ID = 11 digits, valid type | T018 | `src/sword_duckdb/lint/checks/topology.py` |
-| 12c | Node ID = 14 digits, matches reach | T018 | `src/sword_duckdb/lint/checks/topology.py` |
-| 13 | Type consistency at set boundaries | C004 | `src/sword_duckdb/lint/checks/classification.py` |
-| 14a | river_name = NODATA | T019 | `src/sword_duckdb/lint/checks/topology.py` |
-| 14b | river_name disagrees with neighbors | T020 | `src/sword_duckdb/lint/checks/topology.py` |
-| 15a | SWOT observation coverage | FL001 | `src/sword_duckdb/lint/checks/flags.py` |
-| 15b-g | Type distribution (reaches) | C003 | `src/sword_duckdb/lint/checks/classification.py` |
+| 12a | Node order coherent with ID | N004 | [`src/sword_duckdb/lint/checks/node.py`](../../src/sword_duckdb/lint/checks/node.py) |
+| 12b | Reach ID = 11 digits, valid type | T018 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 12c | Node ID = 14 digits, matches reach | T018 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 13 | Type consistency at set boundaries | C004 | [`src/sword_duckdb/lint/checks/classification.py`](../../src/sword_duckdb/lint/checks/classification.py) |
+| 14a | river_name = NODATA | T019 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 14b | river_name disagrees with neighbors | T020 | [`src/sword_duckdb/lint/checks/topology.py`](../../src/sword_duckdb/lint/checks/topology.py) |
+| 15a | SWOT observation coverage | FL001 | [`src/sword_duckdb/lint/checks/flags.py`](../../src/sword_duckdb/lint/checks/flags.py) |
+| 15b-g | Type distribution (reaches) | C003 | [`src/sword_duckdb/lint/checks/classification.py`](../../src/sword_duckdb/lint/checks/classification.py) |
 | 15b_n-g_n | Type distribution (nodes) | — | Not implemented (node type derived from reach type) |
-| 15b_b-g_b | Reach vs. node length by type | G002 | `src/sword_duckdb/lint/checks/geometry.py` |
-| WSE | WSE monotonicity downstream | A030 | `src/sword_duckdb/lint/checks/attributes.py` |
+| 15b_b-g_b | Reach vs. node length by type | G002 | [`src/sword_duckdb/lint/checks/geometry.py`](../../src/sword_duckdb/lint/checks/geometry.py) |
+| WSE | WSE monotonicity downstream | A030 | [`src/sword_duckdb/lint/checks/attributes.py`](../../src/sword_duckdb/lint/checks/attributes.py) |
 
 ## 7. Summary
 
-Of the 15 test suites in `sword_validity.m`, 10 pass with zero or near-zero violations, 4 produced findings with identified root causes, and 1 is partially covered by a related check. The largest finding — 89,364 centerline-node misallocations — was reduced to 311 (99.7% resolved). Remaining open items fall into two categories: bifurcation-rejoin path-length differences inherent to single-scalar dist_out on multi-path networks (Tests 7b, 10c, 10d) and v17b source data gaps deferred to v18 (Tests 6b, 11a-b). The three requested columns (`dn_node_id`, `up_node_id`, `node_order`) are deployed and verified across all regions.
+Of the 15 test suites in [`sword_validity.m`](../../src/_legacy/sword_validity.m), 10 pass with zero or near-zero violations, 4 produced findings with identified root causes, and 1 is partially covered by a related check. The largest finding — 89,364 centerline-node misallocations — was reduced to 311 (99.7% resolved). Remaining open items fall into two categories: bifurcation-rejoin path-length differences inherent to single-scalar dist_out on multi-path networks (Tests 7b, 10c, 10d) and v17b source data gaps deferred to v18 (Tests 6b, 11a-b). The three requested columns (`dn_node_id`, `up_node_id`, `node_order`) are deployed and verified across all regions.
