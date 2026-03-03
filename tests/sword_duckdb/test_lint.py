@@ -10,8 +10,6 @@ from pathlib import Path
 
 import pandas as pd
 
-pytestmark = pytest.mark.lint
-
 from src.sword_duckdb.lint import (
     Severity,
     Category,
@@ -28,6 +26,8 @@ from src.sword_duckdb.lint.formatters import (
     JsonFormatter,
     MarkdownFormatter,
 )
+
+pytestmark = pytest.mark.lint
 
 
 # =============================================================================
@@ -640,6 +640,196 @@ class TestV011OsmNameContinuity:
         result = check_osm_name_continuity(conn, region="NA")
         assert result.passed is True
         assert result.issues_found == 0
+        conn.close()
+
+
+# =============================================================================
+# V010/V012/V014/V015 Path Topology Checks
+# =============================================================================
+
+
+def _create_v17c_path_topology_test_data(conn, reaches_rows, topology_rows=None):
+    """Create minimal reaches/reach_topology tables for v17c path checks."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reaches (
+            reach_id BIGINT,
+            region VARCHAR,
+            x DOUBLE,
+            y DOUBLE,
+            river_name VARCHAR,
+            n_rch_up INTEGER,
+            n_rch_down INTEGER,
+            rch_id_up_main BIGINT,
+            rch_id_dn_main BIGINT,
+            best_headwater BIGINT,
+            best_outlet BIGINT,
+            main_path_id BIGINT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS reach_topology (
+            reach_id BIGINT,
+            region VARCHAR,
+            direction VARCHAR,
+            neighbor_rank INTEGER,
+            neighbor_reach_id BIGINT
+        )
+    """)
+
+    for row in reaches_rows:
+        conn.execute(
+            "INSERT INTO reaches VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            list(row),
+        )
+
+    for row in topology_rows or []:
+        conn.execute(
+            "INSERT INTO reach_topology VALUES (?, ?, ?, ?, ?)",
+            list(row),
+        )
+
+
+@pytest.mark.db
+class TestV17CPathTopologyChecks:
+    """Tests for V010/V012/V014/V015 checks."""
+
+    def test_v010_registered(self):
+        check = get_check("V010")
+        assert check is not None
+        assert check.name == "main_connection_integrity"
+        assert check.category == Category.V17C
+        assert check.severity == Severity.ERROR
+
+    def test_v012_registered(self):
+        check = get_check("V012")
+        assert check is not None
+        assert check.name == "main_connection_null_semantics"
+        assert check.category == Category.V17C
+        assert check.severity == Severity.ERROR
+
+    def test_v014_registered(self):
+        check = get_check("V014")
+        assert check is not None
+        assert check.name == "main_path_id_region_consistency"
+        assert check.category == Category.V17C
+        assert check.severity == Severity.WARNING
+
+    def test_v015_registered(self):
+        check = get_check("V015")
+        assert check is not None
+        assert check.name == "tuple_to_main_path_id_uniqueness"
+        assert check.category == Category.V17C
+        assert check.severity == Severity.WARNING
+
+    def test_v010_flags_integrity_violations(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v010_test.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_v17c_path_topology_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "A", 0, 1, None, 2, 1, 3, 10),
+                (2, "NA", -75.1, 45.1, "A", 1, 1, 99, 1, 1, 3, 10),
+                (3, "NA", -75.2, 45.2, "A", 1, 0, 2, 3, 1, 3, 10),
+            ],
+            topology_rows=[
+                (1, "NA", "down", 0, 2),
+                (2, "NA", "up", 0, 1),
+                (2, "NA", "down", 0, 3),
+                (3, "NA", "up", 0, 2),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import check_main_connection_integrity
+
+        result = check_main_connection_integrity(conn, region="NA")
+        assert result.passed is False
+        assert result.issues_found >= 3
+        issue_types = set(result.details["issue_type"].tolist())
+        assert "up_main_invalid_fk" in issue_types
+        assert "dn_main_not_downstream_neighbor" in issue_types
+        assert "dn_main_self_reference" in issue_types
+        conn.close()
+
+    def test_v012_flags_null_semantics_violations(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v012_test.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_v17c_path_topology_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "A", 0, 1, 2, 2, 1, 3, 10),
+                (2, "NA", -75.1, 45.1, "A", 1, 1, None, None, 1, 3, 10),
+                (3, "NA", -75.2, 45.2, "A", 1, 0, 2, 2, 1, 3, 10),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_main_connection_null_semantics,
+        )
+
+        result = check_main_connection_null_semantics(conn, region="NA")
+        assert result.passed is False
+        assert result.issues_found == 4
+        issue_types = set(result.details["issue_type"].tolist())
+        assert "headwater_has_up_main" in issue_types
+        assert "non_headwater_missing_up_main" in issue_types
+        assert "outlet_has_dn_main" in issue_types
+        assert "non_outlet_missing_dn_main" in issue_types
+        conn.close()
+
+    def test_v012_passes_for_valid_chain(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v012_valid.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_v17c_path_topology_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "A", 0, 1, None, 2, 1, 3, 10),
+                (2, "NA", -75.1, 45.1, "A", 1, 1, 1, 3, 1, 3, 10),
+                (3, "NA", -75.2, 45.2, "A", 1, 0, 2, None, 1, 3, 10),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_main_connection_null_semantics,
+        )
+
+        result = check_main_connection_null_semantics(conn, region="NA")
+        assert result.passed is True
+        assert result.issues_found == 0
+        conn.close()
+
+    def test_v014_v015_detect_main_path_collisions(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v014_v015_test.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_v17c_path_topology_test_data(
+            conn,
+            reaches_rows=[
+                (1, "NA", -75.0, 45.0, "A", 0, 0, None, None, 100, 900, 10),
+                (2, "NA", -75.1, 45.1, "A", 0, 0, None, None, 101, 900, 10),
+                (3, "NA", -75.2, 45.2, "A", 0, 0, None, None, 200, 901, 11),
+                (4, "NA", -75.3, 45.3, "A", 0, 0, None, None, 200, 901, 12),
+            ],
+        )
+        from src.sword_duckdb.lint.checks.v17c import (
+            check_main_path_id_region_consistency,
+            check_tuple_to_main_path_id_uniqueness,
+        )
+
+        v014 = check_main_path_id_region_consistency(conn, region="NA")
+        assert v014.passed is False
+        assert v014.issues_found == 1
+        assert int(v014.details.iloc[0]["main_path_id"]) == 10
+
+        v015 = check_tuple_to_main_path_id_uniqueness(conn, region="NA")
+        assert v015.passed is False
+        assert v015.issues_found == 1
+        assert int(v015.details.iloc[0]["best_headwater"]) == 200
+        assert int(v015.details.iloc[0]["best_outlet"]) == 901
         conn.close()
 
 

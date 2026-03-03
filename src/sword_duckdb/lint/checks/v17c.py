@@ -806,3 +806,443 @@ def check_dist_out_dijkstra_monotonicity(
         description="Reaches where min(downstream dist_out_dijkstra) increases (expected at multi-outlet bifurcations)",
         threshold=tolerance,
     )
+
+
+@register_check(
+    "V010",
+    Category.V17C,
+    Severity.ERROR,
+    "rch_id_up_main/dn_main must reference valid neighboring reaches",
+)
+def check_main_connection_integrity(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Validate rch_id_up_main/rch_id_dn_main referential and topologic integrity.
+
+    Checks:
+    - Referenced reach exists in same region
+    - Reference is not self
+    - Reference appears in reach_topology with matching direction
+    """
+    where_clause = f"AND r.region = '{region}'" if region else ""
+
+    try:
+        conn.execute("SELECT rch_id_up_main, rch_id_dn_main FROM reaches LIMIT 1")
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V010",
+            name="main_connection_integrity",
+            severity=Severity.ERROR,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Columns rch_id_up_main/rch_id_dn_main not found (v17c pipeline not run)",
+        )
+
+    query = f"""
+    WITH issues AS (
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'up_main_invalid_fk' as issue_type,
+            r.rch_id_up_main as ref_reach_id
+        FROM reaches r
+        LEFT JOIN reaches u ON r.rch_id_up_main = u.reach_id AND r.region = u.region
+        WHERE r.rch_id_up_main IS NOT NULL
+            AND u.reach_id IS NULL
+            {where_clause}
+
+        UNION ALL
+
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'dn_main_invalid_fk' as issue_type,
+            r.rch_id_dn_main as ref_reach_id
+        FROM reaches r
+        LEFT JOIN reaches d ON r.rch_id_dn_main = d.reach_id AND r.region = d.region
+        WHERE r.rch_id_dn_main IS NOT NULL
+            AND d.reach_id IS NULL
+            {where_clause}
+
+        UNION ALL
+
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'up_main_self_reference' as issue_type,
+            r.rch_id_up_main as ref_reach_id
+        FROM reaches r
+        WHERE r.rch_id_up_main = r.reach_id
+            {where_clause}
+
+        UNION ALL
+
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'dn_main_self_reference' as issue_type,
+            r.rch_id_dn_main as ref_reach_id
+        FROM reaches r
+        WHERE r.rch_id_dn_main = r.reach_id
+            {where_clause}
+
+        UNION ALL
+
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'up_main_not_upstream_neighbor' as issue_type,
+            r.rch_id_up_main as ref_reach_id
+        FROM reaches r
+        WHERE r.rch_id_up_main IS NOT NULL
+            AND EXISTS (
+                SELECT 1
+                FROM reaches u
+                WHERE u.reach_id = r.rch_id_up_main
+                    AND u.region = r.region
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM reach_topology rt
+                WHERE rt.region = r.region
+                    AND rt.reach_id = r.reach_id
+                    AND rt.direction = 'up'
+                    AND rt.neighbor_reach_id = r.rch_id_up_main
+            )
+            {where_clause}
+
+        UNION ALL
+
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'dn_main_not_downstream_neighbor' as issue_type,
+            r.rch_id_dn_main as ref_reach_id
+        FROM reaches r
+        WHERE r.rch_id_dn_main IS NOT NULL
+            AND EXISTS (
+                SELECT 1
+                FROM reaches d
+                WHERE d.reach_id = r.rch_id_dn_main
+                    AND d.region = r.region
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM reach_topology rt
+                WHERE rt.region = r.region
+                    AND rt.reach_id = r.reach_id
+                    AND rt.direction = 'down'
+                    AND rt.neighbor_reach_id = r.rch_id_dn_main
+            )
+            {where_clause}
+    )
+    SELECT *
+    FROM issues
+    ORDER BY region, reach_id, issue_type
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r
+    WHERE r.rch_id_up_main IS NOT NULL OR r.rch_id_dn_main IS NOT NULL
+    {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V010",
+        name="main_connection_integrity",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Main-connection IDs with FK/topology/self-reference violations",
+    )
+
+
+@register_check(
+    "V012",
+    Category.V17C,
+    Severity.ERROR,
+    "Headwater/outlet null semantics for rch_id_up_main/dn_main",
+)
+def check_main_connection_null_semantics(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Validate expected NULL/non-NULL patterns for main-connection IDs.
+
+    Expected:
+    - n_rch_up = 0  -> rch_id_up_main IS NULL
+    - n_rch_up > 0  -> rch_id_up_main IS NOT NULL
+    - n_rch_down = 0 -> rch_id_dn_main IS NULL
+    - n_rch_down > 0 -> rch_id_dn_main IS NOT NULL
+    """
+    where_clause = f"AND r.region = '{region}'" if region else ""
+
+    try:
+        conn.execute(
+            "SELECT n_rch_up, n_rch_down, rch_id_up_main, rch_id_dn_main FROM reaches LIMIT 1"
+        )
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V012",
+            name="main_connection_null_semantics",
+            severity=Severity.ERROR,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Required columns not found (v17c pipeline not run)",
+        )
+
+    query = f"""
+    WITH issues AS (
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'headwater_has_up_main' as issue_type
+        FROM reaches r
+        WHERE r.n_rch_up = 0
+            AND r.rch_id_up_main IS NOT NULL
+            {where_clause}
+
+        UNION ALL
+
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'non_headwater_missing_up_main' as issue_type
+        FROM reaches r
+        WHERE r.n_rch_up > 0
+            AND r.rch_id_up_main IS NULL
+            {where_clause}
+
+        UNION ALL
+
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'outlet_has_dn_main' as issue_type
+        FROM reaches r
+        WHERE r.n_rch_down = 0
+            AND r.rch_id_dn_main IS NOT NULL
+            {where_clause}
+
+        UNION ALL
+
+        SELECT
+            r.reach_id, r.region, r.river_name, r.x, r.y,
+            'non_outlet_missing_dn_main' as issue_type
+        FROM reaches r
+        WHERE r.n_rch_down > 0
+            AND r.rch_id_dn_main IS NULL
+            {where_clause}
+    )
+    SELECT *
+    FROM issues
+    ORDER BY region, reach_id, issue_type
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*)
+    FROM reaches r
+    WHERE r.n_rch_up IS NOT NULL AND r.n_rch_down IS NOT NULL
+    {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V012",
+        name="main_connection_null_semantics",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Headwater/outlet NULL semantics violations for main-connection IDs",
+    )
+
+
+@register_check(
+    "V014",
+    Category.V17C,
+    Severity.WARNING,
+    "Each (region, main_path_id) must map to one (best_headwater, best_outlet) tuple",
+)
+def check_main_path_id_region_consistency(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check that each regional main_path_id resolves to exactly one tuple.
+    """
+    try:
+        conn.execute(
+            "SELECT main_path_id, best_headwater, best_outlet FROM reaches LIMIT 1"
+        )
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V014",
+            name="main_path_id_region_consistency",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Columns main_path_id/best_headwater/best_outlet not found (v17c pipeline not run)",
+        )
+
+    where_clause = f"WHERE r.region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT
+        r.region,
+        r.main_path_id,
+        COUNT(*) as n_reaches,
+        COUNT(DISTINCT (r.best_headwater, r.best_outlet)) as n_tuples,
+        LIST(DISTINCT r.best_headwater) as headwaters,
+        LIST(DISTINCT r.best_outlet) as outlets
+    FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} r.main_path_id IS NOT NULL
+    GROUP BY r.region, r.main_path_id
+    HAVING COUNT(DISTINCT (r.best_headwater, r.best_outlet)) > 1
+    ORDER BY n_tuples DESC, n_reaches DESC
+    LIMIT 1000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    issue_count_query = f"""
+    SELECT COUNT(*)
+    FROM (
+        SELECT r.region, r.main_path_id
+        FROM reaches r
+        {where_clause}
+        {"AND" if where_clause else "WHERE"} r.main_path_id IS NOT NULL
+        GROUP BY r.region, r.main_path_id
+        HAVING COUNT(DISTINCT (r.best_headwater, r.best_outlet)) > 1
+    ) t
+    """
+    issue_count = conn.execute(issue_count_query).fetchone()[0]
+
+    total_query = f"""
+    SELECT COUNT(DISTINCT (r.region, r.main_path_id))
+    FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} r.main_path_id IS NOT NULL
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V014",
+        name="main_path_id_region_consistency",
+        severity=Severity.WARNING,
+        passed=issue_count == 0,
+        total_checked=total,
+        issues_found=issue_count,
+        issue_pct=100 * issue_count / total if total > 0 else 0,
+        details=issues,
+        description="Regional main_path_id values mapping to multiple (best_headwater, best_outlet) tuples",
+    )
+
+
+@register_check(
+    "V015",
+    Category.V17C,
+    Severity.WARNING,
+    "Each (region, best_headwater, best_outlet) tuple must map to one main_path_id",
+)
+def check_tuple_to_main_path_id_uniqueness(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """
+    Check inverse uniqueness: one tuple should not split across multiple IDs.
+    """
+    try:
+        conn.execute(
+            "SELECT main_path_id, best_headwater, best_outlet FROM reaches LIMIT 1"
+        )
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="V015",
+            name="tuple_to_main_path_id_uniqueness",
+            severity=Severity.WARNING,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0,
+            details=pd.DataFrame(),
+            description="Columns main_path_id/best_headwater/best_outlet not found (v17c pipeline not run)",
+        )
+
+    where_clause = f"WHERE r.region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT
+        r.region,
+        r.best_headwater,
+        r.best_outlet,
+        COUNT(*) as n_reaches,
+        COUNT(DISTINCT r.main_path_id) as n_main_path_ids,
+        LIST(DISTINCT r.main_path_id) as main_path_ids
+    FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} r.main_path_id IS NOT NULL
+        AND r.best_headwater IS NOT NULL
+        AND r.best_outlet IS NOT NULL
+    GROUP BY r.region, r.best_headwater, r.best_outlet
+    HAVING COUNT(DISTINCT r.main_path_id) > 1
+    ORDER BY n_main_path_ids DESC, n_reaches DESC
+    LIMIT 1000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    issue_count_query = f"""
+    SELECT COUNT(*)
+    FROM (
+        SELECT r.region, r.best_headwater, r.best_outlet
+        FROM reaches r
+        {where_clause}
+        {"AND" if where_clause else "WHERE"} r.main_path_id IS NOT NULL
+            AND r.best_headwater IS NOT NULL
+            AND r.best_outlet IS NOT NULL
+        GROUP BY r.region, r.best_headwater, r.best_outlet
+        HAVING COUNT(DISTINCT r.main_path_id) > 1
+    ) t
+    """
+    issue_count = conn.execute(issue_count_query).fetchone()[0]
+
+    total_query = f"""
+    SELECT COUNT(DISTINCT (r.region, r.best_headwater, r.best_outlet))
+    FROM reaches r
+    {where_clause}
+    {"AND" if where_clause else "WHERE"} r.main_path_id IS NOT NULL
+        AND r.best_headwater IS NOT NULL
+        AND r.best_outlet IS NOT NULL
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="V015",
+        name="tuple_to_main_path_id_uniqueness",
+        severity=Severity.WARNING,
+        passed=issue_count == 0,
+        total_checked=total,
+        issues_found=issue_count,
+        issue_pct=100 * issue_count / total if total > 0 else 0,
+        details=issues,
+        description="(best_headwater, best_outlet) tuples split across multiple main_path_id values",
+    )
