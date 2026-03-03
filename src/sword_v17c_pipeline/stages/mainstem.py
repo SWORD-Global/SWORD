@@ -6,6 +6,58 @@ from typing import Dict
 import networkx as nx
 
 from ._logging import log
+from ..pfaf_offsets import pfaf_offset
+
+
+def compute_main_paths(
+    G: nx.DiGraph, hw_out_attrs: Dict[int, Dict], region: str = ""
+) -> Dict[int, int]:
+    """
+    Compute main_path_id for each reach.
+
+    Reaches are grouped by (best_headwater, best_outlet) pairs. Each group
+    is then checked for connectivity; if a group forms multiple disconnected
+    components, each component gets a unique ID.
+
+    Parameters
+    ----------
+    G : nx.DiGraph
+        Reach-level directed graph.
+    hw_out_attrs : dict
+        Output from ``compute_best_headwater_outlet``.
+    region : str
+        Region code (e.g. 'NA'). When provided, IDs are offset by the
+        Pfafstetter continent code for global uniqueness.
+
+    Returns dict {reach_id: main_path_id}.
+    """
+    log("Computing main paths (main_path_id)...")
+
+    offset = pfaf_offset(region) if region else 0
+
+    # Group nodes by (best_headwater, best_outlet)
+    groups = defaultdict(list)
+    for node, attrs in hw_out_attrs.items():
+        key = (attrs["best_headwater"], attrs["best_outlet"])
+        if key[0] is not None and key[1] is not None:
+            groups[key].append(node)
+
+    results = {}
+    next_id = 1
+
+    for (hw, out), nodes in groups.items():
+        # Check connectivity within this (hw, out) group
+        H = G.subgraph(nodes)
+        components = list(nx.weakly_connected_components(H))
+
+        for component in components:
+            path_id = offset + next_id
+            for node in component:
+                results[node] = path_id
+            next_id += 1
+
+    log(f"Main paths: {next_id - 1:,} unique paths identified")
+    return results
 
 
 def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict[int, Dict]) -> Dict[int, bool]:
@@ -33,7 +85,7 @@ def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict[int, Dict]) -> Dict[int, 
             path = nx.shortest_path(G, hw, out)
             for n in path:
                 is_mainstem[n] = True
-        except nx.NetworkXNoPath:
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
             continue
 
     n_mainstem = sum(is_mainstem.values())

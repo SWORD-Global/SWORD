@@ -55,7 +55,7 @@ from .stages.distances import (
     compute_best_headwater_outlet,
     compute_mainstem_distances,
 )
-from .stages.mainstem import compute_mainstem, compute_main_neighbors
+from .stages.mainstem import compute_mainstem, compute_main_neighbors, compute_main_paths
 from .stages.output import save_to_duckdb, save_sections_to_duckdb, apply_swot_slopes
 from .stages._logging import log
 from .pfaf_offsets import compute_subnetwork_ids
@@ -78,6 +78,7 @@ __all__ = [
     "compute_mainstem_distances",
     "compute_mainstem",
     "compute_main_neighbors",
+    "compute_main_paths",
     "compute_subnetwork_ids",
     "save_to_duckdb",
     "save_sections_to_duckdb",
@@ -476,6 +477,7 @@ def _process_region_inner(
     dijkstra_dist = compute_dijkstra_distances(G)
     hw_out = compute_best_headwater_outlet(G, overrides=overrides)
     is_mainstem = compute_mainstem(G, hw_out)
+    main_paths = compute_main_paths(G, hw_out, region=region)
     main_neighbors = compute_main_neighbors(G, hw_out_attrs=hw_out, overrides=overrides)
     hydro_dist = compute_mainstem_distances(G, main_neighbors)
 
@@ -507,6 +509,7 @@ def _process_region_inner(
             hw_out,
             is_mainstem,
             main_neighbors,
+            main_paths=main_paths,
             path_vars=path_vars,
             subnetwork_ids=subnetwork_ids,
             dijkstra_dist=dijkstra_dist,

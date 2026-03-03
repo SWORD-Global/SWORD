@@ -19,6 +19,7 @@ def save_to_duckdb(
     hw_out: Dict[int, Dict],
     is_mainstem: Dict[int, bool],
     main_neighbors: Optional[Dict[int, Dict]] = None,
+    main_paths: Optional[Dict[int, int]] = None,
     path_vars: Optional[Dict[int, Dict]] = None,
     subnetwork_ids: Optional[Dict[int, int]] = None,
     dijkstra_dist: Optional[Dict[int, Dict]] = None,
@@ -34,6 +35,7 @@ def save_to_duckdb(
     # Build update dataframe
     rows = []
     mn = main_neighbors or {}
+    mp = main_paths or {}
     pv = path_vars or {}
     sn = subnetwork_ids or {}
     dd = dijkstra_dist or {}
@@ -57,6 +59,8 @@ def save_to_duckdb(
             "rch_id_up_main": nb.get("rch_id_up_main"),
             "rch_id_dn_main": nb.get("rch_id_dn_main"),
         }
+        if mp:
+            row["main_path_id"] = mp.get(reach_id)
         if pvar:
             row["path_freq"] = pvar.get("path_freq")
             row["stream_order"] = pvar.get("stream_order")
@@ -98,6 +102,8 @@ def save_to_duckdb(
         "rch_id_up_main = u.rch_id_up_main",
         "rch_id_dn_main = u.rch_id_dn_main",
     ]
+    if main_paths:
+        set_clauses.append("main_path_id = u.main_path_id")
     if path_vars:
         set_clauses.extend(
             [
