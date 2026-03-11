@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 SWORD Topology & FACC Reviewer
-==============================
+------------------------------
 Streamlit UI to review and fix topology/facc issues in SWORD database.
 
 Run with: streamlit run deploy/reviewer/app.py
@@ -96,8 +96,11 @@ def load_session_fixes(region: str, check_id: str = "all") -> dict:
     """Load fixes from local JSON file."""
     session_file = get_session_file(region, check_id)
     if session_file.exists():
-        with open(session_file, "r") as f:
-            return json.load(f)
+        try:
+            with open(session_file, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {"fixes": [], "skips": [], "pending": []}
     return {"fixes": [], "skips": [], "pending": []}
 
 
@@ -114,8 +117,14 @@ def save_session_fixes(
         "skips": skips,
         "pending": pending,
     }
-    with open(session_file, "w") as f:
+    # Atomic write: write to temp file, fsync, then rename.
+    # Prevents corruption if process is killed mid-write.
+    tmp_file = session_file.with_suffix(".tmp")
+    with open(tmp_file, "w") as f:
         json.dump(data, f, indent=2, default=str)
+        f.flush()
+        os.fsync(f.fileno())
+    tmp_file.rename(session_file)
 
 
 def append_fix_to_session(region: str, fix_record: dict, check_id: str = "all"):
@@ -134,6 +143,40 @@ def append_skip_to_session(region: str, skip_record: dict, check_id: str = "all"
     save_session_fixes(
         region, session["fixes"], session["skips"], session.get("pending", []), check_id
     )
+
+
+def get_reviewed_reaches(conn, region, check_id):
+    """Get reviewed reach_ids from both DuckDB and JSON persistence.
+
+    DuckDB lint_fix_log is ephemeral on Cloud Run (lost on container restart).
+    JSON files on GCS FUSE are persistent but may lag. Merge both sources
+    so reviews survive container restarts AND page refreshes.
+    """
+    # Source 1: DuckDB lint_fix_log (primary, fast)
+    try:
+        db_reviewed = set(
+            conn.execute(
+                """SELECT DISTINCT reach_id FROM lint_fix_log
+                   WHERE region = ? AND check_id = ? AND NOT undone""",
+                [region, check_id],
+            )
+            .fetchdf()["reach_id"]
+            .tolist()
+        )
+    except Exception:
+        db_reviewed = set()
+
+    # Source 2: JSON session files on GCS FUSE (backup, survives restarts)
+    session = load_session_fixes(region, check_id)
+    json_reviewed = set()
+    for fix in session.get("fixes", []):
+        if not fix.get("undone", False) and fix.get("reach_id"):
+            json_reviewed.add(fix["reach_id"])
+    for skip in session.get("skips", []):
+        if not skip.get("undone", False) and skip.get("reach_id"):
+            json_reviewed.add(skip["reach_id"])
+
+    return db_reviewed | json_reviewed
 
 
 def export_session_csv(region: str, check_id: str = "all") -> str:
@@ -1671,25 +1714,13 @@ else:
 with tab3:
     st.header("🏔️ Suspicious Headwaters")
 
-    # Load already-reviewed reaches from database (persists across refreshes)
-    reviewed_hw = (
-        conn.execute(
-            """
-        SELECT DISTINCT reach_id FROM lint_fix_log
-        WHERE region = ? AND check_id = 'HW' AND NOT undone
-    """,
-            [region],
-        )
-        .fetchdf()["reach_id"]
-        .tolist()
-    )
+    # Get reviewed reaches from both DB and JSON (survives container restarts)
+    reviewed_hw = get_reviewed_reaches(conn, region, "HW")
 
-    # Session state tracks current session additions (merged with DB)
     if "hw_pending" not in st.session_state:
         st.session_state.hw_pending = []
 
-    # Combine DB + session (avoid duplicates)
-    all_reviewed = set(reviewed_hw) | set(st.session_state.hw_pending)
+    all_reviewed = reviewed_hw | set(st.session_state.hw_pending)
 
     min_facc = st.slider("Minimum facc threshold", 1000, 100000, 5000, key="hw_slider")
     hw_issues = get_headwater_issues(conn, region, min_facc)
@@ -2075,6 +2106,10 @@ with tab6:
     if "c001_results" not in st.session_state:
         st.session_state.c001_results = None
 
+    # Get reviewed reaches from both DB and JSON (survives container restarts)
+    reviewed_c001 = get_reviewed_reaches(conn, region, "C001")
+    all_reviewed_c001 = reviewed_c001 | set(st.session_state.pending_fixes)
+
     # Auto-run C001 check on first load or when region changes
     if (
         st.session_state.c001_results is None
@@ -2083,23 +2118,15 @@ with tab6:
         with st.spinner("Running lake sandwich check..."):
             st.session_state.c001_results = run_c001_check(conn, region)
             st.session_state.c001_region = region
-            session = load_session_fixes(region, "C001")
-            st.session_state.pending_fixes = session.get("pending", [])
 
     # Progress bar at top
     result = st.session_state.c001_results
     if result:
         issues = result.details
         total = len(issues)
-        done = len(st.session_state.pending_fixes)
+        done = len(all_reviewed_c001)
         remaining = (
-            len(
-                [
-                    r
-                    for r in issues["reach_id"].tolist()
-                    if r not in st.session_state.pending_fixes
-                ]
-            )
+            len([r for r in issues["reach_id"].tolist() if r not in all_reviewed_c001])
             if total > 0
             else 0
         )
@@ -2127,9 +2154,7 @@ with tab6:
         else:
             # Get next issue
             available = [
-                r
-                for r in issues["reach_id"].tolist()
-                if r not in st.session_state.pending_fixes
+                r for r in issues["reach_id"].tolist() if r not in all_reviewed_c001
             ]
             selected = available[0]  # Auto-select first available
             issue = issues[issues["reach_id"] == selected].iloc[0]
@@ -2292,19 +2317,9 @@ with tab7:
     if "c004_pending" not in st.session_state:
         st.session_state.c004_pending = []
 
-    # Load already-reviewed reaches from database
-    reviewed_c004 = (
-        conn.execute(
-            """
-        SELECT DISTINCT reach_id FROM lint_fix_log
-        WHERE region = ? AND check_id = 'C004' AND NOT undone
-    """,
-            [region],
-        )
-        .fetchdf()["reach_id"]
-        .tolist()
-    )
-    all_reviewed_c004 = set(reviewed_c004) | set(st.session_state.c004_pending)
+    # Get reviewed reaches from both DB and JSON (survives container restarts)
+    reviewed_c004 = get_reviewed_reaches(conn, region, "C004")
+    all_reviewed_c004 = reviewed_c004 | set(st.session_state.c004_pending)
 
     # Query individual mismatched reaches directly (the lint check only returns a cross-tab summary)
     if (
@@ -2988,19 +3003,9 @@ with tab_a002:
     if "a002_pending" not in st.session_state:
         st.session_state.a002_pending = []
 
-    # Load already-reviewed reaches from database
-    reviewed_a002 = (
-        conn.execute(
-            """
-        SELECT DISTINCT reach_id FROM lint_fix_log
-        WHERE region = ? AND check_id = 'A002' AND NOT undone
-    """,
-            [region],
-        )
-        .fetchdf()["reach_id"]
-        .tolist()
-    )
-    all_reviewed_a002 = set(reviewed_a002) | set(st.session_state.a002_pending)
+    # Get reviewed reaches from both DB and JSON (survives container restarts)
+    reviewed_a002 = get_reviewed_reaches(conn, region, "A002")
+    all_reviewed_a002 = reviewed_a002 | set(st.session_state.a002_pending)
 
     # Auto-run check
     if (

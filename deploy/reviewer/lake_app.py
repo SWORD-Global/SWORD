@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 SWORD Lake QA Reviewer (Cloud Run deploy)
-==========================================
+------------------------------------------
 Streamlit UI for QA review of lake-related issues only.
 Tabs: Lakeflag/Type (C004), Lake Sandwich (C001), Fix History.
 
@@ -89,8 +89,11 @@ def get_session_file(region: str, check_id: str = "all") -> Path:
 def load_session_fixes(region: str, check_id: str = "all") -> dict:
     session_file = get_session_file(region, check_id)
     if session_file.exists():
-        with open(session_file) as f:
-            return json.load(f)
+        try:
+            with open(session_file) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {"fixes": [], "skips": [], "pending": []}
     return {"fixes": [], "skips": [], "pending": []}
 
 
@@ -104,8 +107,14 @@ def save_session_fixes(region, fixes, skips, pending, check_id="all"):
         "skips": skips,
         "pending": pending,
     }
-    with open(session_file, "w") as f:
+    # Atomic write: write to temp file, fsync, then rename.
+    # Prevents corruption if process is killed mid-write.
+    tmp_file = session_file.with_suffix(".tmp")
+    with open(tmp_file, "w") as f:
         json.dump(data, f, indent=2, default=str)
+        f.flush()
+        os.fsync(f.fileno())
+    tmp_file.rename(session_file)
 
 
 def append_fix_to_session(region, fix_record, check_id="all"):
@@ -585,6 +594,40 @@ def undo_last_fix(conn, region, check_id=None):
     return reach_id
 
 
+def get_reviewed_reaches(conn, region, check_id):
+    """Get reviewed reach_ids from both DuckDB and JSON persistence.
+
+    DuckDB lint_fix_log is ephemeral on Cloud Run (lost on container restart).
+    JSON files on GCS FUSE are persistent but may lag. Merge both sources
+    so reviews survive container restarts AND page refreshes.
+    """
+    # Source 1: DuckDB lint_fix_log (primary, fast)
+    try:
+        db_reviewed = set(
+            conn.execute(
+                """SELECT DISTINCT reach_id FROM lint_fix_log
+                   WHERE region = ? AND check_id = ? AND NOT undone""",
+                [region, check_id],
+            )
+            .fetchdf()["reach_id"]
+            .tolist()
+        )
+    except Exception:
+        db_reviewed = set()
+
+    # Source 2: JSON session files on GCS FUSE (backup, survives restarts)
+    session = load_session_fixes(region, check_id)
+    json_reviewed = set()
+    for fix in session.get("fixes", []):
+        if not fix.get("undone", False) and fix.get("reach_id"):
+            json_reviewed.add(fix["reach_id"])
+    for skip in session.get("skips", []):
+        if not skip.get("undone", False) and skip.get("reach_id"):
+            json_reviewed.add(skip["reach_id"])
+
+    return db_reviewed | json_reviewed
+
+
 def get_nearby_reaches(
     conn,
     center_lon,
@@ -920,18 +963,8 @@ with tab_c004:
         st.session_state.c004_issues = None
     if "c004_pending" not in st.session_state:
         st.session_state.c004_pending = []
-    reviewed_c004 = (
-        conn.execute(
-            """
-        SELECT DISTINCT reach_id FROM lint_fix_log
-        WHERE region = ? AND check_id = 'C004' AND NOT undone
-    """,
-            [region],
-        )
-        .fetchdf()["reach_id"]
-        .tolist()
-    )
-    all_reviewed_c004 = set(reviewed_c004) | set(st.session_state.c004_pending)
+    reviewed_c004 = get_reviewed_reaches(conn, region, "C004")
+    all_reviewed_c004 = reviewed_c004 | set(st.session_state.c004_pending)
     if (
         st.session_state.c004_issues is None
         or st.session_state.get("c004_region") != region
@@ -1100,19 +1133,9 @@ with tab_c001:
         st.session_state.last_fix = None
     if "c001_results" not in st.session_state:
         st.session_state.c001_results = None
-    # Query lint_fix_log for previously reviewed C001 reaches (survives restarts)
-    reviewed_c001 = (
-        conn.execute(
-            """
-        SELECT DISTINCT reach_id FROM lint_fix_log
-        WHERE region = ? AND check_id = 'C001' AND NOT undone
-    """,
-            [region],
-        )
-        .fetchdf()["reach_id"]
-        .tolist()
-    )
-    all_reviewed_c001 = set(reviewed_c001) | set(st.session_state.pending_fixes)
+    # Get reviewed reaches from both DB and JSON (survives container restarts)
+    reviewed_c001 = get_reviewed_reaches(conn, region, "C001")
+    all_reviewed_c001 = reviewed_c001 | set(st.session_state.pending_fixes)
     if (
         st.session_state.c001_results is None
         or st.session_state.get("c001_region") != region
