@@ -81,15 +81,15 @@ def hw_out_attrs(reach_graph):
 
 
 @pytest.fixture
-def mainstem(reach_graph, hw_out_attrs):
-    """Compute mainstem classification."""
-    return compute_mainstem(reach_graph, hw_out_attrs)
-
-
-@pytest.fixture
 def main_neighbors(reach_graph):
     """Compute main neighbors."""
     return compute_main_neighbors(reach_graph)
+
+
+@pytest.fixture
+def mainstem(reach_graph, hw_out_attrs, main_neighbors):
+    """Compute mainstem classification."""
+    return compute_mainstem(reach_graph, hw_out_attrs, main_neighbors=main_neighbors)
 
 
 @pytest.fixture
@@ -458,10 +458,10 @@ class TestEdgeCases:
         assert hw_out[1]["pathlen_hw"] == 0
         assert hw_out[1]["pathlen_out"] == 0
 
-        ms = compute_mainstem(G, hw_out)
+        mn = compute_main_neighbors(G)
+        ms = compute_mainstem(G, hw_out, main_neighbors=mn)
         assert ms[1] is True
 
-        mn = compute_main_neighbors(G)
         md = compute_mainstem_distances(G, mn)
         # Single node, terminal → hydro_dist_out = own reach_length
         assert md[1]["hydro_dist_out"] == 1000
@@ -480,11 +480,11 @@ class TestEdgeCases:
         assert hw_out[1]["best_headwater"] == 1
         assert hw_out[2]["best_outlet"] == 2
 
-        ms = compute_mainstem(G, hw_out)
+        mn = compute_main_neighbors(G)
+        ms = compute_mainstem(G, hw_out, main_neighbors=mn)
         assert ms[1] is True
         assert ms[2] is True
 
-        mn = compute_main_neighbors(G)
         md = compute_mainstem_distances(G, mn)
         # Node 2 is terminal: 1500
         assert md[2]["hydro_dist_out"] == 1500
@@ -510,11 +510,16 @@ class TestEdgeCases:
         assert hw_out[3]["best_headwater"] == 2
         assert hw_out[4]["best_outlet"] == 4
 
-        ms = compute_mainstem(G, hw_out)
+        mn = compute_main_neighbors(G)
+        ms = compute_mainstem(G, hw_out, main_neighbors=mn)
+        # Node 2 is the best_headwater for the outlet (node 4).
+        # Chain walk: 2 → rch_id_dn_main → 3 → rch_id_dn_main → 4
+        assert ms[2] is True
         assert ms[3] is True
         assert ms[4] is True
+        # Node 1 is a tributary — NOT on mainstem
+        assert ms[1] is False
 
-        mn = compute_main_neighbors(G)
         md = compute_mainstem_distances(G, mn)
         # Node 4 terminal: 900
         assert md[4]["hydro_dist_out"] == 900
@@ -531,9 +536,9 @@ class TestEdgeCases:
         hw_out = compute_best_headwater_outlet(G)
         assert len(hw_out) == 0
 
-        ms = compute_mainstem(G, hw_out)
+        mn = compute_main_neighbors(G)
+        ms = compute_mainstem(G, hw_out, main_neighbors=mn)
         assert len(ms) == 0
 
-        mn = compute_main_neighbors(G)
         md = compute_mainstem_distances(G, mn)
         assert len(md) == 0

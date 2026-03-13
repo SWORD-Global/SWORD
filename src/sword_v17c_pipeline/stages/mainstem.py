@@ -60,38 +60,87 @@ def compute_main_paths(
     return results
 
 
-def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict[int, Dict]) -> Dict[int, bool]:
+def compute_mainstem(
+    G: nx.DiGraph,
+    hw_out_attrs: Dict[int, Dict],
+    main_neighbors: Dict[int, Dict] | None = None,
+) -> Dict[int, bool]:
     """
-    Compute is_mainstem for each reach.
+    Compute is_mainstem_edge for each reach.
 
-    A reach is on the mainstem if it's on the path from best_headwater to best_outlet.
+    For each weakly-connected network, finds the outlet (no successors), looks
+    up its best_headwater, then walks the rch_id_dn_main chain from that
+    headwater to the outlet.  Only reaches on that single chain are mainstem.
+
+    Parameters
+    ----------
+    G : nx.DiGraph
+        Reach-level directed graph.
+    hw_out_attrs : dict
+        Output from ``compute_best_headwater_outlet``.
+    main_neighbors : dict, optional
+        Output from ``compute_main_neighbors``.  Required for the
+        rch_id_dn_main chain walk.  If not provided, falls back to the
+        legacy shortest-path approach (produces ~98% True — avoid).
     """
     log("Computing mainstem classification...")
 
     is_mainstem = {n: False for n in G.nodes()}
 
-    # Group by (best_headwater, best_outlet) pairs
-    paths = defaultdict(list)
-    for node, attrs in hw_out_attrs.items():
-        key = (attrs["best_headwater"], attrs["best_outlet"])
-        paths[key].append(node)
+    if main_neighbors is None:
+        log("WARNING: main_neighbors not provided, skipping mainstem (all False)")
+        return is_mainstem
 
-    # For each unique path, mark nodes on it as mainstem
-    for (hw, out), nodes in paths.items():
-        if hw is None or out is None:
+    # Build rch_id_dn_main lookup
+    dn_main: Dict[int, int | None] = {}
+    for rid, nb in main_neighbors.items():
+        dn = nb.get("rch_id_dn_main")
+        if dn is not None and dn in G.nodes:
+            dn_main[rid] = dn
+        else:
+            dn_main[rid] = None
+
+    # For each weakly-connected component, trace one mainstem
+    n_networks = 0
+    for component in nx.weakly_connected_components(G):
+        # Find outlets (no successors in the full graph)
+        outlets = [n for n in component if G.out_degree(n) == 0]
+        if not outlets:
             continue
 
-        try:
-            path = nx.shortest_path(G, hw, out)
-            for n in path:
-                is_mainstem[n] = True
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
+        # Pick the outlet with highest facc (primary), then width (tiebreak).
+        # facc is more reliable than width for identifying the true
+        # hydrological outlet — estuary/delta reaches are wide but short.
+        best_outlet_node = max(
+            outlets,
+            key=lambda n: (
+                G.nodes[n].get("log_facc", 0) or 0,
+                G.nodes[n].get("effective_width", 0) or 0,
+            ),
+        )
+
+        # Get best_headwater for this outlet
+        hw_attrs = hw_out_attrs.get(best_outlet_node, {})
+        headwater = hw_attrs.get("best_headwater")
+        if headwater is None:
             continue
+
+        # Walk rch_id_dn_main from headwater to outlet
+        visited = set()
+        cur = headwater
+        while cur is not None and cur not in visited:
+            is_mainstem[cur] = True
+            visited.add(cur)
+            cur = dn_main.get(cur)
+
+        n_networks += 1
 
     n_mainstem = sum(is_mainstem.values())
     n_total = len(G.nodes())
     pct = 100 * n_mainstem / n_total if n_total > 0 else 0
-    log(f"Mainstem reaches: {n_mainstem:,} ({pct:.1f}%)")
+    log(
+        f"Mainstem reaches: {n_mainstem:,} / {n_total:,} ({pct:.1f}%) across {n_networks:,} networks"
+    )
 
     return is_mainstem
 

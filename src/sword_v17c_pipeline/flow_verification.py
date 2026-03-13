@@ -691,8 +691,8 @@ def rebuild_derived_attrs(
     3. compute_path_variables
     4. compute_hydro_distances
     5. compute_best_headwater_outlet
-    6. compute_mainstem
-    7. compute_main_neighbors
+    6. compute_main_neighbors
+    7. compute_mainstem (uses rch_id_dn_main chain from main_neighbors)
     8. save_to_duckdb
     9. save_sections_to_duckdb (with re-validated slopes)
     """
@@ -723,8 +723,8 @@ def rebuild_derived_attrs(
     path_vars = compute_path_variables(G, sections_df, region=region)
     hydro_dist = compute_hydro_distances(G)
     hw_out = compute_best_headwater_outlet(G)
-    is_mainstem = compute_mainstem(G, hw_out)
     main_neighbors = compute_main_neighbors(G)
+    is_mainstem = compute_mainstem(G, hw_out, main_neighbors=main_neighbors)
 
     # Step 8: save
     save_to_duckdb(
