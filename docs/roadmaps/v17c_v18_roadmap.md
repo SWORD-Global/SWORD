@@ -99,7 +99,7 @@
 - **Project Board**: https://github.com/users/jameshgrn/projects/1 (verified 2026-02-21)
 - **Project Board Scope Recovery**: `gh auth refresh -s read:project -s project` (required for `gh project` commands)
 - **Roadmap Sync Check**: `scripts/maintenance/check_roadmap_sync.sh`
-- **v17c Branch**: `v17c-updates`
+- **v17c Branch**: `main` (merged from v17c-updates, March 2026)
 - **v18 Branch**: `v18-planning`
 
 ---

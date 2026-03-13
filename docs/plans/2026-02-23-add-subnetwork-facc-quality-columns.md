@@ -381,7 +381,7 @@ cd /Users/jakegearon/projects/SWORD
 git push -u origin issue-33-new-columns
 ```
 
-**Step 2: Create PR targeting v17c-updates**
+**Step 2: Create PR targeting main**
 
 ```bash
 gh pr create \
@@ -393,5 +393,5 @@ Adds two missing v17c columns to reaches and nodes:
 - \`facc_quality VARCHAR\`: facc correction status flag from facc-fix workflow
 
 Both columns added to DDL, migration helper (\`add_v17c_columns\`), and canonical column order. Nodes inherit \`facc_quality\` from parent reach via JOIN UPDATE in migration." \
-  --base v17c-updates
+  --base main
 ```
