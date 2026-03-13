@@ -752,6 +752,26 @@ class TestV17CPathTopologyChecks:
         assert "dn_main_self_reference" in issue_types
         conn.close()
 
+    def test_v010_ignores_9999_sentinels(self, tmp_path):
+        import duckdb as _duckdb
+
+        db_path = tmp_path / "v010_sentinel_test.duckdb"
+        conn = _duckdb.connect(str(db_path))
+        _create_v17c_path_topology_test_data(
+            conn,
+            reaches_rows=[
+                # rch_id_up_main = -9999 should be ignored
+                (1, "NA", -75.0, 45.0, "A", 0, 1, -9999, -9999, 1, 3, 10),
+            ],
+            topology_rows=[],
+        )
+        from src.sword_duckdb.lint.checks.v17c import check_main_connection_integrity
+
+        result = check_main_connection_integrity(conn, region="NA")
+        assert result.passed is True
+        assert result.issues_found == 0
+        conn.close()
+
     def test_v012_flags_null_semantics_violations(self, tmp_path):
         import duckdb as _duckdb
 
@@ -1909,7 +1929,7 @@ def _create_reaches_with_wse(conn, rows):
 
 
 class TestA030WseMonotonicity:
-    """Tests for A030 wse_downstream_monotonicity."""
+    """Tests for A030 wse_monotonicity."""
 
     def test_pass_decreasing(self, tmp_path):
         conn = _spatial_conn(tmp_path)
@@ -1925,10 +1945,10 @@ class TestA030WseMonotonicity:
             [{"reach_id": 1, "direction": "down", "neighbor_reach_id": 2}],
         )
         from src.sword_duckdb.lint.checks.attributes import (
-            check_wse_downstream_monotonicity,
+            check_wse_monotonicity,
         )
 
-        result = check_wse_downstream_monotonicity(conn)
+        result = check_wse_monotonicity(conn)
         assert result.passed is True
         conn.close()
 
@@ -1946,10 +1966,10 @@ class TestA030WseMonotonicity:
             [{"reach_id": 1, "direction": "down", "neighbor_reach_id": 2}],
         )
         from src.sword_duckdb.lint.checks.attributes import (
-            check_wse_downstream_monotonicity,
+            check_wse_monotonicity,
         )
 
-        result = check_wse_downstream_monotonicity(conn)
+        result = check_wse_monotonicity(conn)
         assert result.passed is False
         assert result.issues_found == 1
         conn.close()
@@ -1968,10 +1988,10 @@ class TestA030WseMonotonicity:
             [{"reach_id": 1, "direction": "down", "neighbor_reach_id": 2}],
         )
         from src.sword_duckdb.lint.checks.attributes import (
-            check_wse_downstream_monotonicity,
+            check_wse_monotonicity,
         )
 
-        result = check_wse_downstream_monotonicity(conn)
+        result = check_wse_monotonicity(conn)
         assert result.passed is True
         assert result.total_checked == 0
         conn.close()
@@ -1988,12 +2008,13 @@ def _create_nodes_with_dist_out(conn, rows):
         CREATE TABLE IF NOT EXISTS nodes (
             node_id BIGINT, region VARCHAR, x DOUBLE, y DOUBLE,
             geom GEOMETRY, reach_id BIGINT, node_length DOUBLE,
-            dist_out DOUBLE DEFAULT -9999
+            dist_out DOUBLE DEFAULT -9999,
+            wse DOUBLE DEFAULT -9999
         )
     """)
     for n in rows:
         conn.execute(
-            "INSERT INTO nodes VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO nodes VALUES (?,?,?,?,?,?,?,?,?)",
             [
                 n["node_id"],
                 n.get("region", "NA"),
@@ -2003,6 +2024,7 @@ def _create_nodes_with_dist_out(conn, rows):
                 n["reach_id"],
                 n.get("node_length", 200.0),
                 n.get("dist_out", -9999),
+                n.get("wse", -9999),
             ],
         )
 
@@ -2479,55 +2501,48 @@ class TestC005CenterlineReachDistance:
 
 
 # =============================================================================
-# A031 Zero Node Width Tests
+# A031 WSE Variance Tests
 # =============================================================================
 
 
-class TestA031ZeroNodeWidth:
-    """Tests for A031 zero_node_width."""
+class TestA031WseVariance:
+    """Tests for A031 wse_variance."""
 
     def test_a031_registered(self):
         check = get_check("A031")
         assert check is not None
-        assert check.name == "zero_node_width"
+        assert check.name == "wse_variance"
         assert check.category == Category.ATTRIBUTES
         assert check.severity == Severity.WARNING
 
     def test_a031_runs(self, tmp_path):
         conn = _spatial_conn(tmp_path)
-        _create_nodes_table(
+        _create_nodes_with_dist_out(
             conn,
             [
-                {"node_id": 1, "reach_id": 1, "x": 0, "y": 0, "node_length": 200},
+                {"node_id": 1, "reach_id": 1, "x": 0, "y": 0, "node_length": 200, "wse": 10.0},
+                {"node_id": 2, "reach_id": 1, "x": 1, "y": 1, "node_length": 200, "wse": 10.1},
             ],
         )
-        # Add width column to nodes (helper doesn't include it)
-        conn.execute("ALTER TABLE nodes ADD COLUMN width DOUBLE DEFAULT 100.0")
-        conn.execute("UPDATE nodes SET width = 100.0")
+        from src.sword_duckdb.lint.checks.attributes import check_wse_variance
 
-        from src.sword_duckdb.lint.checks.attributes import check_zero_node_width
-
-        result = check_zero_node_width(conn)
+        result = check_wse_variance(conn)
         assert result.check_id == "A031"
         assert result.passed is True
         conn.close()
 
-    def test_a031_finds_zero_width(self, tmp_path):
+    def test_a031_finds_high_variance(self, tmp_path):
         conn = _spatial_conn(tmp_path)
-        _create_nodes_table(
+        _create_nodes_with_dist_out(
             conn,
             [
-                {"node_id": 1, "reach_id": 1, "x": 0, "y": 0, "node_length": 200},
-                {"node_id": 2, "reach_id": 1, "x": 0.001, "y": 0, "node_length": 200},
+                {"node_id": 1, "reach_id": 1, "x": 0, "y": 0, "node_length": 200, "wse": 10.0},
+                {"node_id": 2, "reach_id": 1, "x": 1, "y": 1, "node_length": 200, "wse": 30.0},
             ],
         )
-        conn.execute("ALTER TABLE nodes ADD COLUMN width DOUBLE DEFAULT 100.0")
-        conn.execute("UPDATE nodes SET width = 100.0 WHERE node_id = 1")
-        conn.execute("UPDATE nodes SET width = 0.0 WHERE node_id = 2")
+        from src.sword_duckdb.lint.checks.attributes import check_wse_variance
 
-        from src.sword_duckdb.lint.checks.attributes import check_zero_node_width
-
-        result = check_zero_node_width(conn)
+        result = check_wse_variance(conn, threshold=5.0)
         assert result.passed is False
         assert result.issues_found == 1
         conn.close()
