@@ -116,6 +116,7 @@ def _v17b_reach_scalar_specs():
         ("n_rch_down", "i4", FILL_I4, "n_rch_down", {}),
         # rch_id_up/dn handled separately (multi-dim from topology)
         ("lakeflag", "i4", FILL_I4, "lakeflag", {}),
+        ("type", "i4", FILL_I4, "type", {}),
         # iceflag handled separately (multi-dim from v17b)
         ("swot_obs", "i4", FILL_I4, "swot_obs", {}),
         # swot_orbits handled separately (multi-dim from orbit table)
@@ -286,6 +287,7 @@ def _v17b_node_scalar_specs():
         ("ext_dist_coef", "f8", FILL_F8, "ext_dist_coef", {}),
         ("facc", "f8", FILL_F8, "facc", {"units": "km^2"}),
         ("lakeflag", "i8", FILL_I8, "lakeflag", {}),  # i8 in v17b nodes
+        ("type", "i4", FILL_I4, "type", {}),
         ("max_width", "f8", FILL_F8, "max_width", {"units": "meters"}),
         ("meander_length", "f8", FILL_F8, "meander_length", {}),
         ("sinuosity", "f8", FILL_F8, "sinuosity", {}),
@@ -474,6 +476,69 @@ def _build_cl_ids_array(cl_id_min: np.ndarray, cl_id_max: np.ndarray) -> np.ndar
     arr[0, :] = _null_to_fill(cl_id_min, FILL_I8)
     arr[1, :] = _null_to_fill(cl_id_max, FILL_I8)
     return arr
+
+
+def _copy_nc_variable(src_var, dst_grp, dims, idx_map):
+    """Copy a single NetCDF variable, optionally reordering along last axis."""
+    fill = getattr(src_var, "_FillValue", None)
+    dst_var = dst_grp.createVariable(src_var.name, src_var.dtype, dims, fill_value=fill)
+    data = src_var[:]
+    if idx_map is not None:
+        data = data[..., idx_map]
+    dst_var[:] = data
+
+
+def _passthrough_v17b_subgroups(ds_out, ds_v17b, reorder_reach):
+    """Copy area_fits and discharge_models from v17b into ds_out reaches group."""
+    src_rch = ds_v17b.groups["reaches"]
+    rch_grp = ds_out.groups["reaches"]
+
+    # Build inverse index: reorder_reach[i] = DuckDB idx for output position i
+    # Since we already reordered DuckDB data to v17b order, idx_map is identity
+    idx_map = None  # v17b and output share the same reach order
+
+    # --- area_fits ---
+    if "area_fits" in src_rch.groups:
+        src_af = src_rch.groups["area_fits"]
+        dst_af = rch_grp.createGroup("area_fits")
+
+        if "nCoeffs" not in rch_grp.dimensions:
+            rch_grp.createDimension("nCoeffs", 2)
+        if "nReg" not in rch_grp.dimensions:
+            rch_grp.createDimension("nReg", 3)
+
+        for vname in src_af.variables:
+            src_var = src_af.variables[vname]
+            out_dims = tuple(
+                "num_reaches" if d == "num_reaches" else d for d in src_var.dimensions
+            )
+            _copy_nc_variable(src_var, dst_af, out_dims, idx_map)
+
+        print(f"  Copied area_fits ({len(src_af.variables)} vars) from v17b")
+
+    # --- discharge_models ---
+    if "discharge_models" in src_rch.groups:
+        src_dm = src_rch.groups["discharge_models"]
+        dst_dm = rch_grp.createGroup("discharge_models")
+
+        for constraint_name in src_dm.groups:
+            src_cg = src_dm.groups[constraint_name]
+            dst_cg = dst_dm.createGroup(constraint_name)
+
+            for model_name in src_cg.groups:
+                src_mg = src_cg.groups[model_name]
+                dst_mg = dst_cg.createGroup(model_name)
+
+                for vname in src_mg.variables:
+                    src_var = src_mg.variables[vname]
+                    out_dims = tuple(
+                        "num_reaches" if d == "num_reaches" else d
+                        for d in src_var.dimensions
+                    )
+                    _copy_nc_variable(src_var, dst_mg, out_dims, idx_map)
+
+        n_models = sum(len(src_dm.groups[c].groups) for c in src_dm.groups)
+        print(f"  Copied discharge_models ({n_models} models) from v17b")
 
 
 # ---------------------------------------------------------------------------
@@ -751,6 +816,9 @@ def export_region(
         "swot_orbits", "i8", ("orbits", "num_reaches"), fill_value=FILL_I8
     )
     v[:] = swot_orbits
+
+    # -- Passthrough area_fits / discharge_models from v17b ----------------
+    _passthrough_v17b_subgroups(root, v17b, reorder_reach)
 
     root.close()
     v17b.close()

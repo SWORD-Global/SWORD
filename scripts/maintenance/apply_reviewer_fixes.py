@@ -8,6 +8,7 @@ Usage:
     python scripts/maintenance/apply_reviewer_fixes.py
     python scripts/maintenance/apply_reviewer_fixes.py --db data/duckdb/sword_v17c.duckdb
     python scripts/maintenance/apply_reviewer_fixes.py --dry-run
+    python scripts/maintenance/apply_reviewer_fixes.py --force  # apply even when current != old_value
 """
 
 from __future__ import annotations
@@ -26,7 +27,6 @@ GCS_BUCKET = "gs://sword-qc-data/sword/lint_fixes/"
 
 def download_fix_jsons(tmp_dir: Path) -> list[Path]:
     """Download all lint fix JSONs from GCS to a temp directory."""
-    # List files first, then download individually (gsutil -m hangs on macOS)
     ls_result = subprocess.run(
         ["gsutil", "ls", f"{GCS_BUCKET}*.json"],
         capture_output=True,
@@ -50,22 +50,27 @@ def download_fix_jsons(tmp_dir: Path) -> list[Path]:
     return sorted(tmp_dir.glob("*.json"))
 
 
-def parse_fixes(json_path: Path) -> list[dict]:
-    """Extract non-undone fixes from a session JSON.
+def parse_all_fixes(json_files: list[Path]) -> list[dict]:
+    """Extract non-undone fixes from all session JSONs.
 
-    For duplicate (reach_id, column) pairs, keep the latest by fix_id.
+    Deduplicates globally by (reach_id, region, column_changed), keeping the
+    fix with the highest fix_id across all files.
     """
-    with open(json_path) as f:
-        data = json.load(f)
-
-    fixes = [fix for fix in data.get("fixes", []) if not fix.get("undone", False)]
-
-    # Deduplicate: keep latest fix_id per (reach_id, column)
     latest: dict[tuple, dict] = {}
-    for fix in fixes:
-        key = (fix["reach_id"], fix["column_changed"])
-        if key not in latest or fix["fix_id"] > latest[key]["fix_id"]:
-            latest[key] = fix
+
+    for json_path in json_files:
+        with open(json_path) as f:
+            data = json.load(f)
+
+        fixes = [fix for fix in data.get("fixes", []) if not fix.get("undone", False)]
+        # Tag each fix with its source file
+        for fix in fixes:
+            fix["_source_file"] = json_path.name
+
+        for fix in fixes:
+            key = (fix["reach_id"], fix["region"], fix["column_changed"])
+            if key not in latest or fix["fix_id"] > latest[key]["fix_id"]:
+                latest[key] = fix
 
     # Filter out no-ops (old_value == new_value, from undo/redo cycles)
     return [fix for fix in latest.values() if fix["old_value"] != fix["new_value"]]
@@ -78,8 +83,7 @@ NODE_PROPAGATE_COLS = {"lakeflag"}
 def apply_fixes(
     con: duckdb.DuckDBPyConnection,
     fixes: list[dict],
-    source_file: str,
-    dry_run: bool = False,
+    force: bool = False,
 ) -> dict[str, int]:
     """Apply fixes to DuckDB. Returns counts of applied/skipped/already_correct."""
     applied = 0
@@ -93,8 +97,8 @@ def apply_fixes(
         column = fix["column_changed"]
         new_value = fix["new_value"]
         old_value = fix["old_value"]
+        source_file = fix.get("_source_file", "unknown")
 
-        # Check current value in DuckDB
         row = con.execute(
             f"SELECT {column} FROM reaches WHERE reach_id = ? AND region = ?",
             [reach_id, region],
@@ -108,28 +112,28 @@ def apply_fixes(
 
         if current == new_value:
             skipped_already += 1
-            # Still propagate to nodes if reach is correct but nodes lag behind
-            if column in NODE_PROPAGATE_COLS and not dry_run:
+            if column in NODE_PROPAGATE_COLS:
                 n = _propagate_to_nodes(con, reach_id, region, column, new_value)
                 nodes_updated += n
             continue
 
         if current != old_value:
-            skipped_mismatch += 1
             print(
                 f"  WARN: reach {reach_id} {column}: "
                 f"expected old={old_value}, got current={current}, "
                 f"target={new_value} (from {source_file})"
             )
+            if not force:
+                skipped_mismatch += 1
+                continue
 
-        if not dry_run:
-            con.execute(
-                f"UPDATE reaches SET {column} = ? WHERE reach_id = ? AND region = ?",
-                [new_value, reach_id, region],
-            )
-            if column in NODE_PROPAGATE_COLS:
-                n = _propagate_to_nodes(con, reach_id, region, column, new_value)
-                nodes_updated += n
+        con.execute(
+            f"UPDATE reaches SET {column} = ? WHERE reach_id = ? AND region = ?",
+            [new_value, reach_id, region],
+        )
+        if column in NODE_PROPAGATE_COLS:
+            n = _propagate_to_nodes(con, reach_id, region, column, new_value)
+            nodes_updated += n
         applied += 1
 
     return {
@@ -173,6 +177,11 @@ def main():
         "--dry-run", action="store_true", help="Show what would be applied"
     )
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Apply fixes even when current value != expected old_value",
+    )
+    parser.add_argument(
         "--local-dir",
         type=str,
         help="Use local directory of JSON files instead of downloading from GCS",
@@ -197,22 +206,42 @@ def main():
 
     print(f"Found {len(json_files)} session files")
 
-    all_fixes: list[tuple[str, list[dict]]] = []
-    for jf in json_files:
-        fixes = parse_fixes(jf)
-        all_fixes.append((jf.name, fixes))
-        print(f"  {jf.name}: {len(fixes)} non-undone fixes")
+    # Global deduplication across all files
+    all_fixes = parse_all_fixes(json_files)
+    print(f"Total unique fixes after global dedup: {len(all_fixes)}")
 
-    total_fixes = sum(len(f) for _, f in all_fixes)
-    if total_fixes == 0:
+    if not all_fixes:
         print("No fixes to apply.")
         return
 
-    print(f"\nTotal fixes to apply: {total_fixes}")
     if args.dry_run:
         print("(DRY RUN - no changes will be made)")
+        # Report what would be applied without touching the database
+        con = duckdb.connect(str(db_path), read_only=True)
+        for fix in all_fixes:
+            reach_id = fix["reach_id"]
+            region = fix["region"]
+            column = fix["column_changed"]
+            new_value = fix["new_value"]
+            old_value = fix["old_value"]
+            row = con.execute(
+                f"SELECT {column} FROM reaches WHERE reach_id = ? AND region = ?",
+                [reach_id, region],
+            ).fetchone()
+            current = row[0] if row else "NOT_FOUND"
+            status = (
+                "ALREADY_CORRECT"
+                if current == new_value
+                else ("MATCH" if current == old_value else "MISMATCH")
+            )
+            print(
+                f"  [{status}] reach {reach_id} {column}: "
+                f"current={current} → {new_value} (from {fix.get('_source_file', '?')})"
+            )
+        con.close()
+        return
 
-    # Need RTREE pattern for updates
+    # Real apply path — transactional with RTREE index management
     con = duckdb.connect(str(db_path))
     con.execute("INSTALL spatial; LOAD spatial;")
 
@@ -223,23 +252,25 @@ def main():
     for idx_name, _tbl, _sql in indexes:
         con.execute(f'DROP INDEX "{idx_name}"')
 
-    for source_file, fixes in all_fixes:
-        if not fixes:
-            continue
-        print(f"\nApplying {source_file}...")
-        counts = apply_fixes(con, fixes, source_file, dry_run=args.dry_run)
+    try:
+        con.execute("BEGIN TRANSACTION")
+        counts = apply_fixes(con, all_fixes, force=args.force)
+        con.execute("COMMIT")
         print(
-            f"  applied={counts['applied']}, "
+            f"\nResults: applied={counts['applied']}, "
             f"already_correct={counts['already_correct']}, "
             f"old_value_mismatch={counts['old_value_mismatch']}, "
             f"nodes_updated={counts['nodes_updated']}"
         )
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    finally:
+        # Always recreate RTREE indexes
+        for _idx_name, _tbl, sql in indexes:
+            con.execute(sql)
+        con.close()
 
-    # Recreate RTREE indexes
-    for _idx_name, _tbl, sql in indexes:
-        con.execute(sql)
-
-    con.close()
     print("\nDone.")
 
 
