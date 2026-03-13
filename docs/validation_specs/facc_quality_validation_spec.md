@@ -196,7 +196,7 @@ result = workflow.fix_facc_violations(
    - Manually approve/edit individual corrections
    - Only "trusted" corrections get `facc_quality` set
 
-4. **Incomplete Rollout:** As of v17c-updates branch, the workflow has not been run to completion on all regions. Expected coverage after full rollout: ~2-5% (reaches with actual facc/width ratio violations).
+4. **Incomplete Rollout:** As of the `main` branch, the workflow has been run to completion on all regions. Expected coverage: ~2-5% (reaches with actual facc/width ratio violations).
 
 ### Population Breakdown (Expected Post-Rollout)
 

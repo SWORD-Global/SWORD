@@ -1,6 +1,6 @@
-# SWORD v17c Beta Release Notes
+# SWORD v17c Release Notes
 
-**Version:** v17c-beta
+**Version:** v17c
 **Date:** March 2026
 **Authors:** Gearon, Pavelsky
 **Base version:** SWORD v17b (March 2025, UNC)
@@ -12,7 +12,7 @@
 SWORD v17c extends v17b with three additions: computed mainstem topology,
 SWOT observation statistics, and flow accumulation corrections. No reaches,
 nodes, or centerlines were added or removed. v17c contains the same
-248,674 reaches, 11.1M nodes, and 66.9M centerline points as v17b across
+248,673 reaches, 11.1M nodes, and 66.9M centerline points as v17b across
 all six regions (NA, SA, EU, AF, AS, OC).
 
 Each region is distributed as a single NetCDF4 file
