@@ -233,7 +233,7 @@ Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M cent
 |-------|-------|-------|----------|
 | [#187](https://github.com/SWORD-Global/SWORD/issues/187) | N007/G012 | DuckDB reach geometries missing endpoint overlap vertices | **Closed** — premise incorrect; DuckDB and PG have identical endpoint connectivity (37,976/38,346 touching in NA) |
 | [#188](https://github.com/SWORD-Global/SWORD/issues/188) | N007 | Fix N007 distance formula: antimeridian wrapping + check all 4 boundary pairs | **Closed** — fixed in `8b7ca76` (ST_Distance_Spheroid + all 4 endpoint combos) |
-| [#189](https://github.com/SWORD-Global/SWORD/issues/189) | N007 | Investigate 31 extreme bad topology links (>5km boundary gap) | P2 |
+| [#189](https://github.com/SWORD-Global/SWORD/issues/189) | N007 | Investigate 31 extreme bad topology links (>5km boundary gap) | **Closed** — 4 v17c-added links reverted, 27 v17b-inherited confirmed (GRWL gaps) |
 | [#190](https://github.com/SWORD-Global/SWORD/issues/190) | N007 | Investigate 57 moderate topology gaps (800m–5km boundary) | **Closed** — all v17b-inherited, needs geometry fixes, deferred to v18 |
 | [#191](https://github.com/SWORD-Global/SWORD/issues/191) | T017 | Investigate 553 dist_out jumps >30km between connected reaches | **Closed** — duplicate of #192 |
 | [#192](https://github.com/SWORD-Global/SWORD/issues/192) | N006 | Investigate 2,596 boundary dist_out gaps >1km | **Closed** — all path-length artifacts at junctions, spatially verified |

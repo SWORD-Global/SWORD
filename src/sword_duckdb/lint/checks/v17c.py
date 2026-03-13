@@ -853,6 +853,7 @@ def check_main_connection_integrity(
         FROM reaches r
         LEFT JOIN reaches u ON r.rch_id_up_main = u.reach_id AND r.region = u.region
         WHERE r.rch_id_up_main IS NOT NULL
+            AND r.rch_id_up_main != -9999
             AND u.reach_id IS NULL
             {where_clause}
 
@@ -865,6 +866,7 @@ def check_main_connection_integrity(
         FROM reaches r
         LEFT JOIN reaches d ON r.rch_id_dn_main = d.reach_id AND r.region = d.region
         WHERE r.rch_id_dn_main IS NOT NULL
+            AND r.rch_id_dn_main != -9999
             AND d.reach_id IS NULL
             {where_clause}
 
@@ -896,6 +898,7 @@ def check_main_connection_integrity(
             r.rch_id_up_main as ref_reach_id
         FROM reaches r
         WHERE r.rch_id_up_main IS NOT NULL
+            AND r.rch_id_up_main != -9999
             AND EXISTS (
                 SELECT 1
                 FROM reaches u
@@ -920,6 +923,7 @@ def check_main_connection_integrity(
             r.rch_id_dn_main as ref_reach_id
         FROM reaches r
         WHERE r.rch_id_dn_main IS NOT NULL
+            AND r.rch_id_dn_main != -9999
             AND EXISTS (
                 SELECT 1
                 FROM reaches d
@@ -945,7 +949,8 @@ def check_main_connection_integrity(
 
     total_query = f"""
     SELECT COUNT(*) FROM reaches r
-    WHERE r.rch_id_up_main IS NOT NULL OR r.rch_id_dn_main IS NOT NULL
+    WHERE (r.rch_id_up_main IS NOT NULL AND r.rch_id_up_main != -9999)
+       OR (r.rch_id_dn_main IS NOT NULL AND r.rch_id_dn_main != -9999)
     {where_clause}
     """
     total = conn.execute(total_query).fetchone()[0]
@@ -1246,6 +1251,7 @@ def check_tuple_to_main_path_id_uniqueness(
         details=issues,
         description="(best_headwater, best_outlet) tuples split across multiple main_path_id values",
     )
+
 
 # pathlen_hw / pathlen_out checks (V020-V025)
 # =============================================================================
@@ -2011,7 +2017,9 @@ def check_subnetwork_id_pfafstetter_range(
     Values outside the band indicate missing or wrong offset application.
     """
     if not _has_column(conn, "reaches", "subnetwork_id"):
-        return _column_missing_result("V027", "subnetwork_id_pfafstetter_range", Severity.ERROR)
+        return _column_missing_result(
+            "V027", "subnetwork_id_pfafstetter_range", Severity.ERROR
+        )
 
     where_clause = f"AND r.region = '{region}'" if region else ""
 
@@ -2079,7 +2087,9 @@ def check_subnetwork_id_topology_consistency(
     is correctly labeled.
     """
     if not _has_column(conn, "reaches", "subnetwork_id"):
-        return _column_missing_result("V028", "subnetwork_id_topology_consistency", Severity.ERROR)
+        return _column_missing_result(
+            "V028", "subnetwork_id_topology_consistency", Severity.ERROR
+        )
 
     where_clause = f"AND r1.region = '{region}'" if region else ""
 
@@ -2161,7 +2171,9 @@ def check_subnetwork_id_cross_region_uniqueness(
     appears in two regions, the offset was not applied or was corrupted.
     """
     if not _has_column(conn, "reaches", "subnetwork_id"):
-        return _column_missing_result("V029", "subnetwork_id_cross_region_uniqueness", Severity.ERROR)
+        return _column_missing_result(
+            "V029", "subnetwork_id_cross_region_uniqueness", Severity.ERROR
+        )
 
     # Single-region queries can't find cross-region collisions,
     # but we run anyway for consistency (will always pass).
@@ -2218,7 +2230,9 @@ def check_subnetwork_id_singleton_consistency(
     of their subnetwork_id (component size = 1).
     """
     if not _has_column(conn, "reaches", "subnetwork_id"):
-        return _column_missing_result("V030", "subnetwork_id_singleton_consistency", Severity.INFO)
+        return _column_missing_result(
+            "V030", "subnetwork_id_singleton_consistency", Severity.INFO
+        )
 
     where_clause = f"AND r.region = '{region}'" if region else ""
 
@@ -2281,7 +2295,9 @@ def check_subnetwork_id_distribution(
 ) -> CheckResult:
     """Report component size distribution by region."""
     if not _has_column(conn, "reaches", "subnetwork_id"):
-        return _column_missing_result("V031", "subnetwork_id_distribution", Severity.INFO)
+        return _column_missing_result(
+            "V031", "subnetwork_id_distribution", Severity.INFO
+        )
 
     where_clause = f"WHERE r.region = '{region}'" if region else ""
 
