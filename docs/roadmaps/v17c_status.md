@@ -6,10 +6,10 @@
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| Lake Typology | 🟡 In Progress | 3,167 sandwiches identified, 165 fixed |
-| facc Fixes | 🟡 In Progress | 7,355 T003 violations, fix exists |
-| SWOT Integration | 🟢 Working | 72.6% coverage, slopes WIP |
-| v17c Topology | 🟢 Working | hydro_dist, mainstem complete |
+| Lake Typology | 🟢 Complete | 3,167 sandwiches identified, 1,252 fixed |
+| facc Fixes | 🟢 Complete | 122 lint checks, monotonic facc restored |
+| SWOT Integration | 🟢 Complete | 72.6% coverage, slopes integrated |
+| v17c Topology | 🟢 Complete | hydro_dist, mainstem complete |
 | PostgreSQL Backend | 🟢 Complete | Ready for testing |
 
 ---
