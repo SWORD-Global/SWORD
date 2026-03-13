@@ -74,12 +74,23 @@ IS_MAINSTEM_EDGE_FLAG_ATTRS = {
     "flag_meanings": "not_mainstem mainstem",
 }
 
+SLOPE_OBS_Q_FLAG_ATTRS = {
+    "flag_values": np.array([1, 2, 4, 8, 16], dtype=np.int32),
+    "flag_meanings": "negative low_passes high_var extreme clipped",
+    "comment": (
+        "Bitfield: combine flags by addition. "
+        "0=no issues. Example: 5 = negative(1) + high_var(4). "
+        "fill_value=not computed (no SWOT slope observations)"
+    ),
+}
+
 # Map nc_name → extra attributes for flag/quality vars
 FLAG_VAR_ATTRS: dict[str, dict] = {
     "facc_quality": FACC_QUALITY_FLAG_ATTRS,
     "slope_obs_quality": SLOPE_OBS_QUALITY_FLAG_ATTRS,
     "slope_obs_reliable": SLOPE_OBS_RELIABLE_FLAG_ATTRS,
     "is_mainstem_edge": IS_MAINSTEM_EDGE_FLAG_ATTRS,
+    "slope_obs_q": SLOPE_OBS_Q_FLAG_ATTRS,
 }
 
 # -- Variable spec helpers --------------------------------------------------
@@ -138,6 +149,7 @@ def _v17c_reach_scalar_specs():
     return [
         ("dist_out_dijkstra", "f8", FILL_F8, "dist_out_dijkstra", {"units": "meters"}),
         ("hydro_dist_out", "f8", FILL_F8, "hydro_dist_out", {"units": "meters"}),
+        ("hydro_dist_hw", "f8", FILL_F8, "hydro_dist_hw", {"units": "meters"}),
         ("rch_id_up_main", "i8", FILL_I8, "rch_id_up_main", {}),
         ("rch_id_dn_main", "i8", FILL_I8, "rch_id_dn_main", {}),
         ("subnetwork_id", "i4", FILL_I4, "subnetwork_id", {}),
@@ -148,6 +160,7 @@ def _v17c_reach_scalar_specs():
         ("pathlen_hw", "f8", FILL_F8, "pathlen_hw", {"units": "meters"}),
         ("pathlen_out", "f8", FILL_F8, "pathlen_out", {"units": "meters"}),
         ("facc_quality", "i4", FILL_I4, "facc_quality", {}),  # VARCHAR→i4
+        ("dl_grod_id", "i8", FILL_I8, "dl_grod_id", {}),
         # WSE obs percentiles
         ("wse_obs_p10", "f8", FILL_F8, "wse_obs_p10", {"units": "meters"}),
         ("wse_obs_p20", "f8", FILL_F8, "wse_obs_p20", {"units": "meters"}),
@@ -260,6 +273,9 @@ def _v17c_reach_scalar_specs():
         ("slope_obs_slopeF", "f8", FILL_F8, "slope_obs_slopeF", {}),
         ("slope_obs_reliable", "i4", FILL_I4, "slope_obs_reliable", {}),  # BOOL→i4
         ("slope_obs_quality", "i4", FILL_I4, "slope_obs_quality", {}),  # VARCHAR→i4
+        ("slope_obs_n", "i4", FILL_I4, "slope_obs_n", {}),
+        ("slope_obs_n_passes", "i4", FILL_I4, "slope_obs_n_passes", {}),
+        ("slope_obs_q", "i4", FILL_I4, "slope_obs_q", {}),
         ("n_obs", "i4", FILL_I4, "n_obs", {}),
     ]
 
@@ -287,7 +303,6 @@ def _v17b_node_scalar_specs():
         ("ext_dist_coef", "f8", FILL_F8, "ext_dist_coef", {}),
         ("facc", "f8", FILL_F8, "facc", {"units": "km^2"}),
         ("lakeflag", "i8", FILL_I8, "lakeflag", {}),  # i8 in v17b nodes
-        ("type", "i4", FILL_I4, "type", {}),
         ("max_width", "f8", FILL_F8, "max_width", {"units": "meters"}),
         ("meander_length", "f8", FILL_F8, "meander_length", {}),
         ("sinuosity", "f8", FILL_F8, "sinuosity", {}),
@@ -336,6 +351,7 @@ def _v17c_node_scalar_specs():
         ("width_obs_range", "f8", FILL_F8, "width_obs_range", {"units": "meters"}),
         ("width_obs_mad", "f8", FILL_F8, "width_obs_mad", {"units": "meters"}),
         ("n_obs", "i4", FILL_I4, "n_obs", {}),
+        ("facc_quality", "i4", FILL_I4, "facc_quality", {}),  # VARCHAR→i4
     ]
 
 
