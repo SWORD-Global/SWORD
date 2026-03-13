@@ -395,12 +395,10 @@ Streamlit app for manual QA review of SWORD reaches. Located in `deploy/reviewer
 
 ## Git
 
-- **Main branch:** main (release-only — never commit directly)
-- **Working branch:** v17c-updates (all active work happens here)
+- **Main branch:** main (default, all active work)
 - **v18 branch:** v18-planning (future planning)
 - Never force push to main
-- **NEVER merge to main** until v17c is fully validated — PRs go to v17c-updates
-- Feature branches branch off v17c-updates and PR back into v17c-updates
+- Never commit directly to main — feature branches + PRs
 
 ## GitHub Issue Tracking
 
@@ -412,9 +410,9 @@ Streamlit app for manual QA review of SWORD reaches. Located in `deploy/reviewer
 
 **Workflow:**
 1. Pick issue from milestone by priority
-2. Branch from v17c-updates: `git checkout -b issue-N-short-desc`
+2. Branch from main: `git checkout -b issue-N-short-desc`
 3. Reference in commits: `git commit -m "Fix #N: description"`
-4. PR to v17c-updates (NOT main)
+4. PR to main
 
 ## Source Datasets
 
