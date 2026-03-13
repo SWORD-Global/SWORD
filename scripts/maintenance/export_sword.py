@@ -61,6 +61,9 @@ VALID_TABLES = ("reaches", "nodes", "centerlines", "topology")
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_PROJECT_ROOT / "src"))
 
+# Default v17b NetCDF directory for passthrough of area_fits / discharge_models
+V17B_NC_DIR = _PROJECT_ROOT / "data" / "netcdf"
+
 from sword_duckdb.column_order import reorder_columns  # noqa: E402
 
 
@@ -315,6 +318,126 @@ def export_parquet(
 # ---------------------------------------------------------------------------
 
 
+def _copy_nc_variable(src_var, dst_group, dims, idx_map: np.ndarray | None = None):
+    """Copy a single NetCDF variable into *dst_group* with given *dims*.
+
+    If *idx_map* is provided it is a v17b-index → v17c-index permutation array
+    used to reorder the last (reach) axis.  When None the data is copied as-is.
+    """
+
+    fill = float(src_var._FillValue) if hasattr(src_var, "_FillValue") else -9999.0
+    dst_var = dst_group.createVariable(
+        src_var.name, src_var.dtype, dims, fill_value=fill
+    )
+    data = src_var[:]
+    if idx_map is not None:
+        # Reorder along the last axis (num_reaches)
+        data = data[..., idx_map]
+    dst_var[:] = data
+
+
+def _passthrough_v17b_subgroups(
+    ds_out,
+    region: str,
+    v17c_reach_ids: np.ndarray,
+    v17b_nc_dir: Path = V17B_NC_DIR,
+) -> None:
+    """Copy area_fits and discharge_models from v17b NetCDF into *ds_out*.
+
+    Handles potential reach-order differences by building an index mapping.
+    """
+    import netCDF4  # noqa: F811
+
+    v17b_path = v17b_nc_dir / f"{region.lower()}_sword_v17b.nc"
+    if not v17b_path.exists():
+        logger.warning(
+            f"v17b NetCDF not found at {v17b_path} — skipping area_fits/discharge_models"
+        )
+        return
+
+    ds_src = netCDF4.Dataset(str(v17b_path), "r")
+    try:
+        src_rch = ds_src.groups["reaches"]
+        if (
+            "area_fits" not in src_rch.groups
+            and "discharge_models" not in src_rch.groups
+        ):
+            logger.warning(f"v17b {region} has no area_fits or discharge_models")
+            return
+
+        src_reach_ids = np.array(src_rch.variables["reach_id"][:])
+
+        # Build index mapping: for each v17c position, which v17b index to read
+        if np.array_equal(src_reach_ids, v17c_reach_ids):
+            idx_map = None  # same order — no remapping needed
+        else:
+            v17b_id_to_idx = {int(rid): i for i, rid in enumerate(src_reach_ids)}
+            idx_map = np.array(
+                [v17b_id_to_idx[int(rid)] for rid in v17c_reach_ids], dtype=np.intp
+            )
+
+        rch_grp = ds_out.groups["reaches"]
+
+        # --- area_fits ---
+        if "area_fits" in src_rch.groups:
+            src_af = src_rch.groups["area_fits"]
+            dst_af = rch_grp.createGroup("area_fits")
+
+            # Create extra dimensions needed by area_fits variables
+            if "num_domains" not in rch_grp.dimensions:
+                rch_grp.createDimension("num_domains", 4)
+            if "nCoeffs" not in rch_grp.dimensions:
+                rch_grp.createDimension("nCoeffs", 2)
+            if "nReg" not in rch_grp.dimensions:
+                rch_grp.createDimension("nReg", 3)
+
+            # Map source dimension names to (parent_group, dim_name) for the output
+            _DIM_MAP = {
+                "num_reaches": ("num_reaches",),
+                "num_domains": ("num_domains",),
+                "nCoeffs": ("nCoeffs",),
+                "nReg": ("nReg",),
+            }
+
+            for vname in src_af.variables:
+                src_var = src_af.variables[vname]
+                out_dims = tuple(_DIM_MAP.get(d, (d,))[0] for d in src_var.dimensions)
+                _copy_nc_variable(src_var, dst_af, out_dims, idx_map)
+
+            logger.info(
+                f"  [{region}] Copied area_fits ({len(src_af.variables)} vars) from v17b"
+            )
+
+        # --- discharge_models ---
+        if "discharge_models" in src_rch.groups:
+            src_dm = src_rch.groups["discharge_models"]
+            dst_dm = rch_grp.createGroup("discharge_models")
+
+            for constraint_name in src_dm.groups:  # unconstrained, constrained
+                src_cg = src_dm.groups[constraint_name]
+                dst_cg = dst_dm.createGroup(constraint_name)
+
+                for model_name in src_cg.groups:  # MetroMan, BAM, ...
+                    src_mg = src_cg.groups[model_name]
+                    dst_mg = dst_cg.createGroup(model_name)
+
+                    for vname in src_mg.variables:
+                        src_var = src_mg.variables[vname]
+                        out_dims = tuple(
+                            "num_reaches" if d == "num_reaches" else d
+                            for d in src_var.dimensions
+                        )
+                        _copy_nc_variable(src_var, dst_mg, out_dims, idx_map)
+
+            n_models = sum(len(src_dm.groups[c].groups) for c in src_dm.groups)
+            logger.info(
+                f"  [{region}] Copied discharge_models ({n_models} models) from v17b"
+            )
+
+    finally:
+        ds_src.close()
+
+
 def _pad_array_2d(values: list[list], max_dim: int, fill: int = 0) -> np.ndarray:
     """Pad ragged lists into a fixed [max_dim, N] array."""
     n = len(values)
@@ -329,6 +452,7 @@ def export_netcdf(
     con: duckdb.DuckDBPyConnection,
     region: str,
     output_dir: Path,
+    v17b_nc_dir: Path | None = V17B_NC_DIR,
 ) -> Path:
     """Export one region to NetCDF4 format."""
     import netCDF4
@@ -574,6 +698,10 @@ def export_netcdf(
             for i, s in enumerate(str_vals):
                 var[i] = s
 
+    # --- Passthrough area_fits + discharge_models from v17b ---
+    if v17b_nc_dir is not None:
+        _passthrough_v17b_subgroups(ds, region, reach_ids, v17b_nc_dir=v17b_nc_dir)
+
     ds.close()
     logger.info(f"  [{region}] Wrote {out_path}")
     return out_path
@@ -692,6 +820,17 @@ Examples:
         default="postgresql://localhost/sword_v17c",
         help="PostgreSQL DSN for --format postgres",
     )
+    parser.add_argument(
+        "--v17b-nc-dir",
+        type=Path,
+        default=V17B_NC_DIR,
+        help="Directory containing v17b NetCDF files (for area_fits/discharge_models passthrough)",
+    )
+    parser.add_argument(
+        "--no-v17b-passthrough",
+        action="store_true",
+        help="Skip copying area_fits/discharge_models from v17b into NetCDF export",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
 
     args = parser.parse_args()
@@ -733,7 +872,8 @@ Examples:
             elif fmt == "parquet":
                 export_parquet(con, region, args.tables, output_dir)
             elif fmt == "netcdf":
-                export_netcdf(con, region, output_dir)
+                v17b_dir = None if args.no_v17b_passthrough else args.v17b_nc_dir
+                export_netcdf(con, region, output_dir, v17b_nc_dir=v17b_dir)
     finally:
         con.close()
 
