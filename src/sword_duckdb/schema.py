@@ -236,6 +236,7 @@ CREATE TABLE IF NOT EXISTS reaches (
     dist_out DOUBLE,             -- distance from outlet (m)
     dist_out_dijkstra DOUBLE,    -- Dijkstra shortest-path distance to any outlet (m)
     hydro_dist_out DOUBLE,       -- mainstem distance to best_outlet via rch_id_dn_main (m)
+    hydro_dist_hw DOUBLE,        -- mainstem distance from best_headwater via rch_id_up_main (m)
 
     -- Topology
     n_rch_up INTEGER,            -- number of upstream neighbors
@@ -294,6 +295,9 @@ CREATE TABLE IF NOT EXISTS reaches (
     slope_obs_p90 DOUBLE,            -- 90th percentile observed slope
     slope_obs_range DOUBLE,          -- range (max-min) of observed slope
     slope_obs_mad DOUBLE,            -- median absolute deviation of slope
+    slope_obs_n INTEGER,             -- number of valid slope observations
+    slope_obs_n_passes INTEGER,      -- number of passes contributing slope observations
+    slope_obs_q DOUBLE,              -- slope observation quality metric
     slope_obs_adj DOUBLE,            -- GREATEST(p50, 0) clipped slope
     slope_obs_slopeF DOUBLE,         -- weighted sign fraction (-1 to +1)
     slope_obs_reliable BOOLEAN,      -- |slopeF| > 0.5 AND |p50| > ref_uncertainty
@@ -303,6 +307,7 @@ CREATE TABLE IF NOT EXISTS reaches (
 
     -- Classification & Flags
     lakeflag INTEGER,            -- 0=river, 1=lake, 2=canal, 3=tidal
+    type INTEGER,                -- 1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost
     n_chan_max INTEGER,           -- nchan_max
     n_chan_mod INTEGER,           -- nchan_mod
     obstr_type INTEGER,          -- 0=none,1=dam,2=low_head_dam,3=lock,4=waterfall,5=partial_dam
@@ -881,6 +886,7 @@ def add_v17c_columns(db) -> bool:
         ("is_mainstem_edge", "BOOLEAN DEFAULT FALSE"),
         ("dist_out_dijkstra", "DOUBLE"),
         ("hydro_dist_out", "DOUBLE"),
+        ("hydro_dist_hw", "DOUBLE"),
         ("rch_id_up_main", "BIGINT"),
         ("rch_id_dn_main", "BIGINT"),
         # NOTE: swot_slope columns removed - pipeline incomplete (Issue #117)
@@ -964,12 +970,15 @@ def add_swot_obs_columns(conn) -> bool:
     # Nodes: WSE(11) + width(11) + n_obs(1) = 23
     nodes_swot_columns = _var_cols("wse") + _var_cols("width") + [("n_obs", "INTEGER")]
 
-    # Reaches: WSE(11) + width(11) + slope(11) + derived(4) + n_obs(1) = 38
+    # Reaches: WSE(11) + width(11) + slope(11) + counts/quality(3) + derived(4) + n_obs(1) = 41
     reaches_swot_columns = (
         _var_cols("wse")
         + _var_cols("width")
         + _var_cols("slope")
         + [
+            ("slope_obs_n", "INTEGER"),
+            ("slope_obs_n_passes", "INTEGER"),
+            ("slope_obs_q", "DOUBLE"),
             ("slope_obs_adj", "DOUBLE"),
             ("slope_obs_slopeF", "DOUBLE"),
             ("slope_obs_reliable", "BOOLEAN"),
