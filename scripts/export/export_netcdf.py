@@ -141,6 +141,8 @@ def _v17b_reach_scalar_specs():
         ("main_side", "i4", FILL_I4, "main_side", {}),
         ("end_reach", "i4", FILL_I4, "end_reach", {}),
         ("network", "i4", FILL_I4, "network", {}),
+        ("dn_node_id", "i8", FILL_I8, "dn_node_id", {}),
+        ("up_node_id", "i8", FILL_I8, "up_node_id", {}),
     ]
 
 
@@ -306,6 +308,7 @@ def _v17b_node_scalar_specs():
         ("max_width", "f8", FILL_F8, "max_width", {"units": "meters"}),
         ("meander_length", "f8", FILL_F8, "meander_length", {}),
         ("sinuosity", "f8", FILL_F8, "sinuosity", {}),
+        ("node_order", "i4", FILL_I4, "node_order", {}),
         ("manual_add", "i4", FILL_I4, "manual_add", {}),
         ("trib_flag", "i4", FILL_I4, "trib_flag", {}),
         ("path_freq", "i8", FILL_I8, "path_freq", {}),
