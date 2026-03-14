@@ -123,28 +123,19 @@ def compute_mainstem_distances(
     return results
 
 
-def compute_best_headwater_outlet(
-    G: nx.DiGraph, overrides: Dict[int, Dict] | None = None
-) -> Dict[int, Dict]:
+def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
     """
     Compute best headwater and outlet for each reach.
 
     Uses effective_width (SWOT if available), log(facc), and pathlen to select "main" path.
     Ranking tuple: (effective_width, log_facc, pathlen) - all maximized.
 
-    Parameters
-    ----------
-    G : nx.DiGraph
-        Reach-level directed graph.
-    overrides : dict, optional
-        Human-reviewed corrections from backwater QC.
-        ``{junction_reach_id: {"rch_id_up_main": corrected_reach_id}}``.
-        When a node appears in overrides, the corrected predecessor is forced
-        as the best pick in the upstream pass, so ``best_headwater`` and
-        ``pathlen_hw`` follow the human-corrected path.
+    WARNING: Do NOT add an overrides parameter here. Forcing a predecessor in
+    the upstream pass cascades through pathlen_hw/pathlen_out, changing
+    best_outlet for thousands of downstream reaches. Overrides belong only
+    in compute_main_neighbors, which directly sets rch_id_up_main/rch_id_dn_main
+    without cascading.
     """
-    overrides = overrides or {}
-    n_overrides_applied = 0
 
     log("Computing best headwater/outlet assignments...")
 
@@ -189,19 +180,8 @@ def compute_best_headwater_outlet(
 
             hw_sets[n] = union
 
-            # Check for human override at this junction
-            override = overrides.get(n)
-            if override and "rch_id_up_main" in override:
-                forced_pred = override["rch_id_up_main"]
-                forced = [c for c in candidates if c[4] == forced_pred]
-                if forced:
-                    best = forced[0]
-                    n_overrides_applied += 1
-                else:
-                    best = max(candidates, key=lambda x: (x[0], x[1], x[2]))
-            else:
-                # Select by effective_width (primary), log_facc (secondary), pathlen (tertiary)
-                best = max(candidates, key=lambda x: (x[0], x[1], x[2]))
+            # Select by effective_width (primary), log_facc (secondary), pathlen (tertiary)
+            best = max(candidates, key=lambda x: (x[0], x[1], x[2]))
             best_hw[n] = best[3]
             pathlen_hw[n] = best[2]
 
@@ -242,6 +222,4 @@ def compute_best_headwater_outlet(
         }
 
     log("Best headwater/outlet computed")
-    if n_overrides_applied:
-        log(f"  ({n_overrides_applied} overrides applied from backwater QC)")
     return results

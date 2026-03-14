@@ -609,7 +609,7 @@ def export_region(
     """Export a single region to NetCDF."""
     region_lower = region.lower()
     v17b_path = v17b_dir / f"{region_lower}_sword_v17b.nc"
-    out_path = output_dir / f"{region_lower}_sword_v17c.nc"
+    out_path = output_dir / f"{region_lower}_sword_v17c_beta.nc"
 
     if not v17b_path.exists():
         raise FileNotFoundError(f"v17b NetCDF not found: {v17b_path}")
@@ -800,6 +800,13 @@ def export_region(
         _write_scalar_var(
             rch_grp, nc_name, nc_type, fill_val, data, attrs, "num_reaches"
         )
+
+    # Overwrite reach coordinate columns with v17b values.
+    # DuckDB geometries were rebuilt from NetCDF without overlap vertices,
+    # so x/y centroids and bounding boxes differ from v17b (up to ~8 km).
+    # v17b values are canonical.
+    for coord_col in ("x", "y", "x_min", "x_max", "y_min", "y_max"):
+        rch_grp.variables[coord_col][:] = v17b.groups["reaches"].variables[coord_col][:]
 
     # String vars: river_name, edit_flag
     v = rch_grp.createVariable("river_name", str, ("num_reaches",))

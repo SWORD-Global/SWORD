@@ -33,7 +33,11 @@ from .flow_direction import (
     snapshot_topology,
 )
 from .stages._logging import log
-from .stages.distances import compute_best_headwater_outlet, compute_hydro_distances
+from .stages.distances import (
+    compute_best_headwater_outlet,
+    compute_dijkstra_distances,
+    compute_mainstem_distances,
+)
 from .stages.graph import build_reach_graph, build_section_graph, identify_junctions
 from .stages.loading import load_reaches, load_topology
 from .stages.mainstem import compute_main_neighbors, compute_mainstem
@@ -691,8 +695,8 @@ def rebuild_derived_attrs(
     3. compute_path_variables
     4. compute_hydro_distances
     5. compute_best_headwater_outlet
-    6. compute_mainstem
-    7. compute_main_neighbors
+    6. compute_main_neighbors
+    7. compute_mainstem (uses rch_id_dn_main chain from main_neighbors)
     8. save_to_duckdb
     9. save_sections_to_duckdb (with re-validated slopes)
     """
@@ -719,16 +723,43 @@ def rebuild_derived_attrs(
     junctions = identify_junctions(G)
     _, sections_df = build_section_graph(G, junctions)
 
+    # Load backwater QC overrides so rch_id_up_main/rch_id_dn_main reflect
+    # human-reviewed routing corrections (same logic as v17c_pipeline.py)
+    overrides: Dict[int, Dict] = {}
+    try:
+        override_rows = conn.execute(
+            """
+            SELECT junction_reach_id, new_rch_id_up_main
+            FROM backwater_routing_fixes
+            WHERE region = ? AND fix_type = 'reroute'
+        """,
+            [region.upper()],
+        ).fetchall()
+        for jrid, new_up in override_rows:
+            overrides[int(jrid)] = {"rch_id_up_main": int(new_up)}
+        if overrides:
+            log(f"Loaded {len(overrides)} backwater routing overrides for {region}")
+    except duckdb.CatalogException:
+        pass  # table doesn't exist yet
+
     # Steps 3-7: compute all v17c attributes
     path_vars = compute_path_variables(G, sections_df, region=region)
-    hydro_dist = compute_hydro_distances(G)
+    dijkstra_dist = compute_dijkstra_distances(G)
     hw_out = compute_best_headwater_outlet(G)
-    is_mainstem = compute_mainstem(G, hw_out)
-    main_neighbors = compute_main_neighbors(G)
+    main_neighbors = compute_main_neighbors(G, hw_out_attrs=hw_out, overrides=overrides)
+    is_mainstem = compute_mainstem(G, hw_out, main_neighbors=main_neighbors)
+    hydro_dist = compute_mainstem_distances(G, main_neighbors)
 
-    # Step 8: save
+    # Step 8: save (use keyword args to match v17c_pipeline.py)
     save_to_duckdb(
-        conn, region, hydro_dist, hw_out, is_mainstem, main_neighbors, path_vars
+        conn,
+        region,
+        hydro_dist,
+        hw_out,
+        is_mainstem,
+        main_neighbors,
+        path_vars=path_vars,
+        dijkstra_dist=dijkstra_dist,
     )
 
     # Step 9: recompute and save sections

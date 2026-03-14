@@ -55,7 +55,11 @@ from .stages.distances import (
     compute_best_headwater_outlet,
     compute_mainstem_distances,
 )
-from .stages.mainstem import compute_mainstem, compute_main_neighbors, compute_main_paths
+from .stages.mainstem import (
+    compute_mainstem,
+    compute_main_neighbors,
+    compute_main_paths,
+)
 from .stages.output import save_to_duckdb, save_sections_to_duckdb, apply_swot_slopes
 from .stages._logging import log
 from .pfaf_offsets import compute_subnetwork_ids
@@ -475,10 +479,14 @@ def _process_region_inner(
 
     # Compute new attributes
     dijkstra_dist = compute_dijkstra_distances(G)
-    hw_out = compute_best_headwater_outlet(G, overrides=overrides)
-    is_mainstem = compute_mainstem(G, hw_out)
+    # NOTE: overrides must NOT be passed to compute_best_headwater_outlet.
+    # Doing so cascades through pathlen_hw, changing best_outlet for thousands
+    # of reaches (12,272 corrupted in prior run). Overrides only go to
+    # compute_main_neighbors, which affects rch_id_up_main/rch_id_dn_main.
+    hw_out = compute_best_headwater_outlet(G)
     main_paths = compute_main_paths(G, hw_out, region=region)
     main_neighbors = compute_main_neighbors(G, hw_out_attrs=hw_out, overrides=overrides)
+    is_mainstem = compute_mainstem(G, hw_out, main_neighbors=main_neighbors)
     hydro_dist = compute_mainstem_distances(G, main_neighbors)
 
     # Compute subnetwork_id (weakly connected components, Pfafstetter-offset)
@@ -781,13 +789,7 @@ def main():
     parser.add_argument(
         "--skip-flow-correction",
         action="store_true",
-        help="Skip flow direction correction",
-    )
-    parser.add_argument(
-        "--enable-flow-correction",
-        action="store_true",
-        default=True,
-        help="Enable flow direction correction (Default: True)",
+        help="Skip flow direction correction (default: enabled)",
     )
     parser.add_argument(
         "--rollback-flow-corrections",
@@ -835,7 +837,7 @@ def main():
         skip_facc=args.skip_facc,
         v17b_path=args.v17b,
         skip_path_vars=args.skip_path_vars,
-        skip_flow_correction=not args.enable_flow_correction,
+        skip_flow_correction=args.skip_flow_correction,
         skip_gates=args.skip_gates,
     )
 
