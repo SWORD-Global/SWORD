@@ -719,11 +719,30 @@ def rebuild_derived_attrs(
     junctions = identify_junctions(G)
     _, sections_df = build_section_graph(G, junctions)
 
+    # Load backwater QC overrides so rch_id_up_main/rch_id_dn_main reflect
+    # human-reviewed routing corrections (same logic as v17c_pipeline.py)
+    overrides: Dict[int, Dict] = {}
+    try:
+        override_rows = conn.execute(
+            """
+            SELECT junction_reach_id, new_rch_id_up_main
+            FROM backwater_routing_fixes
+            WHERE region = ? AND fix_type = 'reroute'
+        """,
+            [region.upper()],
+        ).fetchall()
+        for jrid, new_up in override_rows:
+            overrides[int(jrid)] = {"rch_id_up_main": int(new_up)}
+        if overrides:
+            log(f"Loaded {len(overrides)} backwater routing overrides for {region}")
+    except duckdb.CatalogException:
+        pass  # table doesn't exist yet
+
     # Steps 3-7: compute all v17c attributes
     path_vars = compute_path_variables(G, sections_df, region=region)
     hydro_dist = compute_hydro_distances(G)
     hw_out = compute_best_headwater_outlet(G)
-    main_neighbors = compute_main_neighbors(G)
+    main_neighbors = compute_main_neighbors(G, hw_out_attrs=hw_out, overrides=overrides)
     is_mainstem = compute_mainstem(G, hw_out, main_neighbors=main_neighbors)
 
     # Step 8: save

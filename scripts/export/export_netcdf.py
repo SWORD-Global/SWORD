@@ -801,6 +801,13 @@ def export_region(
             rch_grp, nc_name, nc_type, fill_val, data, attrs, "num_reaches"
         )
 
+    # Overwrite reach coordinate columns with v17b values.
+    # DuckDB geometries were rebuilt from NetCDF without overlap vertices,
+    # so x/y centroids and bounding boxes differ from v17b (up to ~8 km).
+    # v17b values are canonical.
+    for coord_col in ("x", "y", "x_min", "x_max", "y_min", "y_max"):
+        rch_grp.variables[coord_col][:] = v17b.groups["reaches"].variables[coord_col][:]
+
     # String vars: river_name, edit_flag
     v = rch_grp.createVariable("river_name", str, ("num_reaches",))
     v._Encoding = "ascii"

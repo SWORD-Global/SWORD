@@ -181,7 +181,7 @@ workflow.close()
 - `pathlen_hw`, `pathlen_out` - cumulative path lengths
 - `is_mainstem_edge`, `main_path_id` - mainstem identification
 - `rch_id_up_main`, `rch_id_dn_main` - main neighbor selection
-- `subnetwork_id` - connected component (matches `network`)
+- `subnetwork_id` - connected component ID (Pfafstetter-offset, globally unique; NOT the same as v17b `network`)
 - `*_obs_mean/median/std/range`, `n_obs` - SWOT observation aggregations
 
 **New tables:**
@@ -276,6 +276,9 @@ python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duck
 | **DuckDB reach geometry missing endpoint overlap** | DuckDB geometries (rebuilt from NetCDF) lack the overlap vertices at endpoints that make adjacent reaches visually connect. The v17b PostgreSQL table (`postgres.sword_reaches_v17b`) has the full-fidelity geometries. `scripts/maintenance/load_from_duckdb.py` auto-copies v17b geometries to v17c PostgreSQL via dblink (`--skip-v17b-geom` to disable). See issue #187. |
 | **path_freq=0/-9999 on connected reaches** | 4,952 connected non-ghost reaches globally have invalid path_freq (34 with 0, 4,918 with -9999). 91% are 1:1 links (fixable by propagation), 9% are junctions (need full traversal). AS has 2,478. See issue #16. |
 | **POM lint findings (10 open investigation issues)** | POM validation checks found issues in v17c: 89K CL-node misallocations (#194), 4.8K WSE inversions (#195), 3.5K node spacing gaps (#193), 2.6K boundary dist_out gaps (#192), 553 dist_out jumps (#191), 467 boundary geo gaps (#188–#190), 197 name disagreements (#196). All are diagnose-first — see `docs/technical/pom_requests_summary.md` for full tracker. |
+| **Backwater override cascade danger** | Backwater QC overrides must ONLY go to `compute_main_neighbors`. NEVER pass them to `compute_best_headwater_outlet` — it propagates pathlen changes downstream through every reach, corrupting `best_outlet` for thousands of reaches (12,272 in prior incident). The `overrides` parameter was removed from `compute_best_headwater_outlet` to prevent this. |
+| **`subnetwork_id` ≠ `network`** | `network` is v17b original (per-region, 1-based). `subnetwork_id` is v17c (Pfafstetter-offset, globally unique). Different component counts too (v17c finds more components via weakly_connected_components). They are NOT interchangeable. |
+| **Ghost reaches (type=6) and `is_mainstem_edge`** | Ghost reaches must always have `is_mainstem_edge=FALSE`. The pipeline handles this in `compute_mainstem` (checks `type != 6` during chain walk). Ghosts still participate in routing (`rch_id_up_main`/`rch_id_dn_main`) because they're part of the topology — they just can't be flagged as mainstem. |
 
 ## Column Name Gotchas
 

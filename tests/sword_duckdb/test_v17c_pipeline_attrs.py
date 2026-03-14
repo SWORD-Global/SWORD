@@ -526,6 +526,30 @@ class TestEdgeCases:
         # Node 3 → 4: 800 + 900 = 1700
         assert md[3]["hydro_dist_out"] == 1700
 
+    def test_ghost_reaches_excluded_from_mainstem(self):
+        """Ghost reaches (type=6) should never be marked as mainstem."""
+        G = nx.DiGraph()
+        G.add_node(
+            1, reach_length=1000, width=50, effective_width=50, log_facc=5, type=1
+        )
+        G.add_node(
+            2, reach_length=1000, width=50, effective_width=50, log_facc=5, type=6
+        )  # ghost
+        G.add_node(
+            3, reach_length=1000, width=50, effective_width=50, log_facc=5, type=1
+        )
+
+        G.add_edge(1, 2)
+        G.add_edge(2, 3)
+
+        hw_out = compute_best_headwater_outlet(G)
+        mn = compute_main_neighbors(G)
+        ms = compute_mainstem(G, hw_out, main_neighbors=mn)
+
+        assert ms[1] is True
+        assert ms[2] is False, "Ghost reach (type=6) must not be mainstem"
+        assert ms[3] is True
+
     def test_empty_graph(self):
         """Test with an empty graph."""
         G = nx.DiGraph()

@@ -126,20 +126,24 @@ def compute_mainstem(
             continue
 
         # Walk rch_id_dn_main from headwater to outlet
+        # Ghost reaches (type=6) are excluded — they should never be mainstem
         visited = set()
         cur = headwater
         while cur is not None and cur not in visited:
-            is_mainstem[cur] = True
+            if G.nodes[cur].get("type") != 6:
+                is_mainstem[cur] = True
             visited.add(cur)
             cur = dn_main.get(cur)
 
         n_networks += 1
 
+    n_ghosts = sum(1 for n in G.nodes() if G.nodes[n].get("type") == 6)
     n_mainstem = sum(is_mainstem.values())
     n_total = len(G.nodes())
     pct = 100 * n_mainstem / n_total if n_total > 0 else 0
     log(
-        f"Mainstem reaches: {n_mainstem:,} / {n_total:,} ({pct:.1f}%) across {n_networks:,} networks"
+        f"Mainstem reaches: {n_mainstem:,} / {n_total:,} ({pct:.1f}%) "
+        f"across {n_networks:,} networks ({n_ghosts:,} ghosts excluded)"
     )
 
     return is_mainstem
