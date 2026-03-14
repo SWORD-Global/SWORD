@@ -609,7 +609,7 @@ def export_region(
     """Export a single region to NetCDF."""
     region_lower = region.lower()
     v17b_path = v17b_dir / f"{region_lower}_sword_v17b.nc"
-    out_path = output_dir / f"{region_lower}_sword_v17c.nc"
+    out_path = output_dir / f"{region_lower}_sword_v17c_beta.nc"
 
     if not v17b_path.exists():
         raise FileNotFoundError(f"v17b NetCDF not found: {v17b_path}")
