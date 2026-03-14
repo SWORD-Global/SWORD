@@ -47,7 +47,7 @@ mainstem by tracing the widest upstream path at each junction.
 | `pathlen_out` | float64 | meters | Cumulative path length to `best_outlet` |
 | `is_mainstem_edge` | int32 | — | 1 if reach is on a mainstem path, 0 otherwise |
 | `main_path_id` | int64 | — | Unique identifier for each mainstem path |
-| `subnetwork_id` | int32 | — | Connected component ID (equivalent to v17b `network`) |
+| `subnetwork_id` | int32 | — | Connected component ID (Pfafstetter-offset, globally unique; NOT the same as v17b `network` — different enumeration order and component counts) |
 
 Five of these variables also appear at node level: `subnetwork_id`,
 `best_headwater`, `best_outlet`, `pathlen_hw`, and `pathlen_out`.
@@ -195,6 +195,33 @@ Example: 5 = negative slope (1) + high variance (4).
 - **area_fits and discharge_models:** These two subgroups are direct
   copies from v17b and were not recomputed against v17c facc or SWOT
   observation values.
+
+- **Mainstem classification:** `is_mainstem_edge` identifies 2-12% of
+  reaches per region as mainstem (varying by network complexity). The
+  algorithm walks the `rch_id_dn_main` chain from the best headwater to
+  the outlet of each weakly-connected component. Ghost reaches (type=6)
+  are excluded from mainstem classification but still participate in
+  routing topology.
+
+- **`subnetwork_id` vs `network`:** `subnetwork_id` is NOT equivalent to
+  v17b `network`. They use different enumeration schemes (Pfafstetter-
+  offset vs per-region 1-based), have different component counts (v17c
+  finds more components via weakly connected components), and match on
+  only 0-2% of reaches. `network` is retained unchanged from v17b.
+
+- **Topology reciprocity gaps:** 150 reaches (0.06%) have `rch_id_dn_main`
+  pointing to a neighbor not found in their `rch_id_dn` array. In all
+  150 cases, the neighbor IS found in the reach's `rch_id_up` array.
+  This occurs because the v17b topology table has non-reciprocal entries:
+  reach A lists B as upstream, and B lists A as upstream, creating a
+  graph edge A->B even though A has no explicit downstream entry for B.
+  This is a v17b inherited asymmetry, not a v17c computation error.
+  OC has 0 such cases.
+
+- **Flow correction oscillation:** 389 reaches (0.16%) in AF/AS/EU/NA/SA
+  had ambiguous WSE slope signals that caused flow corrections to flip
+  direction on every pipeline run. These were reverted to v17b topology.
+  A persistent oscillation guard is planned for future pipeline runs.
 
 ---
 
