@@ -33,7 +33,11 @@ from .flow_direction import (
     snapshot_topology,
 )
 from .stages._logging import log
-from .stages.distances import compute_best_headwater_outlet, compute_hydro_distances
+from .stages.distances import (
+    compute_best_headwater_outlet,
+    compute_dijkstra_distances,
+    compute_mainstem_distances,
+)
 from .stages.graph import build_reach_graph, build_section_graph, identify_junctions
 from .stages.loading import load_reaches, load_topology
 from .stages.mainstem import compute_main_neighbors, compute_mainstem
@@ -740,14 +744,22 @@ def rebuild_derived_attrs(
 
     # Steps 3-7: compute all v17c attributes
     path_vars = compute_path_variables(G, sections_df, region=region)
-    hydro_dist = compute_hydro_distances(G)
+    dijkstra_dist = compute_dijkstra_distances(G)
     hw_out = compute_best_headwater_outlet(G)
     main_neighbors = compute_main_neighbors(G, hw_out_attrs=hw_out, overrides=overrides)
     is_mainstem = compute_mainstem(G, hw_out, main_neighbors=main_neighbors)
+    hydro_dist = compute_mainstem_distances(G, main_neighbors)
 
-    # Step 8: save
+    # Step 8: save (use keyword args to match v17c_pipeline.py)
     save_to_duckdb(
-        conn, region, hydro_dist, hw_out, is_mainstem, main_neighbors, path_vars
+        conn,
+        region,
+        hydro_dist,
+        hw_out,
+        is_mainstem,
+        main_neighbors,
+        path_vars=path_vars,
+        dijkstra_dist=dijkstra_dist,
     )
 
     # Step 9: recompute and save sections
