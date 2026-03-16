@@ -1,6 +1,6 @@
-# SWORD v17c Release Notes
+# SWORD v17c Beta Release Notes
 
-**Version:** v17c
+**Version:** v17c beta
 **Date:** March 2026
 **Authors:** Gearon, Pavelsky
 **Base version:** SWORD v17b (March 2025, UNC)
@@ -16,13 +16,21 @@ nodes, or centerlines were added or removed. v17c contains the same
 all six regions (NA, SA, EU, AF, AS, OC).
 
 Each region is distributed as a single NetCDF4 file
-(`{region}_sword_v17c.nc`). The group structure matches v17b (centerlines,
-nodes, reaches), and the `area_fits` and `discharge_models` subgroups
-under reaches pass through from v17b unchanged. Reach and node ordering
-within each file matches v17b.
+(`{region}_sword_v17c_beta.nc`). The group structure matches v17b
+(centerlines, nodes, reaches), and the `area_fits` and `discharge_models`
+subgroups under reaches pass through from v17b unchanged. Reach and node
+ordering within each file matches v17b.
+
+Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`)
+are copied from v17b. The DuckDB working database rebuilt geometries from
+NetCDF without endpoint overlap vertices, causing centroid differences up
+to ~8 km for 17,448 reaches. The v17b values are canonical.
 
 All new variables use a fill value of -9999 where no observation or
 computation produced a value.
+
+For a complete variable catalog, see
+[v17c_variable_reference.md](v17c_variable_reference.md).
 
 ---
 
@@ -31,8 +39,15 @@ computation produced a value.
 ### 2.1 Mainstem Topology (reaches group)
 
 The variables below define a width-prioritized mainstem through each
-connected component of the river network. The algorithm selects the
-mainstem by tracing the widest upstream path at each junction.
+connected component of the river network. At each junction, the algorithm
+selects the upstream path with the highest effective width (primary),
+log(facc) (secondary), and cumulative path length (tertiary).
+
+`is_mainstem_edge` identifies the single mainstem chain per network
+component by walking `rch_id_dn_main` from `best_headwater` to the outlet.
+This produces 2-12% mainstem per region (varying by network complexity).
+Ghost reaches (type=6) are excluded from mainstem but still participate in
+routing topology.
 
 | Variable | Type | Units | Description |
 |----------|------|-------|-------------|
@@ -47,7 +62,7 @@ mainstem by tracing the widest upstream path at each junction.
 | `pathlen_out` | float64 | meters | Cumulative path length to `best_outlet` |
 | `is_mainstem_edge` | int32 | — | 1 if reach is on a mainstem path, 0 otherwise |
 | `main_path_id` | int64 | — | Unique identifier for each mainstem path |
-| `subnetwork_id` | int32 | — | Connected component ID (Pfafstetter-offset, globally unique; NOT the same as v17b `network` — different enumeration order and component counts) |
+| `subnetwork_id` | int32 | — | Connected component ID (Pfafstetter-offset, globally unique; see Section 4) |
 
 Five of these variables also appear at node level: `subnetwork_id`,
 `best_headwater`, `best_outlet`, `pathlen_hw`, and `pathlen_out`.
@@ -92,6 +107,8 @@ to address three systematic error modes in MERIT Hydro's D8
 (eight-direction flow routing) upstream area: bifurcation cloning,
 junction inflation, and raster-vector misalignment. The pipeline corrected
 95,913 of 248,674 reaches (38.6%). Uncorrected reaches retain v17b values.
+See [facc_correction_methodology.md](technical/facc_correction_methodology.md)
+for the full algorithm description.
 
 | Variable | Type | Group | Description |
 |----------|------|-------|-------------|
@@ -172,67 +189,94 @@ Example: 5 = negative slope (1) + high variance (4).
 
 ## 4. Known Limitations
 
-- **path_freq gaps (inherited from v17b):** 4,952 connected non-ghost
-  reaches have invalid `path_freq` values (0 or -9999). These invalid
-  values carry over from v17b and remain uncorrected. Of the 4,952
-  affected reaches, 91% are 1:1 links fixable by propagation; 9% are
-  junctions requiring full traversal recomputation.
+- **path_freq gaps (v17b):** 4,952 connected non-ghost reaches have
+  invalid `path_freq` values (0 or -9999). 91% are 1:1 links fixable by
+  propagation; 9% are junctions requiring full traversal recomputation.
 
-- **SWOT observation coverage:** SWOT observation statistics
-  (`wse_obs_*`, `width_obs_*`, `slope_obs_*`, `n_obs`) are set to
-  fill_value (-9999) for reaches and nodes lacking SWOT data.
+- **SWOT observation coverage:** SWOT statistics are fill_value (-9999) for
+  reaches and nodes lacking SWOT data.
 
-- **facc correction scope:** The denoise pipeline corrected 95,913
-  reaches (38.6%); the remaining 152,761 reaches retain v17b values.
-  Node-level facc values propagate from the parent reach correction.
+- **facc correction scope:** 95,913 reaches corrected (38.6%); the
+  remaining 152,761 retain v17b values. Node-level facc propagates from
+  the parent reach.
 
-- **Lake sandwich corrections:** The pipeline reclassified 1,252 reaches
-  from their original `lakeflag` to `lakeflag = 1` (lake) where a narrow,
-  shorter-than-neighbor reach sat between lake reaches. These reclassified
-  reaches carry the tag `edit_flag = "lake_sandwich"`. An estimated 1,755
-  similar cases remain uncorrected (narrow connecting channels, chains).
+- **Lake sandwich corrections:** 1,252 reaches reclassified to
+  `lakeflag = 1` where a narrow, shorter-than-neighbor reach sat between
+  lake reaches (tagged `edit_flag = "lake_sandwich"`). ~1,755 similar
+  cases remain (narrow connecting channels, chains).
 
-- **area_fits and discharge_models:** These two subgroups are direct
-  copies from v17b and were not recomputed against v17c facc or SWOT
-  observation values.
+- **area_fits and discharge_models:** Direct copies from v17b. Not
+  recomputed against v17c facc or SWOT values.
 
-- **Mainstem classification:** `is_mainstem_edge` identifies 2-12% of
-  reaches per region as mainstem (varying by network complexity). The
-  algorithm walks the `rch_id_dn_main` chain from the best headwater to
-  the outlet of each weakly-connected component. Ghost reaches (type=6)
-  are excluded from mainstem classification but still participate in
-  routing topology.
+- **`subnetwork_id` vs `network`:** `subnetwork_id` uses Pfafstetter-
+  offset enumeration (globally unique). v17b `network` uses per-region
+  1-based IDs. Different component counts (v17c finds more via weakly
+  connected components; 19 subnetworks span multiple v17b networks).
+  `network` is retained unchanged from v17b.
 
-- **`subnetwork_id` vs `network`:** `subnetwork_id` is NOT equivalent to
-  v17b `network`. They use different enumeration schemes (Pfafstetter-
-  offset vs per-region 1-based), have different component counts (v17c
-  finds more components via weakly connected components), and match on
-  only 0-2% of reaches. `network` is retained unchanged from v17b.
-
-- **Topology reciprocity gaps:** 150 reaches (0.06%) have `rch_id_dn_main`
-  pointing to a neighbor not found in their `rch_id_dn` array. In all
-  150 cases, the neighbor IS found in the reach's `rch_id_up` array.
-  This occurs because the v17b topology table has non-reciprocal entries:
-  reach A lists B as upstream, and B lists A as upstream, creating a
-  graph edge A->B even though A has no explicit downstream entry for B.
-  This is a v17b inherited asymmetry, not a v17c computation error.
+- **Topology reciprocity gaps (v17b):** 150 reaches (0.06%) have
+  `rch_id_dn_main` pointing to a neighbor not in their `rch_id_dn` array
+  but present in their `rch_id_up` array. Caused by non-reciprocal entries
+  in v17b topology: reach A lists B as upstream, B lists A as upstream,
+  creating a graph edge A->B without an explicit downstream entry.
   OC has 0 such cases.
 
 - **Flow correction oscillation:** 389 reaches (0.16%) in AF/AS/EU/NA/SA
-  had ambiguous WSE slope signals that caused flow corrections to flip
-  direction on every pipeline run. These were reverted to v17b topology.
-  A persistent oscillation guard is planned for future pipeline runs.
+  had ambiguous WSE slope signals causing bidirectional flow correction
+  scores. These were reverted to v17b topology.
+
+- **main_path_id consistency:** 3,134 reaches have `main_path_id` values
+  inconsistent with current `(best_headwater, best_outlet)` tuples (V013-
+  V015 lint checks). 80 reaches in NA have `best_headwater` pointing to
+  non-headwater reaches. Requires recomputing `main_path_id` from current
+  headwater/outlet assignments.
+
+- **River naming:** 51.2% of reaches are unnamed (NODATA), ranging from
+  26% (AF) to 69% (OC). 2.6% of mainstem 1:1 links have local name
+  discontinuities (name changes between adjacent reaches with no junction).
 
 ---
 
-## 5. File Format
+## 5. Quality Audits
+
+Validation checks performed on the v17c data:
+
+| Audit | Finding |
+|-------|---------|
+| **Geometry drift** | v17c reaches gained endpoint overlap vertices vs v17b (210,533 reaches: 173K +1 point, 37K +2 points). `reach_length` unchanged. Convention drift, not corruption. |
+| **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
+| **subnetwork_id** | 3,027 components across 248,673 reaches verified. Pfafstetter banding correct. Zero cross-region collisions. 19 subnetworks (0.6%) span multiple v17b networks (expected). |
+| **Topology integrity** | T001 (dist_out monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: 150 non-reciprocal edges (v17b inherited). |
+| **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
+| **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
+| **Flow direction** | 1,112 experimental topology flips reverted after causing 30K disconnected reaches. Current v17c topology matches v17b except for OC (26 validated sections flipped per SWOT slope evidence). |
+
+For POM (Pierre-Olivier Malaterre) validation results, see
+[pom_validation_report.md](technical/pom_validation_report.md).
+
+---
+
+## 6. File Format
 
 - **Format:** NetCDF4 (one file per region)
-- **Naming:** `{region}_sword_v17c.nc` where region is `na`, `sa`, `eu`,
-  `af`, `as`, `oc`
+- **Naming:** `{region}_sword_v17c_beta.nc` where region is `na`, `sa`,
+  `eu`, `af`, `as`, `oc`
 - **Groups:** `centerlines`, `nodes`, `reaches`
   - `reaches/area_fits` and `reaches/discharge_models` subgroups (from v17b)
 - **Ordering:** Reach, node, and centerline arrays match v17b ordering
-  within each file
 - **Fill value:** -9999 for all numeric variables (int32, int64, float64)
-- **Checksums:** SHA256 hashes for each file listed in `SHA256SUMS.txt`
+- **Checksums:** SHA256 hashes listed in `SHA256SUMS.txt`
+- **Additional formats:** GeoPackage and GeoParquet exports available
+  (reaches and nodes per region, with geometry)
+
+---
+
+## 7. Methodology Documentation
+
+| Document | Description |
+|----------|-------------|
+| [facc_correction_methodology.md](technical/facc_correction_methodology.md) | Facc denoise algorithm, detection rules, correction model |
+| [pom_requests_summary.md](technical/pom_requests_summary.md) | POM validation check tracker (19 checks, production results) |
+| [pom_validation_report.md](technical/pom_validation_report.md) | POM validation production results |
+| [v17c_variable_reference.md](v17c_variable_reference.md) | Complete variable catalog for NetCDF export |
+| [SWORD_v17b_Technical_Documentation.md](technical/SWORD_v17b_Technical_Documentation.md) | v17b baseline reference |
