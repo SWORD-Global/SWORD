@@ -13,7 +13,7 @@
   pathlen_out, is_mainstem_edge, main_path_id, subnetwork_id)
 - SWOT observation statistics: percentile-based summaries (p10-p90, MAD,
   range) for WSE, width, slope at reach and node level. 72.6% coverage.
-- Facc corrections: 95,913/248,674 reaches (38.6%) corrected via
+- Facc corrections: 95,913/248,673 reaches (38.6%) corrected via
   two-stage denoise pipeline (34/39 seeds detected)
 - Lake typology: 1,252 lake sandwich reaches reclassified
 - PostgreSQL backend: v17c schema matches DuckDB

@@ -1,6 +1,6 @@
 # SWORD v17c Variable Reference
 
-Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c.nc`).
+Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c_beta.nc`).
 
 **Fill values:** i4 = `-9999`, i8 = `-9999`, f8 = `-9999.0`
 
@@ -12,7 +12,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 |---|---|---|---|---|---|
 | dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to any outlet |
 | hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance to best_outlet via rch_id_dn_main |
-| hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem distance from best_headwater via rch_id_up_main |
+| hydro_dist_hw | f8 | meters | -9999.0 | | Distance from best_headwater via rch_id_up_main chain walk |
 | rch_id_up_main | i8 | | -9999 | | Main upstream neighbor reach ID (mainstem-preferred) |
 | rch_id_dn_main | i8 | | -9999 | | Main downstream neighbor reach ID (mainstem-preferred) |
 | subnetwork_id | i4 | | -9999 | | Connected component ID (Pfafstetter-offset, globally unique; differs from v17b `network`) |
@@ -130,7 +130,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | n_rch_up | i4 | | -9999 | Number of upstream neighbor reaches |
 | n_rch_down | i4 | | -9999 | Number of downstream neighbor reaches |
 | lakeflag | i4 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal) |
-| type | i4 | | -9999 | Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost) |
+| type | i4 | | -9999 | Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). New to NetCDF in v17c; values unchanged from v17b. |
 | swot_obs | i4 | | -9999 | Number of expected SWOT observations per cycle |
 | max_width | f8 | meters | -9999.0 | Maximum width at any node |
 | low_slope_flag | i4 | | -9999 | Low slope flag |
@@ -142,6 +142,8 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | main_side | i4 | | -9999 | Channel role (0=main, 1=side, 2=secondary outlet) |
 | end_reach | i4 | | -9999 | Endpoint type (0=middle, 1=headwater, 2=outlet, 3=junction) |
 | network | i4 | | -9999 | Connected component ID |
+| dn_node_id | i8 | | -9999 | Downstream boundary node ID |
+| up_node_id | i8 | | -9999 | Upstream boundary node ID |
 | river_name | string | | | River name from GRWL |
 | edit_flag | string | | -9999.0 | Edit provenance tag (e.g. lake_sandwich) |
 
@@ -153,6 +155,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | x | f8 | degrees east | -9999.0 | Node longitude |
 | y | f8 | degrees north | -9999.0 | Node latitude |
 | node_length | f8 | meters | -9999.0 | Length of river represented by this node |
+| node_order | i4 | | -9999 | 1-based position within reach (1=downstream, n=upstream, by dist_out) |
 | reach_id | i8 | | -9999 | Parent reach ID (format: CBBBBBRRRRT) |
 | wse | f8 | meters | -9999.0 | Water surface elevation (MERIT Hydro) |
 | wse_var | f8 | meters^2 | -9999.0 | WSE variance |

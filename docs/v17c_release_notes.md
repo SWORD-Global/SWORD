@@ -22,9 +22,11 @@ subgroups under reaches pass through from v17b unchanged. Reach and node
 ordering within each file matches v17b.
 
 Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`)
-are copied from v17b. The DuckDB working database rebuilt geometries from
-NetCDF without endpoint overlap vertices, causing centroid differences up
-to ~8 km for 17,448 reaches. The v17b values are canonical.
+are copied from v17b during NetCDF export, so distributed files contain
+canonical v17b coordinates. The DuckDB working database rebuilt geometries
+from NetCDF without endpoint overlap vertices, causing centroid differences
+up to ~8 km for 17,448 reaches; this is a working-database artifact only
+and does not affect the distributed NetCDF files.
 
 All new variables use a fill value of -9999 where no observation or
 computation produced a value.
@@ -53,7 +55,7 @@ routing topology.
 |----------|------|-------|-------------|
 | `dist_out_dijkstra` | float64 | meters | Dijkstra shortest-path distance to any network outlet |
 | `hydro_dist_out` | float64 | meters | Mainstem distance to `best_outlet` via `rch_id_dn_main` chain |
-| `hydro_dist_hw` | float64 | meters | Mainstem distance from `best_headwater` |
+| `hydro_dist_hw` | float64 | meters | Distance from `best_headwater` via `rch_id_up_main` chain walk |
 | `rch_id_up_main` | int64 | — | Main upstream neighbor reach_id (mainstem-preferred) |
 | `rch_id_dn_main` | int64 | — | Main downstream neighbor reach_id (mainstem-preferred) |
 | `best_headwater` | int64 | — | Width-prioritized headwater reach_id for the network component |
@@ -106,7 +108,7 @@ A two-stage denoise pipeline corrected flow accumulation (`facc`) values
 to address three systematic error modes in MERIT Hydro's D8
 (eight-direction flow routing) upstream area: bifurcation cloning,
 junction inflation, and raster-vector misalignment. The pipeline corrected
-95,913 of 248,674 reaches (38.6%). Uncorrected reaches retain v17b values.
+95,913 of 248,673 reaches (38.6%). Uncorrected reaches retain v17b values.
 See [facc_correction_methodology.md](technical/facc_correction_methodology.md)
 for the full algorithm description.
 
@@ -189,10 +191,6 @@ Example: 5 = negative slope (1) + high variance (4).
 
 ## 4. Known Limitations
 
-- **path_freq gaps (v17b):** 4,952 connected non-ghost reaches have
-  invalid `path_freq` values (0 or -9999). 91% are 1:1 links fixable by
-  propagation; 9% are junctions requiring full traversal recomputation.
-
 - **SWOT observation coverage:** SWOT statistics are fill_value (-9999) for
   reaches and nodes lacking SWOT data.
 
@@ -243,8 +241,9 @@ Validation checks performed on the v17c data:
 
 | Audit | Finding |
 |-------|---------|
-| **Geometry drift** | v17c reaches gained endpoint overlap vertices vs v17b (210,533 reaches: 173K +1 point, 37K +2 points). `reach_length` unchanged. Convention drift, not corruption. |
+| **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Distributed NetCDF files contain canonical v17b coordinates (copied during export). |
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
+| **path_freq gaps** | v17b had 4,952 connected non-ghost reaches with invalid path_freq (0 or -9999). Resolved in v17c; remaining nodata values are correctly attributed to ghost reaches (type=6). |
 | **subnetwork_id** | 3,027 components across 248,673 reaches verified. Pfafstetter banding correct. Zero cross-region collisions. 19 subnetworks (0.6%) span multiple v17b networks (expected). |
 | **Topology integrity** | T001 (dist_out monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: 150 non-reciprocal edges (v17b inherited). |
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
