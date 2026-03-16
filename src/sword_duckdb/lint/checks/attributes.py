@@ -622,18 +622,21 @@ def check_end_reach_consistency(
 ) -> CheckResult:
     """Flag reaches where end_reach flag disagrees with actual topology.
 
-    An end_reach (end_reach=1) should have no downstream neighbors (n_rch_down=0).
-    A non-end_reach (end_reach=0) should have at least one downstream neighbor (n_rch_down > 0).
+    end_reach semantics: 0=middle, 1=headwater, 2=outlet, 3=junction.
+    - headwater(1) should have n_rch_up=0
+    - outlet(2) should have n_rch_down=0
     """
     where_clause = f"AND r.region = '{region}'" if region else ""
 
     query = f"""
     SELECT
         r.reach_id, r.region, r.river_name, r.x, r.y,
-        r.end_reach, r.n_rch_down
+        r.end_reach, r.n_rch_up, r.n_rch_down
     FROM reaches r
-    WHERE (r.end_reach = 1 AND r.n_rch_down > 0)
-       OR (r.end_reach = 0 AND r.n_rch_down = 0)
+    WHERE (
+        (r.end_reach = 1 AND r.n_rch_up > 0)
+        OR (r.end_reach = 2 AND r.n_rch_down > 0)
+    )
       {where_clause}
     ORDER BY r.reach_id
     """
@@ -881,13 +884,14 @@ def check_wse_monotonicity(
 
     issues = conn.execute(query).fetchdf()
 
+    total_where = f"AND rt.region = '{region}'" if region else ""
     total_query = f"""
     SELECT COUNT(*) FROM reach_topology rt
     JOIN reaches r1 ON rt.reach_id = r1.reach_id AND rt.region = r1.region
     JOIN reaches r2 ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
     WHERE rt.direction = 'down'
       AND r1.wse != -9999 AND r2.wse != -9999
-      {where_clause.replace("r1.", "")}
+      {total_where}
     """
     total = conn.execute(total_query).fetchone()[0]
 
