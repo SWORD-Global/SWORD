@@ -130,7 +130,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | n_rch_up | i4 | | -9999 | Number of upstream neighbor reaches |
 | n_rch_down | i4 | | -9999 | Number of downstream neighbor reaches |
 | lakeflag | i4 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal) |
-| type | i4 | | -9999 | Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). New to NetCDF in v17c; values unchanged from v17b. |
+| type | i4 | | -9999 | Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not in v17b NetCDF; added in v17c. Values from v17b database. |
 | swot_obs | i4 | | -9999 | Number of expected SWOT observations per cycle |
 | max_width | f8 | meters | -9999.0 | Maximum width at any node |
 | low_slope_flag | i4 | | -9999 | Low slope flag |

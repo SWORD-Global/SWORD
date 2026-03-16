@@ -22,11 +22,7 @@ subgroups under reaches pass through from v17b unchanged. Reach and node
 ordering within each file matches v17b.
 
 Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`)
-are copied from v17b during NetCDF export, so distributed files contain
-canonical v17b coordinates. The DuckDB working database rebuilt geometries
-from NetCDF without endpoint overlap vertices, causing centroid differences
-up to ~8 km for 17,448 reaches; this is a working-database artifact only
-and does not affect the distributed NetCDF files.
+match v17b values across all formats (NetCDF, DuckDB, PostgreSQL).
 
 All new variables use a fill value of -9999 where no observation or
 computation produced a value.
@@ -125,7 +121,7 @@ longer occur in any region.
 
 | Variable | Type | Group | Description |
 |----------|------|-------|-------------|
-| `type` | int32 | reaches | Reach classification (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Present in v17b DuckDB but now included in the NetCDF export. |
+| `type` | int32 | reaches | Reach classification (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not present in v17b NetCDF; added in v17c so NetCDF users can filter by reach type without needing the database. |
 | `dl_grod_id` | int64 | reaches | DL-GROD (Deep Learning Global River Obstruction Database; He et al. 2025) dam/obstruction ID |
 | `edit_flag` | string | reaches | Tag for manually edited reaches (e.g., `lake_sandwich`) |
 
@@ -241,7 +237,7 @@ Validation checks performed on the v17c data:
 
 | Audit | Finding |
 |-------|---------|
-| **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Distributed NetCDF files contain canonical v17b coordinates (copied during export). |
+| **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`) copied from v17b to ensure consistency across all formats. |
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
 | **path_freq gaps** | v17b had 4,952 connected non-ghost reaches with invalid path_freq (0 or -9999). Resolved in v17c; remaining nodata values are correctly attributed to ghost reaches (type=6). |
 | **subnetwork_id** | 3,027 components across 248,673 reaches verified. Pfafstetter banding correct. Zero cross-region collisions. 19 subnetworks (0.6%) span multiple v17b networks (expected). |
