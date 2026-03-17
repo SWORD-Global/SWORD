@@ -642,28 +642,43 @@ Examples:
         if args.dry_run:
             logger.info("=== DRY RUN - showing row counts ===")
 
+        # Pre-compute which tables have a region column
+        table_has_region = {}
+        for table_name in tables_to_load:
+            cols = [c[0] for c in get_table_columns(duck_conn, table_name)]
+            table_has_region[table_name] = "region" in cols
+
         for region in regions:
             logger.info(f"\n{'=' * 60}")
             logger.info(f"Processing region: {region}")
             logger.info(f"{'=' * 60}")
 
+            # Truncate/delete in REVERSE order to respect FK dependencies
+            if not args.dry_run and not args.no_truncate:
+                for table_name in reversed(tables_to_load):
+                    has_region = table_has_region[table_name]
+                    if not has_region and region != regions[0]:
+                        continue
+                    try:
+                        truncate_table(
+                            pg_conn, table_name, region if has_region else None
+                        )
+                    except Exception as e:
+                        logger.error(f"Error truncating {table_name}: {e}")
+                        if args.verbose:
+                            import traceback
+
+                            traceback.print_exc()
+
+            # Load in forward order (parent tables before children)
             for table_name in tables_to_load:
-                # Check if table has region column
-                cols = [c[0] for c in get_table_columns(duck_conn, table_name)]
-                has_region = "region" in cols
+                has_region = table_has_region[table_name]
 
                 # For tables without region column, only process once (first region)
                 if not has_region and region != regions[0]:
                     continue
 
                 try:
-                    # Truncate/delete before loading
-                    if not args.dry_run and not args.no_truncate:
-                        truncate_table(
-                            pg_conn, table_name, region if has_region else None
-                        )
-
-                    # Export data
                     batch_size = args.batch_size if args.batch_size else None
                     rows = export_table_to_postgres(
                         duck_conn,
@@ -682,7 +697,6 @@ Examples:
                         import traceback
 
                         traceback.print_exc()
-                    # Continue with next table
                     continue
 
             # Generate geometry from coordinates if geometry was NULL
