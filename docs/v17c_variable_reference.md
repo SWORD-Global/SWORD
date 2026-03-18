@@ -145,7 +145,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | dn_node_id | i8 | | -9999 | Downstream boundary node ID |
 | up_node_id | i8 | | -9999 | Upstream boundary node ID |
 | river_name | string | | | River name from GRWL |
-| edit_flag | string | | -9999.0 | Edit provenance tag (e.g. lake_sandwich) |
+| edit_flag | string | | -9999.0 | Edit provenance tag (e.g. lake_sandwich, harp_lake) |
 
 ### Nodes
 
@@ -184,7 +184,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | end_reach | i4 | | -9999 | Endpoint type (0=middle, 1=headwater, 2=outlet, 3=junction) |
 | network | i4 | | -9999 | Connected component ID |
 | river_name | string | | | River name |
-| edit_flag | string | | | Edit provenance tag |
+| edit_flag | string | | | Edit provenance tag (e.g. lake_sandwich, harp_lake) |
 
 ### Multi-dimensional Arrays
 

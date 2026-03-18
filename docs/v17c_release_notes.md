@@ -123,7 +123,7 @@ longer occur in any region.
 |----------|------|-------|-------------|
 | `type` | int32 | reaches | Reach classification (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not present in v17b NetCDF; added in v17c so NetCDF users can filter by reach type without needing the database. |
 | `dl_grod_id` | int64 | reaches | DL-GROD (Deep Learning Global River Obstruction Database; He et al. 2025) dam/obstruction ID |
-| `edit_flag` | string | reaches | Tag for manually edited reaches (e.g., `lake_sandwich`) |
+| `edit_flag` | string | reaches | Tag for manually edited reaches (e.g., `lake_sandwich`, `harp_lake`) |
 
 ---
 
@@ -199,6 +199,13 @@ Example: 5 = negative slope (1) + high variance (4).
   lake reaches (tagged `edit_flag = "lake_sandwich"`). ~1,755 similar
   cases remain (narrow connecting channels, chains).
 
+- **HarP lake corrections:** 7,425 reaches reclassified from
+  `lakeflag = 0` (river) to `lakeflag = 1` (lake) based on HarP v1.1
+  (Hydrography and River Planform) lake classification data. 200,201
+  child nodes updated to match. Tagged `edit_flag = "harp_lake"`.
+  Existing `lake_sandwich` tags preserved (semicolon-delimited when both
+  apply).
+
 - **area_fits and discharge_models:** Direct copies from v17b. Not
   recomputed against v17c facc or SWOT values.
 
@@ -245,6 +252,7 @@ Validation checks performed on the v17c data:
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
 | **Flow direction** | 1,112 experimental topology flips reverted after causing 30K disconnected reaches. Current v17c topology matches v17b except for OC (26 validated sections flipped per SWOT slope evidence). |
+| **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0→1 from HarP v1.1 data. 200,201 nodes propagated. Tagged `edit_flag = "harp_lake"`. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
 [pom_validation_report.md](technical/pom_validation_report.md).
