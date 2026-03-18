@@ -36,11 +36,8 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import logging
-import os
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
@@ -103,7 +100,7 @@ def load_harp_reach_flags(gdb_path: Path) -> dict[int, dict]:
     Returns dict mapping v16_reach_id -> {Reach_type, In_lak_flg, ...}.
     """
     layers = fiona.listlayers(str(gdb_path))
-    reach_layers = [l for l in layers if l.startswith("Intersected_SWORD_reaches")]
+    reach_layers = [lyr for lyr in layers if lyr.startswith("Intersected_SWORD_reaches")]
 
     harp: dict[int, dict] = {}
     for lyr in reach_layers:
@@ -293,50 +290,51 @@ def apply_corrections(
         ],
     )
 
-    # Update reaches: lakeflag -> 1
-    conn.execute(
-        """
-        UPDATE reaches SET lakeflag = 1
-        FROM _harp_lake_fixes h
-        WHERE reaches.reach_id = h.reach_id
-          AND reaches.region = h.region
-        """
-    )
+    try:
+        # Update reaches: lakeflag -> 1
+        conn.execute(
+            """
+            UPDATE reaches SET lakeflag = 1
+            FROM _harp_lake_fixes h
+            WHERE reaches.reach_id = h.reach_id
+              AND reaches.region = h.region
+            """
+        )
 
-    # Tag edit_flag (append to existing)
-    conn.execute(
-        """
-        UPDATE reaches SET edit_flag = CASE
-            WHEN edit_flag IS NULL OR edit_flag = '' OR edit_flag = 'NaN'
-                THEN 'harp_lake'
-            ELSE edit_flag || ',harp_lake'
-        END
-        FROM _harp_lake_fixes h
-        WHERE reaches.reach_id = h.reach_id
-          AND reaches.region = h.region
-        """
-    )
+        # Tag edit_flag (append to existing)
+        conn.execute(
+            """
+            UPDATE reaches SET edit_flag = CASE
+                WHEN edit_flag IS NULL OR edit_flag = '' OR edit_flag = 'NaN'
+                    THEN 'harp_lake'
+                ELSE edit_flag || ',harp_lake'
+            END
+            FROM _harp_lake_fixes h
+            WHERE reaches.reach_id = h.reach_id
+              AND reaches.region = h.region
+            """
+        )
 
-    reaches_updated = conn.execute(
-        "SELECT COUNT(*) FROM _harp_lake_fixes"
-    ).fetchone()[0]
+        reaches_updated = conn.execute(
+            "SELECT COUNT(*) FROM _harp_lake_fixes"
+        ).fetchone()[0]
 
-    # Propagate lakeflag to nodes
-    nodes_updated = conn.execute(
-        """
-        UPDATE nodes SET lakeflag = 1
-        FROM _harp_lake_fixes h
-        WHERE nodes.reach_id = h.reach_id
-          AND nodes.region = h.region
-          AND nodes.lakeflag != 1
-        """
-    ).fetchone()[0]
+        # Propagate lakeflag to nodes
+        nodes_updated = conn.execute(
+            """
+            UPDATE nodes SET lakeflag = 1
+            FROM _harp_lake_fixes h
+            WHERE nodes.reach_id = h.reach_id
+              AND nodes.region = h.region
+              AND nodes.lakeflag != 1
+            """
+        ).fetchone()[0]
 
-    conn.execute("DROP TABLE IF EXISTS _harp_lake_fixes")
-
-    # Recreate RTREE indexes
-    for _idx_name, _tbl, sql in indexes:
-        conn.execute(sql)
+        conn.execute("DROP TABLE IF EXISTS _harp_lake_fixes")
+    finally:
+        # Always recreate RTREE indexes
+        for _idx_name, _tbl, sql in indexes:
+            conn.execute(sql)
 
     return {"reaches_updated": reaches_updated, "nodes_updated": nodes_updated}
 
@@ -438,7 +436,7 @@ def main() -> None:
     corrections, stats = filter_against_db(conn, candidates)
 
     # 3. Report
-    print(f"\n--- Filter Results ---")
+    print("\n--- Filter Results ---")
     print(f"  HarP candidates (v17b):     {len(candidates)}")
     print(f"  Already lakeflag != 0:       {stats['already_lake']}")
     print(f"  Skipped ghost (type=6):      {stats['skip_ghost']}")
@@ -454,16 +452,16 @@ def main() -> None:
     region_counts = Counter(c["region"] for c in corrections)
     type_counts = Counter(c["type"] for c in corrections)
 
-    print(f"\n--- Eligible by Tier ---")
+    print("\n--- Eligible by Tier ---")
     for tier in ALL_TIERS:
         rt_names = ", ".join(TIER_REACH_TYPES[tier])
         print(f"  {tier} ({rt_names}): {tier_counts.get(tier, 0)}")
 
-    print(f"\n--- Eligible by Region ---")
+    print("\n--- Eligible by Region ---")
     for region in REGIONS:
         print(f"  {region}: {region_counts.get(region, 0)}")
 
-    print(f"\n--- Eligible by v17c type ---")
+    print("\n--- Eligible by v17c type ---")
     for t in sorted(type_counts):
         print(f"  type={t}: {type_counts[t]}")
 
@@ -473,7 +471,7 @@ def main() -> None:
         if widths:
             widths.sort()
             n = len(widths)
-            print(f"\n--- Width Distribution ---")
+            print("\n--- Width Distribution ---")
             print(f"  min={widths[0]:.0f}  p25={widths[n//4]:.0f}  "
                   f"median={widths[n//2]:.0f}  p75={widths[3*n//4]:.0f}  "
                   f"max={widths[-1]:.0f}")
