@@ -203,8 +203,7 @@ Example: 5 = negative slope (1) + high variance (4).
   `lakeflag = 0` (river) to `lakeflag = 1` (lake) based on HarP v1.1
   (Hydrography and River Planform) lake classification data. 200,201
   child nodes updated to match. Tagged `edit_flag = "harp_lake"`.
-  Existing `lake_sandwich` tags preserved (semicolon-delimited when both
-  apply).
+  Existing tags preserved (comma-delimited when multiple apply).
 
 - **area_fits and discharge_models:** Direct copies from v17b. Not
   recomputed against v17c facc or SWOT values.
