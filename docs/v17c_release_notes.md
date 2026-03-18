@@ -214,12 +214,10 @@ Example: 5 = negative slope (1) + high variance (4).
   connected components; 19 subnetworks span multiple v17b networks).
   `network` is retained unchanged from v17b.
 
-- **Topology reciprocity gaps (v17b):** 150 reaches (0.06%) have
-  `rch_id_dn_main` pointing to a neighbor not in their `rch_id_dn` array
-  but present in their `rch_id_up` array. Caused by non-reciprocal entries
-  in v17b topology: reach A lists B as upstream, B lists A as upstream,
-  creating a graph edge A->B without an explicit downstream entry.
-  OC has 0 such cases.
+- **Topology reciprocity gaps (resolved):** 151 non-reciprocal pairs
+  (both reaches listing each other as upstream) were introduced during
+  flow correction revert. Fixed by completing the revert for all
+  affected reciprocal entries. Zero non-reciprocal pairs remain.
 
 - **Flow correction oscillation:** 389 reaches (0.16%) in AF/AS/EU/NA/SA
   had ambiguous WSE slope signals causing bidirectional flow correction
