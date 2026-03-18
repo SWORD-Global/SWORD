@@ -245,7 +245,8 @@ Validation checks performed on the v17c data:
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
 | **path_freq gaps** | v17b had 4,952 connected non-ghost reaches with invalid path_freq (0 or -9999). Resolved in v17c; remaining nodata values are correctly attributed to ghost reaches (type=6). |
 | **subnetwork_id** | 3,027 components across 248,673 reaches verified. Pfafstetter banding correct. Zero cross-region collisions. 19 subnetworks (0.6%) span multiple v17b networks (expected). |
-| **Topology integrity** | T001 (dist_out monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: 150 non-reciprocal edges (v17b inherited). |
+| **Topology integrity** | T001 (dist_out monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: zero non-reciprocal edges (151 from incomplete flow correction revert resolved in beta 0.0.1). |
+| **n_rch_up/n_rch_down** | 148 scalar count mismatches corrected (flow corrections flipped reach_topology but did not recalculate counts). Zero mismatches across all 248,673 reaches. |
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
 | **Flow direction** | 1,112 experimental topology flips reverted after causing 30K disconnected reaches. Current v17c topology matches v17b except for OC (26 validated sections flipped per SWOT slope evidence). |
