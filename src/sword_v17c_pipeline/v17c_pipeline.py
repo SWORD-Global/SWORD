@@ -437,9 +437,13 @@ def _process_region_inner(
             rebuild_fn=_rebuild,
         )
 
-        # If any flips happened, rebuild graph/sections for downstream computations
+        # If any flips happened, recount n_rch and rebuild graph/sections
         if flow_correction_stats.get("n_flipped", 0) > 0:
+            from .flow_verification import _update_topology_counts
+
+            _update_topology_counts(conn, region)
             topology_df = load_topology(conn, region)
+            reaches_df = load_reaches(conn, region)
             G = build_reach_graph(topology_df, reaches_df)
             junctions = identify_junctions(G)
             R, sections_df = build_section_graph(G, junctions)
