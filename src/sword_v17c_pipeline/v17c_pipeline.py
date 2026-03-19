@@ -485,8 +485,10 @@ def _process_region_inner(
     # compute_main_neighbors, which affects rch_id_up_main/rch_id_dn_main.
     hw_out = compute_best_headwater_outlet(G)
     main_paths = compute_main_paths(G, hw_out, region=region)
-    main_neighbors = compute_main_neighbors(G, hw_out_attrs=hw_out, overrides=overrides)
-    is_mainstem = compute_mainstem(G, hw_out, main_neighbors=main_neighbors)
+    is_mainstem, mainstem_chain = compute_mainstem(G, hw_out, main_paths=main_paths)
+    main_neighbors = compute_main_neighbors(
+        G, hw_out_attrs=hw_out, overrides=overrides, mainstem_chain=mainstem_chain
+    )
     hydro_dist = compute_mainstem_distances(G, main_neighbors)
 
     # Compute subnetwork_id (weakly connected components, Pfafstetter-offset)
