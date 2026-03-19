@@ -900,20 +900,30 @@ def add_v17c_columns(db) -> bool:
         "WHERE table_name = 'reaches' AND column_name = 'is_mainstem_edge'"
     ).fetchall()
     if result:
-        db.execute("INSTALL spatial; LOAD spatial;")
-        rtree_indexes = db.execute(
-            "SELECT index_name, table_name, sql FROM duckdb_indexes() "
-            "WHERE sql LIKE '%RTREE%'"
+        # Drop ALL dependencies: views, indexes (including RTREE)
+        views = db.execute(
+            "SELECT view_name, sql FROM duckdb_views() WHERE sql LIKE '%reaches%'"
         ).fetchall()
-        for idx_name, _tbl, _sql in rtree_indexes:
+        for vname, _vsql in views:
+            db.execute(f'DROP VIEW IF EXISTS "{vname}"')
+
+        db.execute("INSTALL spatial; LOAD spatial;")
+        all_indexes = db.execute(
+            "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+            "WHERE table_name = 'reaches'"
+        ).fetchall()
+        for idx_name, _tbl, _sql in all_indexes:
             db.execute(f'DROP INDEX "{idx_name}"')
+
         try:
             db.execute(
                 "ALTER TABLE reaches RENAME COLUMN is_mainstem_edge TO is_mainstem"
             )
         finally:
-            for _idx_name, _tbl, sql in rtree_indexes:
+            for _idx_name, _tbl, sql in all_indexes:
                 db.execute(sql)
+            for _vname, vsql in views:
+                db.execute(vsql)
 
     def _add_columns_to_table(table_name: str, columns: list) -> bool:
         """Add columns to a table if they don't exist."""
