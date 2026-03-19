@@ -63,77 +63,100 @@ def compute_main_paths(
 def compute_mainstem(
     G: nx.DiGraph,
     hw_out_attrs: Dict[int, Dict],
-    main_neighbors: Dict[int, Dict] | None = None,
-) -> Dict[int, bool]:
+    main_paths: Dict[int, int] | None = None,
+) -> tuple[Dict[int, bool], Dict[int, Dict]]:
     """
-    Compute is_mainstem for each reach.
+    Compute is_mainstem for each reach via greedy walk within each main_path_id group.
 
-    For each weakly-connected network, finds the outlet (no successors), looks
-    up its best_headwater, then walks the rch_id_dn_main chain from that
-    headwater to the outlet.  Only reaches on that single chain are mainstem.
+    For each main_path_id group, finds the shared best_headwater and walks
+    downstream picking the successor with max(effective_width, log_facc,
+    pathlen_out + reach_length) at each bifurcation.
 
     Parameters
     ----------
     G : nx.DiGraph
         Reach-level directed graph.
     hw_out_attrs : dict
-        Output from ``compute_best_headwater_outlet``.
-    main_neighbors : dict, optional
-        Output from ``compute_main_neighbors``.  Required for the
-        rch_id_dn_main chain walk.  If not provided, falls back to the
-        legacy shortest-path approach (produces ~98% True — avoid).
+        Output from compute_best_headwater_outlet.
+    main_paths : dict, optional
+        Output from compute_main_paths {reach_id: main_path_id}.
+
+    Returns
+    -------
+    tuple[Dict[int, bool], Dict[int, Dict]]
+        (is_mainstem, mainstem_chain)
+        is_mainstem: {reach_id: True/False}
+        mainstem_chain: {reach_id: {'chain_pred': int|None, 'chain_succ': int|None}}
+        Only mainstem reaches appear in mainstem_chain.
     """
     log("Computing mainstem classification...")
 
     is_mainstem = {n: False for n in G.nodes()}
+    mainstem_chain: Dict[int, Dict] = {}
 
-    if main_neighbors is None:
-        log("WARNING: main_neighbors not provided, skipping mainstem (all False)")
-        return is_mainstem
+    if main_paths is None:
+        log("WARNING: main_paths not provided, skipping mainstem (all False)")
+        return is_mainstem, mainstem_chain
 
-    # Build rch_id_dn_main lookup
-    dn_main: Dict[int, int | None] = {}
-    for rid, nb in main_neighbors.items():
-        dn = nb.get("rch_id_dn_main")
-        if dn is not None and dn in G.nodes:
-            dn_main[rid] = dn
-        else:
-            dn_main[rid] = None
+    # Group reaches by main_path_id
+    path_groups: Dict[int, list] = defaultdict(list)
+    for rid, pid in main_paths.items():
+        path_groups[pid].append(rid)
 
-    # For each weakly-connected component, trace one mainstem
-    n_networks = 0
-    for component in nx.weakly_connected_components(G):
-        # Find outlets (no successors in the full graph)
-        outlets = [n for n in component if G.out_degree(n) == 0]
-        if not outlets:
-            continue
-
-        # Pick the outlet with highest facc (primary), then width (tiebreak).
-        # facc is more reliable than width for identifying the true
-        # hydrological outlet — estuary/delta reaches are wide but short.
-        best_outlet_node = max(
-            outlets,
-            key=lambda n: (
-                G.nodes[n].get("log_facc", 0) or 0,
-                G.nodes[n].get("effective_width", 0) or 0,
-            ),
+    def _dn_key(n: int) -> tuple:
+        return (
+            G.nodes[n].get("effective_width", 0) or 0,
+            G.nodes[n].get("log_facc", 0) or 0,
+            (hw_out_attrs.get(n, {}).get("pathlen_out", 0) or 0)
+            + (G.nodes[n].get("reach_length", 0) or 0),
         )
 
-        # Get best_headwater for this outlet
-        hw_attrs = hw_out_attrs.get(best_outlet_node, {})
-        headwater = hw_attrs.get("best_headwater")
+    n_networks = 0
+    for pid, members in path_groups.items():
+        member_set = set(members)
+
+        # Find the shared best_headwater for this group
+        # All members should share the same best_headwater
+        headwater = None
+        for rid in members:
+            hw = hw_out_attrs.get(rid, {}).get("best_headwater")
+            if hw is not None:
+                headwater = hw
+                break
+
         if headwater is None:
             continue
 
-        # Walk rch_id_dn_main from headwater to outlet
-        # Ghost reaches (type=6) are excluded — they should never be mainstem
+        # Greedy walk from headwater through members of this group
+        chain = []  # ordered list of reach_ids on the chain
         visited = set()
         cur = headwater
+
         while cur is not None and cur not in visited:
-            if G.nodes[cur].get("type") != 6:
-                is_mainstem[cur] = True
             visited.add(cur)
-            cur = dn_main.get(cur)
+            if cur in member_set:
+                # Ghost reaches (type=6) are excluded from mainstem
+                if G.nodes[cur].get("type") != 6:
+                    is_mainstem[cur] = True
+                chain.append(cur)
+
+            # Pick best successor that is in this group
+            succs = [
+                s for s in G.successors(cur) if s in member_set and s not in visited
+            ]
+            if not succs:
+                # Also try successors outside the group (headwater might not be in group)
+                if cur not in member_set:
+                    succs = [s for s in G.successors(cur) if s not in visited]
+                if not succs:
+                    break
+            cur = max(succs, key=_dn_key)
+
+        # Build chain predecessor/successor lookup
+        for i, rid in enumerate(chain):
+            pred = chain[i - 1] if i > 0 else None
+            succ = chain[i + 1] if i < len(chain) - 1 else None
+            mainstem_chain[rid] = {"chain_pred": pred, "chain_succ": succ}
 
         n_networks += 1
 
@@ -146,42 +169,41 @@ def compute_mainstem(
         f"across {n_networks:,} networks ({n_ghosts:,} ghosts excluded)"
     )
 
-    return is_mainstem
+    return is_mainstem, mainstem_chain
 
 
 def compute_main_neighbors(
     G: nx.DiGraph,
     hw_out_attrs: Dict[int, Dict] | None = None,
     overrides: Dict[int, Dict] | None = None,
+    mainstem_chain: Dict[int, Dict] | None = None,
 ) -> Dict[int, Dict]:
     """
     Compute rch_id_up_main and rch_id_dn_main for each reach.
 
-    For each node, selects the main upstream predecessor and main downstream
-    successor using the same (effective_width, log_facc, pathlen) ranking
-    used by best_headwater/best_outlet, ensuring consistent routing across
-    all v17c columns.
+    For mainstem reaches (present in mainstem_chain), neighbors are derived
+    directly from the chain. For non-mainstem reaches, uses the
+    (effective_width, log_facc, pathlen) ranking.
 
     Parameters
     ----------
     G : nx.DiGraph
         Reach-level directed graph.
     hw_out_attrs : dict, optional
-        Output from ``compute_best_headwater_outlet``.  Provides
-        ``pathlen_hw`` and ``pathlen_out`` per reach as a third tiebreaker
-        so that width/facc ties are resolved identically to the best-outlet
-        algorithm.
+        Output from compute_best_headwater_outlet.
     overrides : dict, optional
         Human-reviewed corrections from backwater QC.
-        ``{junction_reach_id: {"rch_id_up_main": corrected_reach_id}}``.
-        When a node appears in overrides, the override value is used instead
-        of the algorithmic ranking.
+    mainstem_chain : dict, optional
+        Output from compute_mainstem. {reach_id: {'chain_pred': ..., 'chain_succ': ...}}.
+        When provided, mainstem reaches get neighbors from the chain.
 
     Returns dict {reach_id: {'rch_id_up_main': int|None, 'rch_id_dn_main': int|None}}.
     """
     overrides = overrides or {}
     hw_out_attrs = hw_out_attrs or {}
+    mainstem_chain = mainstem_chain or {}
     n_overrides_applied = 0
+    n_from_chain = 0
 
     log("Computing main neighbors (rch_id_up_main / rch_id_dn_main)...")
 
@@ -204,33 +226,56 @@ def compute_main_neighbors(
     results = {}
 
     for node in G.nodes():
-        # Main upstream neighbor: pick best predecessor
-        preds = list(G.predecessors(node))
-        if preds:
-            override = overrides.get(node)
-            if override and "rch_id_up_main" in override:
-                candidate = override["rch_id_up_main"]
-                if candidate in preds:
-                    rch_id_up_main = candidate
-                    n_overrides_applied += 1
+        chain_info = mainstem_chain.get(node)
+
+        # Check for overrides first
+        override = overrides.get(node)
+
+        if chain_info is not None and not override:
+            # Mainstem reach: derive from chain
+            chain_pred = chain_info.get("chain_pred")
+            chain_succ = chain_info.get("chain_succ")
+
+            # Verify chain_pred is actually a predecessor in the graph
+            preds = set(G.predecessors(node))
+            rch_id_up_main = chain_pred if chain_pred in preds else None
+            # If chain_pred not in preds (shouldn't happen), fall back to ranking
+            if rch_id_up_main is None and preds:
+                rch_id_up_main = max(preds, key=_up_key)
+
+            # Verify chain_succ is actually a successor in the graph
+            succs = set(G.successors(node))
+            rch_id_dn_main = chain_succ if chain_succ in succs else None
+            if rch_id_dn_main is None and succs:
+                rch_id_dn_main = max(succs, key=_dn_key)
+
+            n_from_chain += 1
+        else:
+            # Non-mainstem reach or override: use ranking
+            preds = list(G.predecessors(node))
+            if preds:
+                if override and "rch_id_up_main" in override:
+                    candidate = override["rch_id_up_main"]
+                    if candidate in preds:
+                        rch_id_up_main = candidate
+                        n_overrides_applied += 1
+                    else:
+                        log(
+                            f"WARNING: override for {node} specifies "
+                            f"rch_id_up_main={candidate} but it is not a "
+                            f"predecessor (preds={preds}), falling back to ranking"
+                        )
+                        rch_id_up_main = max(preds, key=_up_key)
                 else:
-                    log(
-                        f"WARNING: override for {node} specifies "
-                        f"rch_id_up_main={candidate} but it is not a "
-                        f"predecessor (preds={preds}), falling back to ranking"
-                    )
                     rch_id_up_main = max(preds, key=_up_key)
             else:
-                rch_id_up_main = max(preds, key=_up_key)
-        else:
-            rch_id_up_main = None
+                rch_id_up_main = None
 
-        # Main downstream neighbor: pick best successor
-        succs = list(G.successors(node))
-        if succs:
-            rch_id_dn_main = max(succs, key=_dn_key)
-        else:
-            rch_id_dn_main = None
+            succs = list(G.successors(node))
+            if succs:
+                rch_id_dn_main = max(succs, key=_dn_key)
+            else:
+                rch_id_dn_main = None
 
         results[node] = {
             "rch_id_up_main": rch_id_up_main,
@@ -240,6 +285,9 @@ def compute_main_neighbors(
     n_with_up = sum(1 for v in results.values() if v["rch_id_up_main"] is not None)
     n_with_dn = sum(1 for v in results.values() if v["rch_id_dn_main"] is not None)
     log(f"Main neighbors: {n_with_up:,} with up_main, {n_with_dn:,} with dn_main")
+    log(
+        f"  ({n_from_chain:,} from mainstem chain, {len(results) - n_from_chain:,} from ranking)"
+    )
     if n_overrides_applied:
         log(f"  ({n_overrides_applied} overrides applied from backwater QC)")
 
