@@ -49,7 +49,7 @@ def compute_path_variables(
     # Ghost reaches (type=6): unreliable topology, get -9999 and skip.
     # Side channels (main_side 1,2): valid topology, get computed pf
     # but are excluded from confluence sums to prevent double-counting
-    # at braid reconvergences. is_mainstem_edge handles routing downstream.
+    # at braid reconvergences. is_mainstem handles routing downstream.
     ghosts: Set[int] = set()
     skip_in_sums: Set[int] = set()
     for node in G.nodes():

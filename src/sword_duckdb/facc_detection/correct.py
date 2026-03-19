@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Facc Correction Engine
-======================
+----------------------
 
 Automated correction of corrupted facc values.
 
@@ -981,7 +981,7 @@ class FaccCorrector:
         """
         Classify anomalies using v17c mainstem routing information.
 
-        Uses is_mainstem_edge, rch_id_up_main, rch_id_dn_main to determine:
+        Uses is_mainstem, rch_id_up_main, rch_id_dn_main to determine:
         - side_to_mainstem: Side channel has facc that belongs on mainstem sibling
         - headwater_reset: Headwater with huge facc
         - mainstem_reextract: High FWR on mainstem (D8 misroute)
@@ -1006,7 +1006,7 @@ class FaccCorrector:
 
         # Check if v17c columns exist
         try:
-            v17c.execute("SELECT is_mainstem_edge FROM reaches LIMIT 1")
+            v17c.execute("SELECT is_mainstem FROM reaches LIMIT 1")
             has_v17c = True
         except Exception:
             logger.warning("v17c routing columns not found, using basic classification")
@@ -1018,7 +1018,7 @@ class FaccCorrector:
         if has_v17c:
             # Get v17c routing info
             routing_df = v17c.execute(f"""
-                SELECT reach_id, region, is_mainstem_edge, rch_id_up_main, rch_id_dn_main
+                SELECT reach_id, region, is_mainstem, rch_id_up_main, rch_id_dn_main
                 FROM reaches
                 WHERE reach_id IN ({reach_ids_str})
             """).fetchdf()
@@ -1055,7 +1055,7 @@ class FaccCorrector:
             main_side = row.get("main_side", 0)
             n_rch_up = row.get("n_rch_up", 0)
             fwr = row.get("fwr", 0)
-            is_mainstem = row.get("is_mainstem_edge", True)
+            is_mainstem = row.get("is_mainstem", True)
 
             correction_type = None
             correction_target = None
@@ -1082,7 +1082,7 @@ class FaccCorrector:
 
                     for sib_id, sib_facc in siblings:
                         sib_ms = v17c.execute(f"""
-                            SELECT is_mainstem_edge FROM reaches WHERE reach_id = {sib_id}
+                            SELECT is_mainstem FROM reaches WHERE reach_id = {sib_id}
                         """).fetchone()
                         if sib_ms and sib_ms[0]:  # Sibling is on mainstem
                             if facc > sib_facc * 0.5:  # Side has too much facc

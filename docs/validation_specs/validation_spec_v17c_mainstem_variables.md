@@ -4,7 +4,7 @@
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `is_mainstem_edge` | BOOLEAN | True if reach is on the mainstem path from best_headwater to best_outlet |
+| `is_mainstem` | BOOLEAN | True if reach is on the mainstem path from best_headwater to best_outlet |
 | `hydro_dist_out` | DOUBLE | Hydrologic distance to outlet following main channel (m) |
 | `hydro_dist_hw` | DOUBLE | Hydrologic distance from headwater following main channel (m) |
 | `best_headwater` | BIGINT | Upstream headwater reach_id selected by width/path_length criteria |
@@ -30,7 +30,7 @@
 |----------|-------|-------------|
 | `compute_hydro_distances()` | 255-320 | Computes `hydro_dist_out` and `hydro_dist_hw` via multi-source Dijkstra |
 | `compute_best_headwater_outlet()` | 323-410 | Computes `best_headwater`, `best_outlet`, `pathlen_hw`, `pathlen_out` via topological sort |
-| `compute_mainstem()` | 413-446 | Computes `is_mainstem_edge` by finding shortest path between (best_hw, best_out) pairs |
+| `compute_mainstem()` | 413-446 | Computes `is_mainstem` by finding shortest path between (best_hw, best_out) pairs |
 | `build_reach_graph()` | 99-152 | Constructs NetworkX DiGraph from reach_topology table |
 | `save_to_duckdb()` | 575-644 | Updates reaches table with computed v17c attributes |
 
@@ -95,7 +95,7 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
             pathlen_out[n] = best[1]
 ```
 
-### 3. is_mainstem_edge Computation (lines 413-446)
+### 3. is_mainstem Computation (lines 413-446)
 
 ```python
 def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict) -> Dict[int, bool]:
@@ -123,7 +123,7 @@ def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict) -> Dict[int, bool]:
 
 ## Failure Modes
 
-### F1: is_mainstem_edge Gaps (Path Discontinuity)
+### F1: is_mainstem Gaps (Path Discontinuity)
 - **Symptom:** Mainstem path has gaps (consecutive reaches on path, but one is not marked mainstem)
 - **Cause:** `nx.shortest_path` fails due to graph disconnection or uses alternate route
 - **Impact:** Broken visual rendering of mainstem; downstream analysis fails
@@ -153,13 +153,13 @@ def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict) -> Dict[int, bool]:
 - **Cause:** Reach is disconnected from all outlets/headwaters
 - **Impact:** Missing coverage in distance metrics
 
-### F7: is_mainstem_edge Cycles
+### F7: is_mainstem Cycles
 - **Symptom:** Mainstem path forms a loop
 - **Cause:** Graph has cycles
 - **Impact:** Incorrect mainstem classification
 
 ### F8: Orphan Mainstem Reaches
-- **Symptom:** is_mainstem_edge=True but no upstream OR downstream mainstem neighbor
+- **Symptom:** is_mainstem=True but no upstream OR downstream mainstem neighbor
 - **Cause:** Incomplete path computation or topology error
 - **Impact:** Broken mainstem visualization
 
@@ -170,7 +170,7 @@ def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict) -> Dict[int, bool]:
 | ID | Severity | Rule | Rationale |
 |----|----------|------|-----------|
 | T008 | ERROR | `hydro_dist_out` must decrease downstream | Flow direction integrity for v17c distances |
-| T009 | WARNING | `is_mainstem_edge` path must be continuous | Mainstem should form unbroken path from headwater to outlet |
+| T009 | WARNING | `is_mainstem` path must be continuous | Mainstem should form unbroken path from headwater to outlet |
 | T010 | WARNING | `best_headwater` must be reachable upstream | Path integrity check |
 | T011 | WARNING | `best_outlet` must be reachable downstream | Path integrity check |
 
@@ -181,9 +181,9 @@ def compute_mainstem(G: nx.DiGraph, hw_out_attrs: Dict) -> Dict[int, bool]:
 | V001 | ERROR | `hydro_dist_out` decreases downstream | Core flow direction property |
 | V002 | INFO | `hydro_dist_out` != `pathlen_out` is expected | Document expected difference |
 | V003 | WARNING | `pathlen_hw + pathlen_out` consistent with network distances | Path length sanity check |
-| V004 | WARNING | `is_mainstem_edge` reaches have both upstream and downstream mainstem neighbors (except HW/outlet) | Continuity check |
+| V004 | WARNING | `is_mainstem` reaches have both upstream and downstream mainstem neighbors (except HW/outlet) | Continuity check |
 | V005 | ERROR | No NULL `hydro_dist_out` for connected reaches | Coverage check |
-| V006 | INFO | `is_mainstem_edge` percentage by region | Statistics (expect 96-99%) |
+| V006 | INFO | `is_mainstem` percentage by region | Statistics (expect 96-99%) |
 | V007 | WARNING | `best_headwater` is actually a headwater (in_degree=0) | Assignment validity |
 | V008 | WARNING | `best_outlet` is actually an outlet (out_degree=0) | Assignment validity |
 
@@ -208,17 +208,17 @@ SELECT * FROM reach_pairs
 WHERE dist_down > dist_up + 100  -- 100m tolerance
 ```
 
-### T009: is_mainstem_edge Continuity
+### T009: is_mainstem Continuity
 ```sql
 -- Find mainstem reaches without continuous mainstem path
 WITH mainstem_reaches AS (
-    SELECT reach_id, region FROM reaches WHERE is_mainstem_edge = TRUE
+    SELECT reach_id, region FROM reaches WHERE is_mainstem = TRUE
 ),
 mainstem_neighbors AS (
     SELECT
         r.reach_id, r.region,
-        SUM(CASE WHEN rt.direction = 'up' AND r2.is_mainstem_edge THEN 1 ELSE 0 END) as ms_up,
-        SUM(CASE WHEN rt.direction = 'down' AND r2.is_mainstem_edge THEN 1 ELSE 0 END) as ms_down
+        SUM(CASE WHEN rt.direction = 'up' AND r2.is_mainstem THEN 1 ELSE 0 END) as ms_up,
+        SUM(CASE WHEN rt.direction = 'down' AND r2.is_mainstem THEN 1 ELSE 0 END) as ms_down
     FROM mainstem_reaches r
     JOIN reach_topology rt ON r.reach_id = rt.reach_id AND r.region = rt.region
     JOIN reaches r2 ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
@@ -268,7 +268,7 @@ WHERE r.best_outlet IS NOT NULL
 
 ### 1. Deltas (Multiple Outlets)
 - **Behavior:** Each reach gets assigned ONE best_outlet (by width preference)
-- **Impact:** is_mainstem_edge forms ONE main path even in deltas
+- **Impact:** is_mainstem forms ONE main path even in deltas
 - **Validation:** Check that delta regions have reasonable mainstem % (lower expected)
 
 ### 2. Disconnected Networks
@@ -282,7 +282,7 @@ WHERE r.best_outlet IS NOT NULL
 - **Validation:** Run lint check T006 (connected_components) + DAG validation
 
 ### 4. Single-Reach Networks
-- **Behavior:** best_headwater = best_outlet = self; is_mainstem_edge = True
+- **Behavior:** best_headwater = best_outlet = self; is_mainstem = True
 - **Validation:** Not an error, but track count
 
 ### 5. Width = 0 or NULL
@@ -347,7 +347,7 @@ From README.md:
 3. **V007/V008** - best_headwater/outlet validity (WARNING)
 
 ### Priority 2: Implement Path Integrity Checks
-4. **T009** - is_mainstem_edge continuity (WARNING)
+4. **T009** - is_mainstem continuity (WARNING)
 5. **V003** - pathlen consistency (WARNING)
 
 ### Priority 3: Informational Checks
@@ -421,7 +421,7 @@ From README.md:
 
 #### Issue 3: Mainstem Continuity (1 violation in NA)
 
-1 reach in NA is marked as `is_mainstem_edge=TRUE` but has no upstream mainstem neighbor despite having `n_rch_up > 0`.
+1 reach in NA is marked as `is_mainstem=TRUE` but has no upstream mainstem neighbor despite having `n_rch_up > 0`.
 
 **Cause:** Shortest path computation selected a different route.
 

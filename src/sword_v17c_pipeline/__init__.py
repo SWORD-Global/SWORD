@@ -1,6 +1,6 @@
 """
 SWORD v17c Pipeline
-===================
+-------------------
 
 This module contains the simplified pipeline for generating SWORD v17c from v17b.
 
@@ -21,7 +21,7 @@ New Columns Added by Pipeline:
 - best_outlet: Chosen outlet reach ID downstream
 - pathlen_hw: Path length to headwater
 - pathlen_out: Path length to outlet
-- is_mainstem_edge: Boolean flag for mainstem edges
+- is_mainstem: Boolean flag for mainstem reaches
 - swot_slope: SWOT-derived slope (m/km)
 - swot_slope_se: Standard error of SWOT slope
 - swot_slope_confidence: Confidence flag (R=reliable, U=unreliable)

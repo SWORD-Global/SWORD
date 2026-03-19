@@ -255,7 +255,7 @@ CREATE TABLE IF NOT EXISTS reaches (
     path_segs BIGINT,            -- segment ID between junctions
     main_side INTEGER,           -- 0=main, 1=side, 2=secondary outlet
     main_path_id BIGINT,         -- unique ID for headwater-outlet path
-    is_mainstem_edge BOOLEAN DEFAULT FALSE,  -- whether edge is on mainstem
+    is_mainstem BOOLEAN DEFAULT FALSE,  -- whether reach is on mainstem
     best_headwater BIGINT,       -- best upstream headwater reach
     best_outlet BIGINT,          -- best downstream outlet reach
     pathlen_hw DOUBLE,           -- cumulative path length to headwater
@@ -883,7 +883,7 @@ def add_v17c_columns(db) -> bool:
         ("pathlen_hw", "DOUBLE"),
         ("pathlen_out", "DOUBLE"),
         ("main_path_id", "BIGINT"),
-        ("is_mainstem_edge", "BOOLEAN DEFAULT FALSE"),
+        ("is_mainstem", "BOOLEAN DEFAULT FALSE"),
         ("dist_out_dijkstra", "DOUBLE"),
         ("hydro_dist_out", "DOUBLE"),
         ("hydro_dist_hw", "DOUBLE"),
@@ -893,6 +893,14 @@ def add_v17c_columns(db) -> bool:
         ("subnetwork_id", "INTEGER"),  # weakly connected component ID
         ("facc_quality", "VARCHAR"),  # facc correction status flag
     ]
+
+    # Rename is_mainstem_edge -> is_mainstem (v17c 0.0.2)
+    result = db.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'reaches' AND column_name = 'is_mainstem_edge'"
+    ).fetchall()
+    if result:
+        db.execute("ALTER TABLE reaches RENAME COLUMN is_mainstem_edge TO is_mainstem")
 
     def _add_columns_to_table(table_name: str, columns: list) -> bool:
         """Add columns to a table if they don't exist."""

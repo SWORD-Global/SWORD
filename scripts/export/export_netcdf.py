@@ -69,7 +69,7 @@ SLOPE_OBS_RELIABLE_FLAG_ATTRS = {
     "comment": "fill_value=not computed (no SWOT slope observations)",
 }
 
-IS_MAINSTEM_EDGE_FLAG_ATTRS = {
+IS_MAINSTEM_FLAG_ATTRS = {
     "flag_values": np.array([0, 1], dtype=np.int32),
     "flag_meanings": "not_mainstem mainstem",
 }
@@ -89,7 +89,7 @@ FLAG_VAR_ATTRS: dict[str, dict] = {
     "facc_quality": FACC_QUALITY_FLAG_ATTRS,
     "slope_obs_quality": SLOPE_OBS_QUALITY_FLAG_ATTRS,
     "slope_obs_reliable": SLOPE_OBS_RELIABLE_FLAG_ATTRS,
-    "is_mainstem_edge": IS_MAINSTEM_EDGE_FLAG_ATTRS,
+    "is_mainstem": IS_MAINSTEM_FLAG_ATTRS,
     "slope_obs_q": SLOPE_OBS_Q_FLAG_ATTRS,
 }
 
@@ -156,7 +156,7 @@ def _v17c_reach_scalar_specs():
         ("rch_id_dn_main", "i8", FILL_I8, "rch_id_dn_main", {}),
         ("subnetwork_id", "i4", FILL_I4, "subnetwork_id", {}),
         ("main_path_id", "i8", FILL_I8, "main_path_id", {}),
-        ("is_mainstem_edge", "i4", FILL_I4, "is_mainstem_edge", {}),  # BOOL→i4
+        ("is_mainstem", "i4", FILL_I4, "is_mainstem", {}),  # BOOL→i4
         ("best_headwater", "i8", FILL_I8, "best_headwater", {}),
         ("best_outlet", "i8", FILL_I8, "best_outlet", {}),
         ("pathlen_hw", "f8", FILL_F8, "pathlen_hw", {"units": "meters"}),
@@ -565,7 +565,7 @@ def _passthrough_v17b_subgroups(ds_out, ds_v17b, reorder_reach):
 # ---------------------------------------------------------------------------
 
 # Columns needing special conversion (not straight numeric cast)
-BOOL_COLS = {"is_mainstem_edge", "slope_obs_reliable"}
+BOOL_COLS = {"is_mainstem", "slope_obs_reliable"}
 VARCHAR_INT_COLS = {
     "facc_quality": FACC_QUALITY_MAP,
     "slope_obs_quality": SLOPE_OBS_QUALITY_MAP,

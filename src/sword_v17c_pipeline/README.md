@@ -21,7 +21,7 @@ v17c_pipeline.py
     │   ├── hydro_dist_out / hydro_dist_hw
     │   ├── best_headwater / best_outlet
     │   ├── pathlen_hw / pathlen_out
-    │   └── is_mainstem_edge
+    │   └── is_mainstem
     ├── Build section graph (junction-to-junction)
     ├── Validate slopes at junctions (if WSE data available)
     ├── **Automated Flow Direction Correction** (Heals legacy v17b errors)
@@ -50,7 +50,7 @@ Reaches with a confidence score > 80 are automatically flipped in the `reach_top
 | best_outlet | BIGINT | Downstream outlet reach ID |
 | pathlen_hw | DOUBLE | Path length to headwater (m) |
 | pathlen_out | DOUBLE | Path length to outlet (m) |
-| is_mainstem_edge | BOOLEAN | True if on mainstem path |
+| is_mainstem | BOOLEAN | True if on mainstem path |
 | swot_slope | DOUBLE | SWOT-derived slope (m/km) |
 | swot_slope_se | DOUBLE | Standard error of SWOT slope |
 | swot_slope_confidence | VARCHAR | R=reliable, U=unreliable |
@@ -205,7 +205,7 @@ python -m src.sword_v17c_pipeline.reach_swot_obs \
 ```bash
 # Query results
 duckdb data/duckdb/sword_v17c.duckdb -c "
-SELECT reach_id, hydro_dist_out, best_headwater, is_mainstem_edge
+SELECT reach_id, hydro_dist_out, best_headwater, is_mainstem
 FROM reaches WHERE region='NA' AND hydro_dist_out IS NOT NULL LIMIT 10"
 
 # Check provenance

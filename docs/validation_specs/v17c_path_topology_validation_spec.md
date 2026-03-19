@@ -13,7 +13,7 @@
 
 - **Source:** Computed (v17c NEW) via `assign_attribute.py` in v17c_pipeline
 - **Algorithm:** NetworkX graph operations (topological grouping, Dijkstra, reach selection)
-- **Dependencies:** reach_topology (v17b), is_mainstem_edge, width, reach_length, best_headwater, best_outlet
+- **Dependencies:** reach_topology (v17b), is_mainstem, width, reach_length, best_headwater, best_outlet
 - **Storage:** `reaches` table in sword_v17c.duckdb
 
 ## Code Path
@@ -120,11 +120,11 @@ def choose_main_reach(candidates):
     Selection logic (lines 834-870):
 
     CASE 1: All candidates have SAME main_path_id
-        a) Prefer reach with is_mainstem_edge == True
+        a) Prefer reach with is_mainstem == True
         b) Else choose largest width
 
     CASE 2: Candidates have DIFFERENT main_path_ids
-        a) Prefer reach with is_mainstem_edge == True
+        a) Prefer reach with is_mainstem == True
         b) Fallback: choose largest width
     """
     if not candidates:
@@ -136,7 +136,7 @@ def choose_main_reach(candidates):
 
     # CASE 1: Same main_path_id
     if len(main_path_ids) == 1:
-        stem_edges = [rid for rid, a in candidates if a.get("is_mainstem_edge")]
+        stem_edges = [rid for rid, a in candidates if a.get("is_mainstem")]
         if stem_edges:
             return stem_edges[0]
 
@@ -144,7 +144,7 @@ def choose_main_reach(candidates):
         return max(candidates, key=lambda x: x[1].get("width", 0))[0]
 
     # CASE 2: Different main_path_ids
-    stem_edges = [rid for rid, a in candidates if a.get("is_mainstem_edge")]
+    stem_edges = [rid for rid, a in candidates if a.get("is_mainstem")]
     if stem_edges:
         return stem_edges[0]
 
@@ -164,7 +164,7 @@ def choose_main_reach(candidates):
 | Source Table | Columns Used |
 |--------------|--------------|
 | `reach_topology` | reach_id, direction, neighbor_reach_id (used indirectly via graph construction) |
-| `reaches` | reach_id, reach_length, width, best_headwater, best_outlet, is_mainstem_edge |
+| `reaches` | reach_id, reach_length, width, best_headwater, best_outlet, is_mainstem |
 
 ## Data Type Specifications
 
@@ -467,10 +467,10 @@ ORDER BY region
 - **Consistency:** If best_headwater/outlet change, main_path_id should change
 - **Validation:** All reaches with same main_path_id must have identical (best_hw, best_out)
 
-### vs. is_mainstem_edge
-- **Relationship:** rch_id_up_main/dn_main selection PREFERS is_mainstem_edge = True
+### vs. is_mainstem
+- **Relationship:** rch_id_up_main/dn_main selection PREFERS is_mainstem = True
 - **Consistency:** Non-mainstem reaches may have mainstem neighbors as rch_id_up/dn_main
-- **Validation:** If is_mainstem_edge = True, rch_id_up/dn_main should prefer mainstem neighbors
+- **Validation:** If is_mainstem = True, rch_id_up/dn_main should prefer mainstem neighbors
 
 ### vs. dist_out (v17b)
 - **Difference:** dist_out = pre-computed v17b attribute; dist_out_short = v17c recomputed
@@ -541,7 +541,7 @@ for reach_id in reaches:
 ### rch_id_up_main / rch_id_dn_main Reconstruction
 ```python
 # 1. For each reach, find upstream and downstream neighbors
-# 2. Select main neighbor using: is_mainstem_edge > width
+# 2. Select main neighbor using: is_mainstem > width
 # 3. NULL for headwaters (up_main) and outlets (dn_main)
 
 for reach_id in reaches:
@@ -550,7 +550,7 @@ for reach_id in reaches:
     rch_id_up_main = None
     if upstream:
         # Prefer mainstem
-        mainstem = [r for r in upstream if reaches[r]['is_mainstem_edge']]
+        mainstem = [r for r in upstream if reaches[r]['is_mainstem']]
         if mainstem:
             rch_id_up_main = max(mainstem, key=lambda r: reaches[r]['width'])['reach_id']
         else:
@@ -560,7 +560,7 @@ for reach_id in reaches:
     downstream = get_downstream_neighbors(reach_id)
     rch_id_dn_main = None
     if downstream:
-        mainstem = [r for r in downstream if reaches[r]['is_mainstem_edge']]
+        mainstem = [r for r in downstream if reaches[r]['is_mainstem']]
         if mainstem:
             rch_id_dn_main = max(mainstem, key=lambda r: reaches[r]['width'])['reach_id']
         else:
@@ -572,7 +572,7 @@ for reach_id in reaches:
 
 **CRITICAL NOTES:**
 - Do NOT hardcode assumptions about mainstem vs. width weighting
-- Always check if is_mainstem_edge is already assigned before using it
+- Always check if is_mainstem is already assigned before using it
 - Query v17b first to see actual distributions of these variables
 - Test reconstruction on small region before global rollout
 - Verify monotonicity and connectivity after reconstruction
@@ -588,7 +588,7 @@ for reach_id in reaches:
 ### Integration Tests
 1. **test_main_path_id_connectivity**: Verify each main_path_id forms weakly-connected component
 2. **test_topology_consistency**: Verify rch_id_up_main matches reach_topology
-3. **test_width_selection**: Verify rch_id_up/dn_main prefers is_mainstem_edge and width
+3. **test_width_selection**: Verify rch_id_up/dn_main prefers is_mainstem and width
 
 ### Regression Tests
 1. Compare with v17b distributions

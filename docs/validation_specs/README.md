@@ -31,7 +31,7 @@
 | `facc_quality_validation_spec` | facc_quality | v17c workflow metadata | traced/suspect/unfixable/manual_fix |
 | `swot_observations_validation_spec` | *_obs_mean/median/std/range, n_obs | SWOT L2 RiverSP | v17c additions |
 | `swot_slope_validation_spec` | swot_slope, swot_slope_se, swot_slope_confidence | SWOT LME model | **REMOVED** - 0% populated |
-| `validation_spec_v17c_mainstem_variables` | hydro_dist_out/hw, best_headwater/outlet, pathlen_hw/out, is_mainstem_edge | v17c width-prioritized Dijkstra | Main channel identification |
+| `validation_spec_v17c_mainstem_variables` | hydro_dist_out/hw, best_headwater/outlet, pathlen_hw/out, is_mainstem | v17c width-prioritized Dijkstra | Main channel identification |
 | `v17c_path_topology_validation_spec` | main_path_id, dist_out_short, rch_id_up/dn_main | v17c path grouping | Mainstem routing |
 | `v17c_sections_validation_spec` | v17c_sections, v17c_section_slope_validation tables | v17c junction-to-junction | Slope direction validation |
 

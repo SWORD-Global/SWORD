@@ -1,7 +1,7 @@
 """
 SWORD Lint - v17c-Specific Checks (V0xx)
 
-Validates v17c new attributes: hydro_dist_out, is_mainstem_edge,
+Validates v17c new attributes: hydro_dist_out, is_mainstem,
 best_headwater, best_outlet, pathlen_hw, pathlen_out.
 """
 
@@ -198,7 +198,7 @@ def check_hydro_dist_vs_pathlen(
     "V004",
     Category.V17C,
     Severity.WARNING,
-    "is_mainstem_edge continuity check",
+    "is_mainstem continuity check",
 )
 def check_mainstem_continuity(
     conn: duckdb.DuckDBPyConnection,
@@ -206,7 +206,7 @@ def check_mainstem_continuity(
     threshold: Optional[float] = None,
 ) -> CheckResult:
     """
-    Check that is_mainstem_edge forms continuous paths.
+    Check that is_mainstem forms continuous paths.
 
     Mainstem reaches should have at least one mainstem neighbor
     (except headwaters and outlets).
@@ -215,7 +215,7 @@ def check_mainstem_continuity(
 
     # Check if column exists
     try:
-        conn.execute("SELECT is_mainstem_edge FROM reaches LIMIT 1")
+        conn.execute("SELECT is_mainstem FROM reaches LIMIT 1")
     except duckdb.CatalogException:
         return CheckResult(
             check_id="V004",
@@ -226,19 +226,19 @@ def check_mainstem_continuity(
             issues_found=0,
             issue_pct=0,
             details=pd.DataFrame(),
-            description="Column is_mainstem_edge not found (v17c pipeline not run)",
+            description="Column is_mainstem not found (v17c pipeline not run)",
         )
 
     query = f"""
     WITH mainstem_neighbors AS (
         SELECT
             r.reach_id, r.region,
-            SUM(CASE WHEN rt.direction = 'up' AND r2.is_mainstem_edge THEN 1 ELSE 0 END) as ms_up,
-            SUM(CASE WHEN rt.direction = 'down' AND r2.is_mainstem_edge THEN 1 ELSE 0 END) as ms_down
+            SUM(CASE WHEN rt.direction = 'up' AND r2.is_mainstem THEN 1 ELSE 0 END) as ms_up,
+            SUM(CASE WHEN rt.direction = 'down' AND r2.is_mainstem THEN 1 ELSE 0 END) as ms_down
         FROM reaches r
         JOIN reach_topology rt ON r.reach_id = rt.reach_id AND r.region = rt.region
         JOIN reaches r2 ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
-        WHERE r.is_mainstem_edge = TRUE
+        WHERE r.is_mainstem = TRUE
             {where_clause}
         GROUP BY r.reach_id, r.region
     )
@@ -262,7 +262,7 @@ def check_mainstem_continuity(
 
     total_query = f"""
     SELECT COUNT(*) FROM reaches r
-    WHERE is_mainstem_edge = TRUE
+    WHERE is_mainstem = TRUE
     {where_clause}
     """
     total = conn.execute(total_query).fetchone()[0]
@@ -352,7 +352,7 @@ def check_hydro_dist_out_coverage(
     "V006",
     Category.V17C,
     Severity.INFO,
-    "is_mainstem_edge coverage statistics",
+    "is_mainstem coverage statistics",
 )
 def check_mainstem_coverage(
     conn: duckdb.DuckDBPyConnection,
@@ -360,7 +360,7 @@ def check_mainstem_coverage(
     threshold: Optional[float] = None,
 ) -> CheckResult:
     """
-    Report is_mainstem_edge coverage statistics.
+    Report is_mainstem coverage statistics.
 
     Expected: 96-99% of reaches should be on mainstem paths.
     """
@@ -368,7 +368,7 @@ def check_mainstem_coverage(
 
     # Check if column exists
     try:
-        conn.execute("SELECT is_mainstem_edge FROM reaches LIMIT 1")
+        conn.execute("SELECT is_mainstem FROM reaches LIMIT 1")
     except duckdb.CatalogException:
         return CheckResult(
             check_id="V006",
@@ -379,15 +379,15 @@ def check_mainstem_coverage(
             issues_found=0,
             issue_pct=0,
             details=pd.DataFrame(),
-            description="Column is_mainstem_edge not found (v17c pipeline not run)",
+            description="Column is_mainstem not found (v17c pipeline not run)",
         )
 
     query = f"""
     SELECT
         region,
         COUNT(*) as total_reaches,
-        SUM(CASE WHEN is_mainstem_edge = TRUE THEN 1 ELSE 0 END) as mainstem_reaches,
-        ROUND(100.0 * SUM(CASE WHEN is_mainstem_edge = TRUE THEN 1 ELSE 0 END) / COUNT(*), 2) as mainstem_pct
+        SUM(CASE WHEN is_mainstem = TRUE THEN 1 ELSE 0 END) as mainstem_reaches,
+        ROUND(100.0 * SUM(CASE WHEN is_mainstem = TRUE THEN 1 ELSE 0 END) / COUNT(*), 2) as mainstem_pct
     FROM reaches r
     WHERE type NOT IN (5, 6)
         {where_clause}

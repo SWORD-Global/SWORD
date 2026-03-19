@@ -146,7 +146,7 @@ class TestSaveToDuckDB:
             ("best_outlet", "BIGINT"),
             ("pathlen_hw", "DOUBLE"),
             ("pathlen_out", "DOUBLE"),
-            ("is_mainstem_edge", "BOOLEAN"),
+            ("is_mainstem", "BOOLEAN"),
             ("rch_id_up_main", "BIGINT"),
             ("rch_id_dn_main", "BIGINT"),
         ]
@@ -186,7 +186,7 @@ class TestSaveToDuckDB:
         # Verify the values were written
         row = conn.execute(
             "SELECT hydro_dist_out, dist_out_dijkstra, best_headwater, best_outlet, "
-            "pathlen_hw, pathlen_out, is_mainstem_edge "
+            "pathlen_hw, pathlen_out, is_mainstem "
             "FROM reaches WHERE reach_id = ?",
             [reach_id],
         ).fetchone()
@@ -525,7 +525,7 @@ class TestSaveToDuckdbWithPathVars:
             ("best_outlet", "BIGINT"),
             ("pathlen_hw", "DOUBLE"),
             ("pathlen_out", "DOUBLE"),
-            ("is_mainstem_edge", "BOOLEAN"),
+            ("is_mainstem", "BOOLEAN"),
             ("rch_id_up_main", "BIGINT"),
             ("rch_id_dn_main", "BIGINT"),
         ]

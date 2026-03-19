@@ -10,7 +10,7 @@
 
 - Mainstem topology: 11 new variables (dist_out_dijkstra, hydro_dist_out,
   rch_id_up_main, rch_id_dn_main, best_headwater, best_outlet, pathlen_hw,
-  pathlen_out, is_mainstem_edge, main_path_id, subnetwork_id)
+  pathlen_out, is_mainstem, main_path_id, subnetwork_id)
 - SWOT observation statistics: percentile-based summaries (p10-p90, MAD,
   range) for WSE, width, slope at reach and node level. 72.6% coverage.
 - Facc corrections: 95,913/248,673 reaches (38.6%) corrected via

@@ -41,7 +41,7 @@ connected component of the river network. At each junction, the algorithm
 selects the upstream path with the highest effective width (primary),
 log(facc) (secondary), and cumulative path length (tertiary).
 
-`is_mainstem_edge` identifies the single mainstem chain per network
+`is_mainstem` identifies the single mainstem chain per network
 component by walking `rch_id_dn_main` from `best_headwater` to the outlet.
 This produces 2-12% mainstem per region (varying by network complexity).
 Ghost reaches (type=6) are excluded from mainstem but still participate in
@@ -58,7 +58,7 @@ routing topology.
 | `best_outlet` | int64 | — | Width-prioritized outlet reach_id for the network component |
 | `pathlen_hw` | float64 | meters | Cumulative path length from `best_headwater` |
 | `pathlen_out` | float64 | meters | Cumulative path length to `best_outlet` |
-| `is_mainstem_edge` | int32 | — | 1 if reach is on a mainstem path, 0 otherwise |
+| `is_mainstem` | int32 | — | 1 if reach is on a mainstem path, 0 otherwise |
 | `main_path_id` | int64 | — | Unique identifier for each mainstem path |
 | `subnetwork_id` | int32 | — | Connected component ID (Pfafstetter-offset, globally unique; see Section 4) |
 
@@ -176,7 +176,7 @@ CF attributes: `flag_values = [0,1,2,3,4,5,6,7,8]`,
 Flags combine by addition. A value of 0 indicates no quality issues.
 Example: 5 = negative slope (1) + high variance (4).
 
-### is_mainstem_edge
+### is_mainstem
 
 | Value | Meaning |
 |-------|---------|

@@ -213,7 +213,7 @@ The pipeline adds these columns to reaches:
 |-----------|-------------|
 | best_headwater | Optimal headwater reach ID |
 | best_outlet | Optimal outlet reach ID |
-| is_mainstem_edge | Boolean: on mainstem path |
+| is_mainstem | Boolean: on mainstem path |
 | rch_id_up_main | Upstream mainstem reach ID |
 | rch_id_dn_main | Downstream mainstem reach ID |
 | pathlen_hw | Path length to headwater (reaches) |

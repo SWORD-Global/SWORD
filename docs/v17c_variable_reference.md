@@ -17,7 +17,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | rch_id_dn_main | i8 | | -9999 | | Main downstream neighbor reach ID (mainstem-preferred) |
 | subnetwork_id | i4 | | -9999 | | Connected component ID (Pfafstetter-offset, globally unique; differs from v17b `network`) |
 | main_path_id | i8 | | -9999 | | ID of the mainstem path this reach belongs to |
-| is_mainstem_edge | i4 | | -9999 | BOOL->i4 (True=1, False=0) | Whether reach is on a mainstem path |
+| is_mainstem | i4 | | -9999 | BOOL->i4 (True=1, False=0) | Whether reach is on a mainstem path |
 | best_headwater | i8 | | -9999 | | Width-prioritized upstream headwater reach ID |
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
 | pathlen_hw | f8 | meters | -9999.0 | | Cumulative path length from headwater |

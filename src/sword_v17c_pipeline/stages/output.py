@@ -55,7 +55,7 @@ def save_to_duckdb(
             "best_outlet": ho.get("best_outlet"),
             "pathlen_hw": ho.get("pathlen_hw"),
             "pathlen_out": ho.get("pathlen_out"),
-            "is_mainstem_edge": ms,
+            "is_mainstem": ms,
             "rch_id_up_main": nb.get("rch_id_up_main"),
             "rch_id_dn_main": nb.get("rch_id_dn_main"),
         }
@@ -98,7 +98,7 @@ def save_to_duckdb(
         "best_outlet = u.best_outlet",
         "pathlen_hw = u.pathlen_hw",
         "pathlen_out = u.pathlen_out",
-        "is_mainstem_edge = u.is_mainstem_edge",
+        "is_mainstem = u.is_mainstem",
         "rch_id_up_main = u.rch_id_up_main",
         "rch_id_dn_main = u.rch_id_dn_main",
     ]

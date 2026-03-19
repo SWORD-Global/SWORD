@@ -69,7 +69,7 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     "path_segs",
     "main_side",
     "main_path_id",
-    "is_mainstem_edge",
+    "is_mainstem",
     "best_headwater",
     "best_outlet",
     "pathlen_hw",

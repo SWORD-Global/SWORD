@@ -279,7 +279,7 @@ CREATE TABLE reaches (
     pathlen_hw DOUBLE PRECISION,
     pathlen_out DOUBLE PRECISION,
     main_path_id BIGINT,
-    is_mainstem_edge BOOLEAN DEFAULT FALSE,
+    is_mainstem BOOLEAN DEFAULT FALSE,
     dist_out_dijkstra DOUBLE PRECISION,
     hydro_dist_out DOUBLE PRECISION,
     rch_id_up_main BIGINT,

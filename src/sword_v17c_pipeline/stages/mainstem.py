@@ -66,7 +66,7 @@ def compute_mainstem(
     main_neighbors: Dict[int, Dict] | None = None,
 ) -> Dict[int, bool]:
     """
-    Compute is_mainstem_edge for each reach.
+    Compute is_mainstem for each reach.
 
     For each weakly-connected network, finds the outlet (no successors), looks
     up its best_headwater, then walks the rch_id_dn_main chain from that

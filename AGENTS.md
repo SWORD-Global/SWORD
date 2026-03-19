@@ -1,4 +1,4 @@
-# Worker Instructions — fix-swot-width-column
+# Worker Instructions — rename-is-mainstem
 
 You are a **worker**. Complete the task, commit, and signal done.
 
@@ -214,7 +214,7 @@ workflow.close()
 - `hydro_dist_out` - mainstem distance to best_outlet via rch_id_dn_main chain
 - `best_headwater`, `best_outlet` - width-prioritized endpoints
 - `pathlen_hw`, `pathlen_out` - cumulative path lengths
-- `is_mainstem_edge`, `main_path_id` - mainstem identification
+- `is_mainstem`, `main_path_id` - mainstem identification
 - `rch_id_up_main`, `rch_id_dn_main` - main neighbor selection
 - `subnetwork_id` - connected component ID (Pfafstetter-offset, globally unique; NOT the same as v17b `network`)
 - `*_obs_mean/median/std/range`, `n_obs` - SWOT observation aggregations
@@ -250,7 +250,7 @@ workflow.close()
 | hydro_dist_out | Mainstem distance to best_outlet via rch_id_dn_main (m) |
 | best_headwater | Width-prioritized upstream headwater reach_id |
 | best_outlet | Width-prioritized downstream outlet reach_id |
-| is_mainstem_edge | TRUE if on mainstem path |
+| is_mainstem | TRUE if on mainstem path |
 | rch_id_up_main | Main upstream neighbor (mainstem-preferred) |
 | rch_id_dn_main | Main downstream neighbor (mainstem-preferred) |
 
@@ -313,7 +313,7 @@ python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duck
 | **POM lint findings (10 open investigation issues)** | POM validation checks found issues in v17c: 89K CL-node misallocations (#194), 4.8K WSE inversions (#195), 3.5K node spacing gaps (#193), 2.6K boundary dist_out gaps (#192), 553 dist_out jumps (#191), 467 boundary geo gaps (#188–#190), 197 name disagreements (#196). All are diagnose-first — see `docs/technical/pom_requests_summary.md` for full tracker. |
 | **Backwater override cascade danger** | Backwater QC overrides must ONLY go to `compute_main_neighbors`. NEVER pass them to `compute_best_headwater_outlet` — it propagates pathlen changes downstream through every reach, corrupting `best_outlet` for thousands of reaches (12,272 in prior incident). The `overrides` parameter was removed from `compute_best_headwater_outlet` to prevent this. |
 | **`subnetwork_id` ≠ `network`** | `network` is v17b original (per-region, 1-based). `subnetwork_id` is v17c (Pfafstetter-offset, globally unique). Different component counts too (v17c finds more components via weakly_connected_components). They are NOT interchangeable. |
-| **Ghost reaches (type=6) and `is_mainstem_edge`** | Ghost reaches must always have `is_mainstem_edge=FALSE`. The pipeline handles this in `compute_mainstem` (checks `type != 6` during chain walk). Ghosts still participate in routing (`rch_id_up_main`/`rch_id_dn_main`) because they're part of the topology — they just can't be flagged as mainstem. |
+| **Ghost reaches (type=6) and `is_mainstem`** | Ghost reaches must always have `is_mainstem=FALSE`. The pipeline handles this in `compute_mainstem` (checks `type != 6` during chain walk). Ghosts still participate in routing (`rch_id_up_main`/`rch_id_dn_main`) because they're part of the topology — they just can't be flagged as mainstem. |
 | **Flow correction oscillation** | 389 reaches (0.16%) in AF/AS/EU/NA/SA have ambiguous WSE slope signals — the flow correction scoring detects them as wrong in BOTH directions, flipping them back and forth across pipeline runs. This caused `rch_id_dn_main` to disagree with `rch_id_dn`/`rch_id_up` arrays (computed from different graph states). Fixed by reverting topology to v17b for these sections. OC is unaffected (0 oscillating sections). Cross-run oscillation guard needed — current guard only prevents re-flips within a single run. |
 
 ## Column Name Gotchas
