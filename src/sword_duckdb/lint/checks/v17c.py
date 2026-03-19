@@ -197,8 +197,8 @@ def check_hydro_dist_vs_pathlen(
 @register_check(
     "V004",
     Category.V17C,
-    Severity.WARNING,
-    "is_mainstem continuity check",
+    Severity.INFO,
+    "is_mainstem continuity check (expected ~10% gaps at path-group boundaries)",
 )
 def check_mainstem_continuity(
     conn: duckdb.DuckDBPyConnection,
@@ -210,6 +210,10 @@ def check_mainstem_continuity(
 
     Mainstem reaches should have at least one mainstem neighbor
     (except headwaters and outlets).
+
+    NOTE: ~10% gaps are expected by design. Each main_path_id group
+    has its own mainstem chain, so at path-group boundaries a mainstem
+    reach may neighbor a non-mainstem reach from a different group.
     """
     where_clause = f"AND r.region = '{region}'" if region else ""
 
@@ -276,7 +280,7 @@ def check_mainstem_continuity(
         issues_found=len(issues),
         issue_pct=100 * len(issues) / total if total > 0 else 0,
         details=issues,
-        description="Mainstem reaches without continuous mainstem path",
+        description="Mainstem reaches without continuous mainstem path (expected at path-group boundaries)",
     )
 
 
