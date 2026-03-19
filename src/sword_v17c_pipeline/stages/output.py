@@ -139,6 +139,85 @@ def save_to_duckdb(
     return len(rows)
 
 
+def update_node_columns(
+    conn: duckdb.DuckDBPyConnection,
+    region: str,
+) -> int:
+    """
+    Compute dn_node_id/up_node_id (reaches) and node_order (nodes) for a region.
+
+    Uses dist_out ordering, not node_id, so results are correct even when
+    flow direction changes reorder node IDs.
+
+    Returns number of nodes updated.
+    """
+    log(f"Updating node columns for {region}...")
+
+    # Drop RTREE indexes before UPDATE (DuckDB segfaults otherwise)
+    conn.execute("INSTALL spatial; LOAD spatial;")
+    rtree_indexes = conn.execute(
+        "SELECT index_name, table_name, sql FROM duckdb_indexes() "
+        "WHERE sql LIKE '%RTREE%'"
+    ).fetchall()
+    for idx_name, _tbl, _sql in rtree_indexes:
+        conn.execute(f'DROP INDEX "{idx_name}"')
+
+    try:
+        return _update_node_columns_inner(conn, region)
+    finally:
+        for _idx_name, _tbl, sql in rtree_indexes:
+            conn.execute(sql)
+
+
+def _update_node_columns_inner(
+    conn: duckdb.DuckDBPyConnection,
+    region: str,
+) -> int:
+    # dn_node_id = lowest dist_out node, up_node_id = highest
+    conn.execute(
+        """
+        WITH boundary AS (
+            SELECT reach_id, region,
+                FIRST(node_id ORDER BY dist_out ASC) AS dn_nid,
+                FIRST(node_id ORDER BY dist_out DESC) AS up_nid
+            FROM nodes
+            WHERE region = ?
+            GROUP BY reach_id, region
+        )
+        UPDATE reaches
+        SET dn_node_id = boundary.dn_nid,
+            up_node_id = boundary.up_nid
+        FROM boundary
+        WHERE reaches.reach_id = boundary.reach_id
+          AND reaches.region = boundary.region
+        """,
+        [region.upper()],
+    )
+
+    # node_order = 1..n per reach, ordered by dist_out ascending (1=downstream)
+    result = conn.execute(
+        """
+        WITH ordered AS (
+            SELECT node_id, region,
+                ROW_NUMBER() OVER (
+                    PARTITION BY reach_id, region ORDER BY dist_out ASC
+                ) AS rn
+            FROM nodes
+            WHERE region = ?
+        )
+        UPDATE nodes
+        SET node_order = ordered.rn
+        FROM ordered
+        WHERE nodes.node_id = ordered.node_id
+          AND nodes.region = ordered.region
+        """,
+        [region.upper()],
+    )
+    count = result.fetchone()[0]
+    log(f"Updated {count:,} nodes with node_order")
+    return count
+
+
 def save_sections_to_duckdb(
     conn: duckdb.DuckDBPyConnection,
     region: str,

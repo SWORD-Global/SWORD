@@ -60,7 +60,12 @@ from .stages.mainstem import (
     compute_main_neighbors,
     compute_main_paths,
 )
-from .stages.output import save_to_duckdb, save_sections_to_duckdb, apply_swot_slopes
+from .stages.output import (
+    save_to_duckdb,
+    save_sections_to_duckdb,
+    apply_swot_slopes,
+    update_node_columns,
+)
 from .stages._logging import log
 from .pfaf_offsets import compute_subnetwork_ids
 
@@ -87,6 +92,7 @@ __all__ = [
     "save_to_duckdb",
     "save_sections_to_duckdb",
     "apply_swot_slopes",
+    "update_node_columns",
     "compute_junction_slopes",
     "create_v17c_tables",
     "process_region",
@@ -525,6 +531,7 @@ def _process_region_inner(
             dijkstra_dist=dijkstra_dist,
         )
         save_sections_to_duckdb(conn, region, sections_df, validation_df)
+        update_node_columns(conn, region)
 
     # Apply SWOT slopes if requested
     n_swot_updated = 0
