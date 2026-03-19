@@ -13,14 +13,14 @@ def get_effective_width(attrs: Dict, min_obs: int = 5) -> float:
     """
     Get effective width for routing decisions.
 
-    Prefers SWOT-observed width (width_obs_median) if n_obs >= min_obs,
+    Prefers SWOT-observed width (width_obs_p50) if n_obs >= min_obs,
     otherwise falls back to original GRWL width.
     """
     n_obs = attrs.get("n_obs", 0)
     if pd.isna(n_obs):
         n_obs = 0
     if n_obs >= min_obs:
-        swot_width = attrs.get("width_obs_median")
+        swot_width = attrs.get("width_obs_p50")
         if swot_width is not None and not pd.isna(swot_width) and swot_width > 0:
             return swot_width
     width = attrs.get("width", 0)
@@ -65,7 +65,7 @@ def build_reach_graph(
             "end_reach": row.get("end_reach", 0),
             "wse": row.get("wse"),
             "wse_obs_p50": row.get("wse_obs_p50"),
-            "width_obs_median": row.get("width_obs_median"),
+            "width_obs_p50": row.get("width_obs_p50"),
             "n_obs": row.get("n_obs", 0),
         }
 
@@ -77,7 +77,7 @@ def build_reach_graph(
 
         # Track usage stats
         n_obs_val = base_attrs.get("n_obs", 0)
-        width_obs_val = base_attrs.get("width_obs_median")
+        width_obs_val = base_attrs.get("width_obs_p50")
         if (
             not pd.isna(n_obs_val)
             and n_obs_val >= 5

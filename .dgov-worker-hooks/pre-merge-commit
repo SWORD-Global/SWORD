@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+echo "ERROR: Workers must not integrate branches (merge, pull, rebase)." >&2
+echo "Commit your changes and let the governor handle integration." >&2
+exit 1
