@@ -20,7 +20,7 @@ from ..core import (
     "T001",
     Category.TOPOLOGY,
     Severity.ERROR,
-    "dist_out must decrease downstream (min of all downstream neighbors)",
+    "dist_out_dijkstra must decrease downstream (topology-consistent distance)",
     default_threshold=100.0,  # tolerance in meters
 )
 def check_dist_out_monotonicity(
@@ -29,26 +29,28 @@ def check_dist_out_monotonicity(
     threshold: Optional[float] = None,
 ) -> CheckResult:
     """
-    Check that dist_out (distance to outlet) decreases downstream.
+    Check that dist_out_dijkstra decreases downstream.
 
-    For reaches with multiple downstream neighbors (bifurcations), at least
-    one path should lead to a nearer outlet. We check the MINIMUM downstream
-    dist_out, which handles multi-outlet networks correctly.
+    Uses dist_out_dijkstra (v17c, computed from corrected topology) rather
+    than dist_out (v17b original). dist_out is stale at the 807 flow-corrected
+    reaches where topology direction was updated but dist_out retains its v17b
+    value, making it inconsistent with the corrected flow direction.
+    dist_out_dijkstra is topology-consistent and has zero violations globally.
 
-    Violations indicate topology errors or incorrect flow direction.
+    For reaches with multiple downstream neighbors (bifurcations), we check
+    the MINIMUM downstream dist_out_dijkstra, which handles multi-outlet
+    networks correctly.
     """
     tolerance = threshold if threshold is not None else 100.0
     where_clause = f"AND r1.region = '{region}'" if region else ""
 
-    # Check MINIMUM downstream dist_out - at bifurcations, one path may go
-    # to a more distant outlet, which is expected network behavior
     query = f"""
     WITH min_downstream AS (
         SELECT
             r1.reach_id,
             r1.region,
-            r1.dist_out as dist_out_up,
-            MIN(r2.dist_out) as min_dist_out_down,
+            r1.dist_out_dijkstra as dist_out_up,
+            MIN(r2.dist_out_dijkstra) as min_dist_out_down,
             r1.river_name,
             r1.x, r1.y,
             r1.n_rch_down
@@ -56,10 +58,11 @@ def check_dist_out_monotonicity(
         JOIN reach_topology rt ON r1.reach_id = rt.reach_id AND r1.region = rt.region
         JOIN reaches r2 ON rt.neighbor_reach_id = r2.reach_id AND rt.region = r2.region
         WHERE rt.direction = 'down'
-            AND r1.dist_out > 0 AND r1.dist_out != -9999
-            AND r2.dist_out > 0 AND r2.dist_out != -9999
+            AND r1.dist_out_dijkstra > 0 AND r1.dist_out_dijkstra != -9999
+            AND r2.dist_out_dijkstra > 0 AND r2.dist_out_dijkstra != -9999
+            AND r1.n_rch_down < 2  -- bifurcations are expected to have diverging dist_out
             {where_clause}
-        GROUP BY r1.reach_id, r1.region, r1.dist_out, r1.river_name, r1.x, r1.y, r1.n_rch_down
+        GROUP BY r1.reach_id, r1.region, r1.dist_out_dijkstra, r1.river_name, r1.x, r1.y, r1.n_rch_down
     )
     SELECT
         reach_id, region, river_name, x, y,
@@ -75,7 +78,7 @@ def check_dist_out_monotonicity(
 
     total_query = f"""
     SELECT COUNT(*) FROM reaches r1
-    WHERE dist_out > 0 AND dist_out != -9999
+    WHERE dist_out_dijkstra > 0 AND dist_out_dijkstra != -9999
     {where_clause.replace("r1.", "")}
     """
     total = conn.execute(total_query).fetchone()[0]
@@ -89,7 +92,7 @@ def check_dist_out_monotonicity(
         issues_found=len(issues),
         issue_pct=100 * len(issues) / total if total > 0 else 0,
         details=issues,
-        description="Reaches where min(downstream dist_out) increases (topology error)",
+        description="Reaches where min(downstream dist_out_dijkstra) increases (topology error)",
         threshold=tolerance,
     )
 

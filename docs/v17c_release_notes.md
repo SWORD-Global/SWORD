@@ -1,9 +1,20 @@
 # SWORD v17c Beta Release Notes
 
-**Version:** v17c beta
+**Version:** v17c beta 0.0.2
 **Date:** March 2026
 **Authors:** Gearon, Pavelsky
 **Base version:** SWORD v17b (March 2025, UNC)
+
+## Changelog
+
+### 0.0.2 (March 2026)
+- Renamed `is_mainstem_edge` → `is_mainstem`
+- Mainstem algorithm refactored: computed per `main_path_id` group (see Section 2.1)
+- Fixed `n_rch_up`/`n_rch_down` stale counts at 148 flow-corrected reaches
+
+### 0.0.1 (March 2026)
+- Initial v17c beta release
+- Includes `node_order`, `dn_node_id`, `up_node_id` (node ordering within reaches)
 
 ---
 
@@ -36,16 +47,17 @@ For a complete variable catalog, see
 
 ### 2.1 Mainstem Topology (reaches group)
 
-The variables below define a width-prioritized mainstem through each
-connected component of the river network. At each junction, the algorithm
-selects the upstream path with the highest effective width (primary),
-log(facc) (secondary), and cumulative path length (tertiary).
-
-`is_mainstem` identifies the single mainstem chain per network
-component by walking `rch_id_dn_main` from `best_headwater` to the outlet.
-This produces 2-12% mainstem per region (varying by network complexity).
+`is_mainstem` is computed per `main_path_id` group: each group (a mainstem
+path plus its tributary branches) gets one canonical chain, identified by a
+greedy walk from the group's shared `best_headwater`. At each junction the
+algorithm selects the upstream branch with the highest effective width
+(primary), log(facc) (secondary), and cumulative path length (tertiary).
+Mainstem reaches within each group are then assigned `rch_id_up_main` /
+`rch_id_dn_main` from the chain; non-mainstem reaches use local width ranking.
+This produces 82–89% mainstem per region (varying by network complexity).
 Ghost reaches (type=6) are excluded from mainstem but still participate in
-routing topology.
+routing topology. ~10% of mainstem reaches have no mainstem neighbor at
+`main_path_id` group boundaries — this is expected by design.
 
 | Variable | Type | Units | Description |
 |----------|------|-------|-------------|
@@ -59,11 +71,17 @@ routing topology.
 | `pathlen_hw` | float64 | meters | Cumulative path length from `best_headwater` |
 | `pathlen_out` | float64 | meters | Cumulative path length to `best_outlet` |
 | `is_mainstem` | int32 | — | 1 if reach is on a mainstem path, 0 otherwise |
-| `main_path_id` | int64 | — | Unique identifier for each mainstem path |
+| `main_path_id` | int64 | — | Unique identifier for each mainstem path group |
 | `subnetwork_id` | int32 | — | Connected component ID (Pfafstetter-offset, globally unique; see Section 4) |
+| `dn_node_id` | int64 | — | Node ID at the downstream end of the reach (lowest `dist_out`) |
+| `up_node_id` | int64 | — | Node ID at the upstream end of the reach (highest `dist_out`) |
 
 Five of these variables also appear at node level: `subnetwork_id`,
 `best_headwater`, `best_outlet`, `pathlen_hw`, and `pathlen_out`.
+
+`node_order` is a node-level variable (not in the reaches table): 1-based
+position within a reach, ordered by `dist_out` ascending (1 = downstream
+end, n = upstream end).
 
 ### 2.2 SWOT Observation Statistics
 
@@ -114,8 +132,9 @@ for the full algorithm description.
 | `facc_quality` | int32 | reaches, nodes | 1 = corrected by denoise_v3; fill_value = not flagged |
 
 After correction, junction conservation violations (downstream facc < sum
-of upstream facc) and monotonicity violations on non-bifurcating links no
-longer occur in any region.
+of upstream facc) are resolved in all regions. 293 facc monotonicity
+violations on non-bifurcating 1:1 links remain (below detection threshold;
+targeted for correction in 0.0.3).
 
 ### 2.4 Other New or Updated Variables
 
@@ -233,6 +252,13 @@ Example: 5 = negative slope (1) + high variance (4).
   26% (AF) to 69% (OC). 2.6% of mainstem 1:1 links have local name
   discontinuities (name changes between adjacent reaches with no junction).
 
+- **`lakeflag`/`type` mismatch:** ~5,770 reaches have `lakeflag=1` (lake)
+  but `type=1` (river), introduced by HarP and lake-sandwich corrections
+  which updated `lakeflag` but not `type`. `type` is encoded in the last
+  digit of `reach_id`, so changing it would change reach IDs. Policy for
+  reach_id changes under discussion. Affects users filtering on both
+  `lakeflag` and `type` at river-lake boundaries. Tracked in issue #208.
+
 ---
 
 ## 5. Quality Audits
@@ -245,7 +271,7 @@ Validation checks performed on the v17c data:
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
 | **path_freq gaps** | v17b had 4,952 connected non-ghost reaches with invalid path_freq (0 or -9999). Resolved in v17c; remaining nodata values are correctly attributed to ghost reaches (type=6). |
 | **subnetwork_id** | 3,027 components across 248,673 reaches verified. Pfafstetter banding correct. Zero cross-region collisions. 19 subnetworks (0.6%) span multiple v17b networks (expected). |
-| **Topology integrity** | T001 (dist_out monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: zero non-reciprocal edges (151 from incomplete flow correction revert resolved in beta 0.0.1). |
+| **Topology integrity** | T001 (dist_out_dijkstra monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: zero non-reciprocal edges (151 from incomplete flow correction revert resolved in beta 0.0.1). Note: v17b `dist_out` is stale at 807 flow-corrected reaches where topology direction was updated but `dist_out` retains its v17b value — use `dist_out_dijkstra` or `hydro_dist_out` for distance routing. |
 | **n_rch_up/n_rch_down** | 148 scalar count mismatches corrected (flow corrections flipped reach_topology but did not recalculate counts). Zero mismatches across all 248,673 reaches. |
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
@@ -266,7 +292,7 @@ For POM (Pierre-Olivier Malaterre) validation results, see
   - `reaches/area_fits` and `reaches/discharge_models` subgroups (from v17b)
 - **Ordering:** Reach, node, and centerline arrays match v17b ordering
 - **Fill value:** -9999 for all numeric variables (int32, int64, float64)
-- **Checksums:** SHA256 hashes listed in `SHA256SUMS.txt`
+- **Checksums:** SHA256 hashes listed in `SHA256SUMS_{version}.txt`
 - **Additional formats:** GeoPackage and GeoParquet exports available
   (reaches and nodes per region, with geometry)
 
