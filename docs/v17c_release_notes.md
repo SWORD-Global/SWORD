@@ -8,9 +8,11 @@
 ## Changelog
 
 ### 0.0.2 (March 2026)
-- Renamed `is_mainstem_edge` → `is_mainstem`
+- Renamed `is_mainstem_edge` to `is_mainstem`
 - Mainstem algorithm refactored: computed per `main_path_id` group (see Section 2.1)
 - Fixed `n_rch_up`/`n_rch_down` stale counts at 148 flow-corrected reaches
+- Recomputed `facc` at 807 flow-corrected reaches using topological propagation; resolves all F006 junction conservation violations and T003 monotonicity violations at these reaches
+- OC reach 51111300061 incomplete split fully reverted to v17b state (434 orphan centerlines, 73 orphan nodes restored)
 
 ### 0.0.1 (March 2026)
 - Initial v17c beta release
@@ -132,9 +134,9 @@ for the full algorithm description.
 | `facc_quality` | int32 | reaches, nodes | 1 = corrected by denoise_v3; fill_value = not flagged |
 
 After correction, junction conservation violations (downstream facc < sum
-of upstream facc) are resolved in all regions. 293 facc monotonicity
-violations on non-bifurcating 1:1 links remain (below detection threshold;
-targeted for correction in 0.0.3).
+of upstream facc) are resolved in all regions. In 0.0.2, facc was
+additionally recomputed at 807 flow-corrected reaches via topological
+propagation, resolving remaining monotonicity violations at those reaches.
 
 ### 2.4 Other New or Updated Variables
 
@@ -252,6 +254,11 @@ Example: 5 = negative slope (1) + high variance (4).
   26% (AF) to 69% (OC). 2.6% of mainstem 1:1 links have local name
   discontinuities (name changes between adjacent reaches with no junction).
 
+- **Width fill values (A003):** ~1,266 reaches have `width=0` (unmeasured) or
+  `width=-1` (GRWL lake fill). These are v17b fill values, not data errors.
+  Present in both v17b and v17c unchanged. The A003 lint check is downgraded
+  to WARNING for this reason.
+
 - **`lakeflag`/`type` mismatch:** ~5,770 reaches have `lakeflag=1` (lake)
   but `type=1` (river), introduced by HarP and lake-sandwich corrections
   which updated `lakeflag` but not `type`. `type` is encoded in the last
@@ -275,8 +282,8 @@ Validation checks performed on the v17c data:
 | **n_rch_up/n_rch_down** | 148 scalar count mismatches corrected (flow corrections flipped reach_topology but did not recalculate counts). Zero mismatches across all 248,673 reaches. |
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
-| **Flow direction** | 1,112 experimental topology flips reverted after causing 30K disconnected reaches. Current v17c topology matches v17b except for OC (26 validated sections flipped per SWOT slope evidence). |
-| **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0→1 from HarP v1.1 data. 200,201 nodes propagated. Tagged `edit_flag = "harp_lake"`. |
+| **Flow direction** | 1,112 experimental topology flips reverted after causing 30K disconnected reaches. 807 reaches across all regions retain corrected topology that differs from v17b (175 sections, median 5 reaches/section). OC has 119 of these (26 SWOT-validated sections). Non-OC corrections were retained from the flow correction pipeline; `dist_out` is stale at these reaches — use `dist_out_dijkstra`. |
+| **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data. 200,201 nodes propagated. Tagged `edit_flag = "harp_lake"`. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
 [pom_validation_report.md](technical/pom_validation_report.md).

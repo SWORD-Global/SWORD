@@ -41,6 +41,7 @@ from .stages.loading import (
     load_topology,
     load_reaches,
     run_facc_corrections,
+    recompute_facc_flow_corrected,
 )
 from .stages.graph import (
     get_effective_width,
@@ -77,6 +78,7 @@ __all__ = [
     "load_topology",
     "load_reaches",
     "run_facc_corrections",
+    "recompute_facc_flow_corrected",
     "build_reach_graph",
     "identify_junctions",
     "build_section_graph",
@@ -311,11 +313,15 @@ def process_region(
     log(f"{'=' * 60}")
 
     # Run facc corrections BEFORE opening the long-lived workflow.
-    # correct_facc_denoise opens its own DuckDB write connection, so we
+    # Both functions open their own DuckDB write connections, so we
     # must not hold one simultaneously.
     n_facc_corrections = 0
+    n_facc_flow_corrected = 0
     if not skip_facc:
         n_facc_corrections = run_facc_corrections(db_path, v17b_path, region)
+        n_facc_flow_corrected = recompute_facc_flow_corrected(
+            db_path, v17b_path, region
+        )
 
     # Initialize workflow (after facc, so no write-lock conflict)
     workflow = SWORDWorkflow(user_id=user_id)
@@ -329,6 +335,7 @@ def process_region(
             db_path=db_path,
             region=region,
             n_facc_corrections=n_facc_corrections,
+            n_facc_flow_corrected=n_facc_flow_corrected,
             skip_swot=skip_swot,
             swot_path=swot_path,
             skip_path_vars=skip_path_vars,
@@ -346,6 +353,7 @@ def _process_region_inner(
     db_path: str,
     region: str,
     n_facc_corrections: int,
+    n_facc_flow_corrected: int,
     skip_swot: bool,
     swot_path: Optional[str],
     skip_path_vars: bool,
@@ -558,6 +566,7 @@ def _process_region_inner(
                 failed_checks=e.failed_checks,
                 stats={
                     "facc_corrections": n_facc_corrections,
+                    "facc_flow_corrected": n_facc_flow_corrected,
                     "sections": len(sections_df),
                 },
             )
@@ -565,6 +574,7 @@ def _process_region_inner(
     # Summary statistics
     stats = {
         "facc_corrections": n_facc_corrections,
+        "facc_flow_corrected": n_facc_flow_corrected,
         "sections": len(sections_df),
         "junctions": len(junctions),
         "mainstem_reaches": sum(is_mainstem.values()),
@@ -741,11 +751,11 @@ def run_pipeline(
             log(f"{r.region}: FAILED - {err}")
         else:
             s = r.stats
-            facc_str = (
-                f", {s['facc_corrections']:,} facc fixes"
-                if s.get("facc_corrections")
-                else ""
-            )
+            facc_str = ""
+            if s.get("facc_corrections"):
+                facc_str += f", {s['facc_corrections']:,} facc fixes"
+            if s.get("facc_flow_corrected"):
+                facc_str += f", {s['facc_flow_corrected']:,} facc flow-corrected"
             pf_str = (
                 f", {s['path_freq_valid']:,} valid pf"
                 if s.get("path_freq_valid")

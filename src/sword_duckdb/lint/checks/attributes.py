@@ -93,15 +93,20 @@ def check_slope_plausibility(
 @register_check(
     "A003",
     Category.ATTRIBUTES,
-    Severity.ERROR,
-    "Width must be positive",
+    Severity.WARNING,
+    "Width must be positive (width=0 and width=-1 are v17b fill values, not errors)",
 )
 def check_width_positive(
     conn: duckdb.DuckDBPyConnection,
     region: Optional[str] = None,
     threshold: Optional[float] = None,
 ) -> CheckResult:
-    """Flag reaches with non-positive widths."""
+    """Flag reaches with non-positive widths.
+
+    width=0 means unmeasured; width=-1 is the GRWL lake fill value.
+    Both are inherited from v17b (~1,266 reaches globally). Downgraded
+    to WARNING because these are expected fill values, not data errors.
+    """
     where_clause = f"AND region = '{region}'" if region else ""
 
     query = f"""
@@ -124,7 +129,7 @@ def check_width_positive(
     return CheckResult(
         check_id="A003",
         name="width_positive",
-        severity=Severity.ERROR,
+        severity=Severity.WARNING,
         passed=len(issues) == 0,
         total_checked=total,
         issues_found=len(issues),
