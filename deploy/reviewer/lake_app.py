@@ -1147,7 +1147,7 @@ with tab_c001:
     if result:
         issues = result.details
         total = len(issues)
-        done = len(all_reviewed_c001)
+        done = len([r for r in issues["reach_id"].tolist() if r in all_reviewed_c001])
         remaining = (
             len([r for r in issues["reach_id"].tolist() if r not in all_reviewed_c001])
             if total > 0
