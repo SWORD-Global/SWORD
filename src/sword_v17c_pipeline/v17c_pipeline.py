@@ -317,9 +317,10 @@ def process_region(
     # must not hold one simultaneously.
     n_facc_corrections = 0
     n_facc_flow_corrected = 0
+    flipped_reach_ids: set[int] = set()
     if not skip_facc:
         n_facc_corrections = run_facc_corrections(db_path, v17b_path, region)
-        n_facc_flow_corrected = recompute_facc_flow_corrected(
+        n_facc_flow_corrected, flipped_reach_ids = recompute_facc_flow_corrected(
             db_path, v17b_path, region
         )
 
@@ -336,6 +337,7 @@ def process_region(
             region=region,
             n_facc_corrections=n_facc_corrections,
             n_facc_flow_corrected=n_facc_flow_corrected,
+            flipped_reach_ids=flipped_reach_ids,
             skip_swot=skip_swot,
             swot_path=swot_path,
             skip_path_vars=skip_path_vars,
@@ -354,6 +356,7 @@ def _process_region_inner(
     region: str,
     n_facc_corrections: int,
     n_facc_flow_corrected: int,
+    flipped_reach_ids: set[int],
     skip_swot: bool,
     swot_path: Optional[str],
     skip_path_vars: bool,
@@ -543,7 +546,7 @@ def _process_region_inner(
             dijkstra_dist=dijkstra_dist,
         )
         save_sections_to_duckdb(conn, region, sections_df, validation_df)
-        update_node_columns(conn, region)
+        update_node_columns(conn, region, flipped_reach_ids=flipped_reach_ids)
 
     # Apply SWOT slopes if requested
     n_swot_updated = 0

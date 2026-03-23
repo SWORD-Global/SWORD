@@ -77,7 +77,9 @@ def load_reaches(conn: duckdb.DuckDBPyConnection, region: str) -> pd.DataFrame:
     return df
 
 
-def recompute_facc_flow_corrected(db_path: str, v17b_path: str, region: str) -> int:
+def recompute_facc_flow_corrected(
+    db_path: str, v17b_path: str, region: str
+) -> tuple[int, set[int]]:
     """
     Recompute facc for reaches whose flow direction differs from v17b.
 
@@ -92,8 +94,10 @@ def recompute_facc_flow_corrected(db_path: str, v17b_path: str, region: str) -> 
 
     Returns
     -------
-    int
-        Number of reaches whose facc changed by > 1 km².
+    tuple[int, set[int]]
+        (number of reaches whose facc changed by > 1 km², set of ALL
+        flow-corrected reach IDs for this region — needed by
+        update_node_columns to reverse node ordering).
     """
     import duckdb as _duckdb
 
@@ -127,7 +131,7 @@ def recompute_facc_flow_corrected(db_path: str, v17b_path: str, region: str) -> 
     if flipped_df.empty:
         log(f"  No flow-corrected reaches for {region}")
         con.close()
-        return 0
+        return 0, set()
 
     flipped_set = set(flipped_df["reach_id"].tolist())
     ids_sql = ",".join(str(r) for r in flipped_set)
@@ -232,7 +236,7 @@ def recompute_facc_flow_corrected(db_path: str, v17b_path: str, region: str) -> 
     if not changes:
         log(f"  No significant facc changes needed in {region}")
         con.close()
-        return 0
+        return 0, flipped_set
 
     log(f"  {len(changes)} facc values will change by > 1 km² in {region}")
     updates = pd.DataFrame(changes, columns=["reach_id", "new_facc"])
@@ -256,7 +260,7 @@ def recompute_facc_flow_corrected(db_path: str, v17b_path: str, region: str) -> 
 
     con.close()
     log(f"  Updated {len(changes)} flow-corrected facc values in {region}")
-    return len(changes)
+    return len(changes), flipped_set
 
 
 def run_facc_corrections(db_path: str, v17b_path: str, region: str) -> int:

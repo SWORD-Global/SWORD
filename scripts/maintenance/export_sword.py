@@ -535,7 +535,18 @@ def export_netcdf(
     reach_id_to_idx = {int(rid): i for i, rid in enumerate(reach_ids)}
 
     # Write scalar reach variables
-    _SKIP_COLS = {"region"}
+    # Skip region (internal) and rch_id_up/dn_1..4 (redundant with [4,N] matrices)
+    _SKIP_COLS = {
+        "region",
+        "rch_id_up_1",
+        "rch_id_up_2",
+        "rch_id_up_3",
+        "rch_id_up_4",
+        "rch_id_dn_1",
+        "rch_id_dn_2",
+        "rch_id_dn_3",
+        "rch_id_dn_4",
+    }
     _STRING_COLS = {
         "river_name",
         "river_name_en",
@@ -600,11 +611,11 @@ def export_netcdf(
         )
         var_dn[:] = rch_id_dn
 
-    # SWOT orbits [75, num_reaches]
+    # SWOT orbits [75, num_reaches] — int64 to match v17b format
     if orbits_df is not None and not orbits_df.empty:
         max_orbits = 75
         rch_grp.createDimension("num_orbits", max_orbits)
-        orbit_arr = np.zeros((max_orbits, num_reaches), dtype="U20")
+        orbit_arr = np.zeros((max_orbits, num_reaches), dtype=np.int64)
 
         for _, row in orbits_df.iterrows():
             rid = int(row["reach_id"])
@@ -613,16 +624,16 @@ def export_netcdf(
                 continue
             orbit_idx = int(row.get("orbit_index", row.get("orbit_rank", 0)))
             if 0 <= orbit_idx < max_orbits:
-                orbit_arr[orbit_idx, idx] = str(
-                    row.get("pass_tile", row.get("orbit_id", ""))
-                )
+                raw = row.get("pass_tile", row.get("orbit_id", 0))
+                try:
+                    orbit_arr[orbit_idx, idx] = int(raw)
+                except (ValueError, TypeError):
+                    orbit_arr[orbit_idx, idx] = 0
 
         var_orb = rch_grp.createVariable(
-            "swot_orbits", str, ("num_orbits", "num_reaches")
+            "swot_orbits", "i8", ("num_orbits", "num_reaches"), fill_value=0
         )
-        for i in range(max_orbits):
-            for j in range(num_reaches):
-                var_orb[i, j] = orbit_arr[i, j]
+        var_orb[:] = orbit_arr
 
     # Ice flags [366, num_reaches]
     if ice_df is not None and not ice_df.empty:

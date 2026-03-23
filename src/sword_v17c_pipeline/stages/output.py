@@ -142,12 +142,17 @@ def save_to_duckdb(
 def update_node_columns(
     conn: duckdb.DuckDBPyConnection,
     region: str,
+    flipped_reach_ids: set[int] | None = None,
 ) -> int:
     """
     Compute dn_node_id/up_node_id (reaches) and node_order (nodes) for a region.
 
     Uses dist_out ordering, not node_id, so results are correct even when
     flow direction changes reorder node IDs.
+
+    For flow-corrected reaches (flipped_reach_ids), node dist_out is stale
+    (reflects v17b topology), so we reverse the ordering after the initial
+    computation: swap dn/up_node_id and invert node_order.
 
     Returns number of nodes updated.
     """
@@ -163,7 +168,7 @@ def update_node_columns(
         conn.execute(f'DROP INDEX "{idx_name}"')
 
     try:
-        return _update_node_columns_inner(conn, region)
+        return _update_node_columns_inner(conn, region, flipped_reach_ids)
     finally:
         for _idx_name, _tbl, sql in rtree_indexes:
             conn.execute(sql)
@@ -172,6 +177,7 @@ def update_node_columns(
 def _update_node_columns_inner(
     conn: duckdb.DuckDBPyConnection,
     region: str,
+    flipped_reach_ids: set[int] | None = None,
 ) -> int:
     # dn_node_id = lowest dist_out node, up_node_id = highest
     conn.execute(
@@ -215,6 +221,41 @@ def _update_node_columns_inner(
     )
     count = result.fetchone()[0]
     log(f"Updated {count:,} nodes with node_order")
+
+    # For flow-corrected reaches, node dist_out is stale (v17b values).
+    # The downstream end is now the HIGH dist_out end, so reverse ordering.
+    if flipped_reach_ids:
+        ids_sql = ",".join(str(r) for r in flipped_reach_ids)
+
+        # Swap dn_node_id <-> up_node_id
+        conn.execute(
+            f"""
+            UPDATE reaches
+            SET dn_node_id = up_node_id,
+                up_node_id = dn_node_id
+            WHERE reach_id IN ({ids_sql})
+              AND region = ?
+            """,
+            [region.upper()],
+        )
+
+        # Reverse node_order: node_order = n_nodes + 1 - node_order
+        conn.execute(
+            f"""
+            UPDATE nodes
+            SET node_order = r.n_nodes + 1 - nodes.node_order
+            FROM reaches r
+            WHERE nodes.reach_id = r.reach_id
+              AND nodes.region = r.region
+              AND nodes.reach_id IN ({ids_sql})
+              AND nodes.region = ?
+            """,
+            [region.upper()],
+        )
+        log(
+            f"Reversed node ordering for {len(flipped_reach_ids)} flow-corrected reaches"
+        )
+
     return count
 
 
