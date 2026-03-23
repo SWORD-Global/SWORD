@@ -139,9 +139,9 @@ workflow.close()
 **Core Tables:**
 - **centerlines** - PK: (cl_id, region) - river path points
 - **nodes** - PK: (node_id, region) - measurement points at ~200m intervals
-  - `node_order`: 1-based position within reach (1=downstream, n=upstream, by dist_out)
+  - `node_order`: 1-based position within reach (1=downstream, n=upstream, by dist_out). Reversed for 810 flow-corrected reaches where node dist_out is stale.
 - **reaches** - PK: reach_id - river segments between junctions
-  - `dn_node_id`, `up_node_id`: downstream/upstream boundary node IDs (by dist_out, not node_id)
+  - `dn_node_id`, `up_node_id`: downstream/upstream boundary node IDs (by dist_out, not node_id). Swapped for flow-corrected reaches.
 
 **Topology:**
 - **reach_topology** - upstream/downstream neighbors, normalized from NetCDF [4,N] arrays
@@ -152,7 +152,7 @@ workflow.close()
 - **reach_swot_orbits** - SWOT satellite coverage
 - **reach_ice_flags** - daily ice presence (366 days)
 
-**Note:** In NetCDF, `rch_id_up`/`rch_id_dn` are [4, num_reaches] arrays. In DuckDB, these are normalized into the `reach_topology` table. The `rch_id_up_1-4` columns seen in some contexts are reconstructed on-demand, not stored.
+**Note:** In NetCDF, `rch_id_up`/`rch_id_dn` are [4, num_reaches] arrays. In DuckDB, these are normalized into the `reach_topology` table. The `rch_id_up_1..4`/`rch_id_dn_1..4` columns exist in the DB `reaches` table (synced from `reach_topology`) but are excluded from NetCDF export to avoid redundancy.
 
 **Provenance:**
 - **sword_operations** - audit trail
@@ -278,8 +278,10 @@ python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duck
 | **POM lint findings (10 open investigation issues)** | POM validation checks found issues in v17c: 89K CL-node misallocations (#194), 4.8K WSE inversions (#195), 3.5K node spacing gaps (#193), 2.6K boundary dist_out gaps (#192), 553 dist_out jumps (#191), 467 boundary geo gaps (#188–#190), 197 name disagreements (#196). All are diagnose-first — see `docs/technical/pom_requests_summary.md` for full tracker. |
 | **Backwater override cascade danger** | Backwater QC overrides must ONLY go to `compute_main_neighbors`. NEVER pass them to `compute_best_headwater_outlet` — it propagates pathlen changes downstream through every reach, corrupting `best_outlet` for thousands of reaches (12,272 in prior incident). The `overrides` parameter was removed from `compute_best_headwater_outlet` to prevent this. |
 | **`subnetwork_id` ≠ `network`** | `network` is v17b original (per-region, 1-based). `subnetwork_id` is v17c (Pfafstetter-offset, globally unique). Different component counts too (v17c finds more components via weakly_connected_components). They are NOT interchangeable. |
-| **Ghost reaches (type=6) and `is_mainstem_edge`** | Ghost reaches must always have `is_mainstem_edge=FALSE`. The pipeline handles this in `compute_mainstem` (checks `type != 6` during chain walk). Ghosts still participate in routing (`rch_id_up_main`/`rch_id_dn_main`) because they're part of the topology — they just can't be flagged as mainstem. |
+| **Ghost reaches (type=6) and `is_mainstem`** | Ghost reaches must always have `is_mainstem=FALSE`. The pipeline handles this in `compute_mainstem` (checks `type != 6` during chain walk). Ghosts still participate in routing (`rch_id_up_main`/`rch_id_dn_main`) because they're part of the topology — they just can't be flagged as mainstem. |
 | **Flow correction oscillation** | 389 reaches (0.16%) in AF/AS/EU/NA/SA have ambiguous WSE slope signals — the flow correction scoring detects them as wrong in BOTH directions, flipping them back and forth across pipeline runs. This caused `rch_id_dn_main` to disagree with `rch_id_dn`/`rch_id_up` arrays (computed from different graph states). Fixed by reverting topology to v17b for these sections. OC is unaffected (0 oscillating sections). Cross-run oscillation guard needed — current guard only prevents re-flips within a single run. |
+| **Node dist_out stale at flow-corrected reaches** | Node-level `dist_out` is v17b values — never updated for the 810 flow-corrected reaches. `update_node_columns` handles this by reversing node ordering for flipped reaches (swaps `dn_node_id`/`up_node_id`, inverts `node_order`). The flipped reach IDs are passed from `recompute_facc_flow_corrected()`. If running `update_node_columns` outside the pipeline, you must supply the flipped set manually. |
+| **NetCDF export type preservation** | `export_sword.py` uses `_I4_COLS` / `_NODE_I4_COLS` sets to write int32 columns as `i4` matching v17b. Node-level `lakeflag` is `i8` (not `i4` like reach-level). If adding new integer columns, decide i4 vs i8 and add to the appropriate set. |
 
 ## Column Name Gotchas
 
