@@ -554,6 +554,28 @@ def export_netcdf(
         "edit_flag",
         "version",
     }
+    # Columns that must stay i4 (int32) to match v17b NetCDF types
+    _I4_COLS = {
+        "n_nodes",
+        "n_chan_max",
+        "n_chan_mod",
+        "obstr_type",
+        "n_rch_up",
+        "n_rch_down",
+        "lakeflag",
+        "iceflag",
+        "swot_obs",
+        "low_slope_flag",
+        "trib_flag",
+        "stream_order",
+        "main_side",
+        "end_reach",
+        "network",
+        "subnetwork_id",
+        "n_obs",
+        "facc_quality",
+        "node_order",
+    }
     for col in reaches_df.columns:
         if col in _SKIP_COLS:
             continue
@@ -565,7 +587,10 @@ def export_netcdf(
             for i, s in enumerate(str_vals):
                 var[i] = s
         elif np.issubdtype(vals.dtype, np.integer):
-            var = rch_grp.createVariable(col, "i8", ("num_reaches",), fill_value=-9999)
+            nc_type = "i4" if col in _I4_COLS else "i8"
+            var = rch_grp.createVariable(
+                col, nc_type, ("num_reaches",), fill_value=-9999
+            )
             var[:] = np.where(pd.isna(reaches_df[col]), -9999, vals)
         elif np.issubdtype(vals.dtype, np.floating):
             var = rch_grp.createVariable(
@@ -660,6 +685,23 @@ def export_netcdf(
     node_grp = ds.createGroup("nodes")
     node_grp.createDimension("num_nodes", num_nodes)
 
+    # Node-level i4 columns (match v17b types)
+    _NODE_I4_COLS = {
+        "n_chan_max",
+        "n_chan_mod",
+        "obstr_type",
+        # lakeflag is i8 on nodes (i4 on reaches) in v17b
+        "trib_flag",
+        "stream_order",
+        "main_side",
+        "end_reach",
+        "network",
+        "subnetwork_id",
+        "manual_add",
+        "node_order",
+        "n_obs",
+        "facc_quality",
+    }
     for col in nodes_df.columns:
         if col in _SKIP_COLS:
             continue
@@ -670,7 +712,10 @@ def export_netcdf(
             for i, s in enumerate(str_vals):
                 var[i] = s
         elif np.issubdtype(vals.dtype, np.integer):
-            var = node_grp.createVariable(col, "i8", ("num_nodes",), fill_value=-9999)
+            nc_type = "i4" if col in _NODE_I4_COLS else "i8"
+            var = node_grp.createVariable(
+                col, nc_type, ("num_nodes",), fill_value=-9999
+            )
             var[:] = np.where(pd.isna(nodes_df[col]), -9999, vals)
         elif np.issubdtype(vals.dtype, np.floating):
             var = node_grp.createVariable(col, "f8", ("num_nodes",), fill_value=-9999.0)
