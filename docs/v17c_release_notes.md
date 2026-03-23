@@ -1,11 +1,26 @@
 # SWORD v17c Beta Release Notes
 
-**Version:** v17c beta 0.0.2
+**Version:** v17c beta 0.0.3
 **Date:** March 2026
 **Authors:** Gearon, Pavelsky
 **Base version:** SWORD v17b (March 2025, UNC)
 
 ## Changelog
+
+### 0.0.3 (March 2026)
+- Fixed `dn_node_id`, `up_node_id`, and `node_order` for 810 flow-corrected
+  reaches where node ordering was stale (based on v17b `dist_out`). 639
+  reaches now have `dn_node_id != min(node_id)`, reflecting the inverted
+  flow direction.
+- Removed redundant `rch_id_up_1..4` / `rch_id_dn_1..4` vector variables
+  from NetCDF export. Only the `[4, N]` matrices `rch_id_up` and `rch_id_dn`
+  are exported, matching v17b format.
+- Fixed `swot_orbits` NetCDF type from string back to int64 (matching v17b).
+- Fixed 15 integer columns widened from int32 to int64 in NetCDF export
+  (`n_nodes`, `lakeflag`, `n_rch_up`, `stream_order`, etc.). All shared
+  variable types now match v17b exactly.
+- Synced `rch_id_up_1..4` / `rch_id_dn_1..4` DB columns from
+  `reach_topology` table (694 were stale after flow corrections).
 
 ### 0.0.2 (March 2026)
 - Renamed `is_mainstem_edge` to `is_mainstem`
