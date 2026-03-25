@@ -111,7 +111,7 @@ def compute_mainstem(
             attrs.get("reach_length", 0) or 0
         )
         return routing_score(
-            math.log1p(attrs.get("effective_width", 0) or 0),
+            math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
             attrs.get("slope", 0) or 0,
             pathlen,
@@ -220,7 +220,7 @@ def compute_main_neighbors(
             attrs.get("reach_length", 0) or 0
         )
         return routing_score(
-            math.log1p(attrs.get("effective_width", 0) or 0),
+            math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
             attrs.get("slope", 0) or 0,
             pathlen,
@@ -233,7 +233,7 @@ def compute_main_neighbors(
             attrs.get("reach_length", 0) or 0
         )
         return routing_score(
-            math.log1p(attrs.get("effective_width", 0) or 0),
+            math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
             attrs.get("slope", 0) or 0,
             pathlen,

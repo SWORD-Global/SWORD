@@ -177,7 +177,7 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
                 reach_len = G.nodes[n].get("reach_length", 0)
                 total_len = pathlen_hw.get(p, 0) + reach_len
                 pattrs = G.nodes[p]
-                ew = math.log1p(pattrs.get("effective_width", 0) or 0)
+                ew = math.log1p(max(pattrs.get("effective_width", 0) or 0, 0))
                 lf = pattrs.get("log_facc", 0) or 0
                 sl = pattrs.get("slope", 0) or 0
                 so = pattrs.get("stream_order", 0) or 0
@@ -208,7 +208,7 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
                 reach_len = G.nodes[s].get("reach_length", 0)
                 total_len = pathlen_out.get(s, 0) + reach_len
                 sattrs = G.nodes[s]
-                ew = math.log1p(sattrs.get("effective_width", 0) or 0)
+                ew = math.log1p(max(sattrs.get("effective_width", 0) or 0, 0))
                 lf = sattrs.get("log_facc", 0) or 0
                 sl = sattrs.get("slope", 0) or 0
                 so = sattrs.get("stream_order", 0) or 0
