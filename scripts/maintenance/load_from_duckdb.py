@@ -366,78 +366,87 @@ def load_geometry_from_coordinates(
 
 def overwrite_reach_geom_from_v17b(
     pg_conn,
-    v17b_dsn: str = "dbname=postgres host=localhost",
-    v17b_table: str = "sword_reaches_v17b",
-    v17b_geom_col: str = "geometry",
+    v17b_gpkg_dir: str = "",
+    regions: Optional[list[str]] = None,
+    # Legacy dblink params (unused, kept for CLI compat)
+    v17b_dsn: str = "",
+    v17b_table: str = "",
+    v17b_geom_col: str = "",
 ) -> int:
     """
-    Replace reach geometries with the v17b originals (which include endpoint
-    overlap vertices so adjacent reaches visually connect in GIS tools).
+    Replace reach geometries with the v17b GPKG originals (which include
+    endpoint overlap vertices so adjacent reaches visually connect in GIS).
 
-    The DuckDB→NetCDF rebuild strips those overlap points.  This step copies
-    the full-fidelity geometries from the authoritative v17b PostgreSQL table
-    via dblink, then recomputes bbox/centroid columns to match.
+    Reads directly from v17b GeoPackage files on disk — no dblink or
+    external PostgreSQL table required.
 
     Parameters
     ----------
     pg_conn : psycopg2.connection
         Connection to the **target** (v17c) database.
-    v17b_dsn : str
-        libpq connection string for the database hosting the v17b table.
-    v17b_table : str
-        Fully-qualified table name for v17b reaches.
-    v17b_geom_col : str
-        Geometry column name in the v17b table.
+    v17b_gpkg_dir : str
+        Directory containing ``{region}_sword_reaches_v17b.gpkg`` files.
+    regions : list[str] or None
+        Regions to process. None = all 6.
 
     Returns
     -------
     int
         Number of rows updated.
     """
-    cur = pg_conn.cursor()
+    import geopandas as gpd
 
-    # Ensure dblink extension
-    cur.execute("CREATE EXTENSION IF NOT EXISTS dblink")
-    pg_conn.commit()
+    if regions is None:
+        regions = ["af", "as", "eu", "na", "oc", "sa"]
+    else:
+        regions = [r.lower() for r in regions]
 
-    # Quick sanity check: does the remote table exist?
-    try:
-        cur.execute(
-            "SELECT COUNT(*) FROM dblink(%s, %s) AS t(cnt bigint)",
-            [v17b_dsn, f"SELECT COUNT(*) FROM {v17b_table} LIMIT 1"],
+    gpkg_dir = Path(v17b_gpkg_dir)
+    if not gpkg_dir.is_dir():
+        logger.error(
+            f"v17b GPKG directory not found: {gpkg_dir} — "
+            "pass --v17b-gpkg-dir to specify the directory containing "
+            "{region}_sword_reaches_v17b.gpkg files"
         )
-        remote_cnt = cur.fetchone()[0]
-        logger.info(
-            f"v17b geometry source: {v17b_table} in '{v17b_dsn}' ({remote_cnt:,} rows)"
-        )
-    except Exception as e:
-        logger.warning(
-            f"Cannot reach v17b geometry source ({e}) — skipping geometry overwrite"
-        )
-        pg_conn.rollback()
-        cur.close()
         return 0
 
-    # Copy geometries
-    logger.info(
-        "Overwriting reach geometries with v17b originals (endpoint overlap)..."
-    )
-    cur.execute(
-        f"""
-        UPDATE reaches r
-        SET geom = sub.{v17b_geom_col}
-        FROM dblink(
-            %s,
-            $q$SELECT reach_id, {v17b_geom_col} FROM {v17b_table}$q$
-        ) AS sub(reach_id bigint, {v17b_geom_col} geometry)
-        WHERE r.reach_id = sub.reach_id
-        """,
-        [v17b_dsn],
-    )
-    updated = cur.rowcount
-    logger.info(f"Updated {updated:,} reach geometries from v17b")
+    cur = pg_conn.cursor()
+    total_updated = 0
 
-    # Recompute bbox / centroid
+    for region in regions:
+        gpkg_path = gpkg_dir / f"{region}_sword_reaches_v17b.gpkg"
+        if not gpkg_path.exists():
+            logger.warning(f"v17b GPKG not found for {region.upper()}: {gpkg_path}")
+            continue
+
+        logger.info(f"Loading v17b geometries for {region.upper()} from {gpkg_path}")
+        gdf = gpd.read_file(str(gpkg_path), columns=["reach_id"])
+        logger.info(f"  {len(gdf)} reaches loaded")
+
+        batch_size = 1000
+        updated = 0
+        items = [
+            (int(r["reach_id"]), r.geometry.wkb_hex)
+            for _, r in gdf.iterrows()
+            if r.geometry is not None
+        ]
+
+        for i in range(0, len(items), batch_size):
+            batch = items[i : i + batch_size]
+            for rid, wkb_hex in batch:
+                cur.execute(
+                    "UPDATE reaches SET geom = ST_SetSRID("
+                    "ST_GeomFromWKB(decode(%s, 'hex')), 4326) "
+                    "WHERE reach_id = %s",
+                    (wkb_hex, rid),
+                )
+            pg_conn.commit()
+            updated += len(batch)
+
+        logger.info(f"  Updated {updated:,} geometries for {region.upper()}")
+        total_updated += updated
+
+    # Recompute bbox / centroid for all updated regions
     logger.info("Recomputing bbox/centroid columns...")
     cur.execute("""
         UPDATE reaches SET
@@ -447,11 +456,71 @@ def overwrite_reach_geom_from_v17b(
             x_max = ST_XMax(geom),
             y_min = ST_YMin(geom),
             y_max = ST_YMax(geom)
+        WHERE geom IS NOT NULL
     """)
-
     pg_conn.commit()
+
+    # Verify no NULL geometries remain
+    cur.execute(
+        "SELECT region, COUNT(*) FROM reaches WHERE geom IS NULL GROUP BY region"
+    )
+    nulls = cur.fetchall()
+    if nulls:
+        for rgn, cnt in nulls:
+            logger.error(f"  {rgn}: {cnt} reaches still have NULL geometry!")
+        raise RuntimeError(
+            f"Geometry overwrite incomplete — "
+            f"{sum(c for _, c in nulls)} reaches have NULL geometry"
+        )
+    else:
+        logger.info("Verified: no NULL geometries in reaches table")
+
+    # Verify endpoint connectivity: adjacent reaches must share
+    # at least one endpoint (within ~10m). The v17b GPKG
+    # geometries include overlap vertices for this purpose.
+    logger.info("Verifying endpoint connectivity...")
+    cur.execute("""
+        WITH pairs AS (
+            SELECT r.region,
+                   r.reach_id,
+                   r.geom AS r_geom,
+                   dn.geom AS dn_geom
+            FROM reaches r
+            JOIN reaches dn ON r.rch_id_dn_1 = dn.reach_id
+            WHERE r.rch_id_dn_1 > 0
+              AND r.geom IS NOT NULL
+              AND dn.geom IS NOT NULL
+        )
+        SELECT region,
+               COUNT(*) AS total,
+               SUM(CASE WHEN LEAST(
+                   ST_Distance(
+                       ST_StartPoint(r_geom),
+                       ST_StartPoint(dn_geom)),
+                   ST_Distance(
+                       ST_StartPoint(r_geom),
+                       ST_EndPoint(dn_geom)),
+                   ST_Distance(
+                       ST_EndPoint(r_geom),
+                       ST_StartPoint(dn_geom)),
+                   ST_Distance(
+                       ST_EndPoint(r_geom),
+                       ST_EndPoint(dn_geom))
+               ) = 0 THEN 1 ELSE 0 END) AS exact
+        FROM pairs
+        GROUP BY region ORDER BY region
+    """)
+    for rgn, total, exact in cur.fetchall():
+        pct = 100.0 * exact / total if total else 0
+        logger.info(f"  {rgn}: {exact}/{total} pairs share an endpoint ({pct:.1f}%)")
+        if pct < 98:
+            logger.warning(
+                f"  {rgn}: only {pct:.1f}% endpoint connectivity "
+                "— v17b GPKG geometries may be missing or wrong"
+            )
+
     cur.close()
-    return updated
+    return total_updated
 
 
 def truncate_table(pg_conn, table_name: str, region: Optional[str] = None):
@@ -538,17 +607,12 @@ Examples:
     parser.add_argument(
         "--skip-v17b-geom",
         action="store_true",
-        help="Skip overwriting reach geometry from v17b source",
+        help="Skip overwriting reach geometry from v17b GeoPackages",
     )
     parser.add_argument(
-        "--v17b-dsn",
-        default="dbname=postgres host=localhost",
-        help="libpq DSN for database hosting v17b reaches (default: dbname=postgres host=localhost)",
-    )
-    parser.add_argument(
-        "--v17b-table",
-        default="sword_reaches_v17b",
-        help="v17b reaches table name (default: sword_reaches_v17b)",
+        "--v17b-gpkg-dir",
+        default="/Users/jakegearon/projects/sword_v17c/data",
+        help="Directory containing {region}_sword_reaches_v17b.gpkg files",
     )
     parser.add_argument("--batch-size", type=int, help="Override default batch size")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
@@ -712,13 +776,13 @@ Examples:
                             )
 
         # After all regions loaded: overwrite reach geometries with v17b originals
-        # (run once, not per-region, since it's a global UPDATE by reach_id)
+        # (reads from GPKG files on disk — no dblink dependency)
         if not args.dry_run and not args.skip_v17b_geom and "reaches" in tables_to_load:
             try:
                 overwrite_reach_geom_from_v17b(
                     pg_conn,
-                    v17b_dsn=args.v17b_dsn,
-                    v17b_table=args.v17b_table,
+                    v17b_gpkg_dir=args.v17b_gpkg_dir,
+                    regions=regions,
                 )
             except Exception as e:
                 logger.error(f"Error overwriting reach geometry from v17b: {e}")
