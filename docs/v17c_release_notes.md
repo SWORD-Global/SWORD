@@ -11,7 +11,7 @@
 - **Routing weights learned from human labels.** Replaced the handcrafted
   lexicographic 3-tuple `(effective_width, log_facc, pathlen)` with a
   weighted scalar score trained on 1,967 human-labeled junction decisions:
-  `1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*pathlen
+  `1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*log1p(pathlen)
   + 0.29*stream_order`. Two new signals vs prior releases: slope (negative
   = prefer lower gradient) and stream_order. All routing functions use the
   same score to prevent divergence.
@@ -81,7 +81,7 @@ path plus its tributary branches) gets one canonical chain, identified by a
 greedy walk from the group's shared `best_headwater`. At each junction the
 algorithm selects the upstream branch with the highest weighted routing
 score: `1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) +
-0.23*pathlen + 0.29*stream_order`. These weights were learned from 1,967
+0.23*log1p(pathlen) + 0.29*stream_order`. These weights were learned from 1,967
 human-labeled junction decisions via logistic regression on pairwise
 log1p-difference features. The negative slope weight captures the
 geomorphic pattern that mainstem channels have lower gradients than

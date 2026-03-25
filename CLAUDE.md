@@ -318,7 +318,7 @@ for idx_name, tbl, sql in indexes:
 Junction scoring uses a weighted scalar score learned from 1,967 human-labeled junction decisions (logistic regression on pairwise log1p-difference features):
 
 ```
-score = 1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*pathlen + 0.29*stream_order
+score = 1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*log1p(pathlen) + 0.29*stream_order
 ```
 
 | Feature | Weight | Share | Note |
