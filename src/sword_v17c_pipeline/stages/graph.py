@@ -39,7 +39,7 @@ def routing_score(
         w["effective_width"] * effective_width
         + w["facc"] * log_facc
         + w["slope"] * math.log1p(max(slope, 0))
-        + w["pathlen"] * pathlen
+        + w["pathlen"] * math.log1p(max(pathlen, 0))
         + w["stream_order"] * stream_order
     )
 
