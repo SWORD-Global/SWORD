@@ -8,6 +8,41 @@ import pandas as pd
 
 from ._logging import log
 
+# Routing weights learned from 1,967 human-labeled junction decisions
+# (logistic regression on pairwise log1p-difference features).
+# Features: log1p(effective_width), log1p(facc), log1p(slope),
+#           log1p(pathlen), stream_order
+# Negative slope weight = prefer lower gradient (mainstem behavior).
+ROUTING_WEIGHTS = {
+    "effective_width": 1.972,
+    "facc": 0.227,
+    "slope": -0.228,
+    "pathlen": 0.234,
+    "stream_order": 0.288,
+}
+
+
+def routing_score(
+    effective_width: float,
+    log_facc: float,
+    slope: float,
+    pathlen: float,
+    stream_order: float,
+) -> float:
+    """Compute scalar routing score for junction decisions.
+
+    Higher score = more likely to be the mainstem branch.
+    All inputs except stream_order should be log1p-transformed.
+    """
+    w = ROUTING_WEIGHTS
+    return (
+        w["effective_width"] * effective_width
+        + w["facc"] * log_facc
+        + w["slope"] * math.log1p(max(slope, 0))
+        + w["pathlen"] * pathlen
+        + w["stream_order"] * stream_order
+    )
+
 
 def get_effective_width(attrs: Dict, min_obs: int = 5) -> float:
     """

@@ -1,5 +1,6 @@
 """Mainstem computation stage for v17c pipeline."""
 
+import math
 from collections import defaultdict
 from typing import Dict
 
@@ -7,6 +8,7 @@ import networkx as nx
 
 from ._logging import log
 from ..pfaf_offsets import pfaf_offset
+from .graph import routing_score
 
 
 def compute_main_paths(
@@ -69,8 +71,8 @@ def compute_mainstem(
     Compute is_mainstem for each reach via greedy walk within each main_path_id group.
 
     For each main_path_id group, finds the shared best_headwater and walks
-    downstream picking the successor with max(effective_width, log_facc,
-    pathlen_out + reach_length) at each bifurcation.
+    downstream picking the successor with the highest weighted routing score
+    (see ``graph.ROUTING_WEIGHTS``) at each bifurcation.
 
     Parameters
     ----------
@@ -103,12 +105,17 @@ def compute_mainstem(
     for rid, pid in main_paths.items():
         path_groups[pid].append(rid)
 
-    def _dn_key(n: int) -> tuple:
-        return (
-            G.nodes[n].get("effective_width", 0) or 0,
-            G.nodes[n].get("log_facc", 0) or 0,
-            (hw_out_attrs.get(n, {}).get("pathlen_out", 0) or 0)
-            + (G.nodes[n].get("reach_length", 0) or 0),
+    def _dn_key(n: int) -> float:
+        attrs = G.nodes[n]
+        pathlen = (hw_out_attrs.get(n, {}).get("pathlen_out", 0) or 0) + (
+            attrs.get("reach_length", 0) or 0
+        )
+        return routing_score(
+            math.log1p(attrs.get("effective_width", 0) or 0),
+            attrs.get("log_facc", 0) or 0,
+            attrs.get("slope", 0) or 0,
+            pathlen,
+            attrs.get("stream_order", 0) or 0,
         )
 
     n_networks = 0
@@ -183,7 +190,7 @@ def compute_main_neighbors(
 
     For mainstem reaches (present in mainstem_chain), neighbors are derived
     directly from the chain. For non-mainstem reaches, uses the
-    (effective_width, log_facc, pathlen) ranking.
+    weighted routing score (see ``graph.ROUTING_WEIGHTS``).
 
     Parameters
     ----------
@@ -207,20 +214,30 @@ def compute_main_neighbors(
 
     log("Computing main neighbors (rch_id_up_main / rch_id_dn_main)...")
 
-    def _up_key(n: int) -> tuple:
-        return (
-            G.nodes[n].get("effective_width", 0) or 0,
-            G.nodes[n].get("log_facc", 0) or 0,
-            (hw_out_attrs.get(n, {}).get("pathlen_hw", 0) or 0)
-            + (G.nodes[n].get("reach_length", 0) or 0),
+    def _up_key(n: int) -> float:
+        attrs = G.nodes[n]
+        pathlen = (hw_out_attrs.get(n, {}).get("pathlen_hw", 0) or 0) + (
+            attrs.get("reach_length", 0) or 0
+        )
+        return routing_score(
+            math.log1p(attrs.get("effective_width", 0) or 0),
+            attrs.get("log_facc", 0) or 0,
+            attrs.get("slope", 0) or 0,
+            pathlen,
+            attrs.get("stream_order", 0) or 0,
         )
 
-    def _dn_key(n: int) -> tuple:
-        return (
-            G.nodes[n].get("effective_width", 0) or 0,
-            G.nodes[n].get("log_facc", 0) or 0,
-            (hw_out_attrs.get(n, {}).get("pathlen_out", 0) or 0)
-            + (G.nodes[n].get("reach_length", 0) or 0),
+    def _dn_key(n: int) -> float:
+        attrs = G.nodes[n]
+        pathlen = (hw_out_attrs.get(n, {}).get("pathlen_out", 0) or 0) + (
+            attrs.get("reach_length", 0) or 0
+        )
+        return routing_score(
+            math.log1p(attrs.get("effective_width", 0) or 0),
+            attrs.get("log_facc", 0) or 0,
+            attrs.get("slope", 0) or 0,
+            pathlen,
+            attrs.get("stream_order", 0) or 0,
         )
 
     results = {}
