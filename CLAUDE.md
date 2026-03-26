@@ -48,8 +48,11 @@ python scripts/maintenance/load_from_duckdb.py --source data/duckdb/sword_v17c.d
 # Load single region
 python scripts/maintenance/load_from_duckdb.py --source data/duckdb/sword_v17c.duckdb --region NA
 
-# Skip v17b geometry overwrite (if v17b PG table not available)
+# Skip v17b geometry overwrite
 python scripts/maintenance/load_from_duckdb.py --source data/duckdb/sword_v17c.duckdb --all --skip-v17b-geom
+
+# Custom v17b GPKG directory
+python scripts/maintenance/load_from_duckdb.py --source data/duckdb/sword_v17c.duckdb --all --v17b-gpkg-dir /path/to/{region}_sword_reaches_v17b.gpkg
 
 # Verify load
 python scripts/maintenance/load_from_duckdb.py --verify
@@ -59,7 +62,7 @@ python scripts/maintenance/load_from_duckdb.py --verify
 - PostgreSQL enables multi-user access, web APIs, and spatial indexing via PostGIS
 - DuckDB remains the primary development backend (faster local queries)
 - Keep connection strings in `.env` - never commit credentials
-- Reach geometries in PostgreSQL come from v17b (`postgres.sword_reaches_v17b`) — they include endpoint overlap vertices so adjacent reaches connect visually. DuckDB geometries (from NetCDF) lack these overlap points.
+- Reach geometries in PostgreSQL come from v17b GeoPackage files (`{region}_sword_reaches_v17b.gpkg` in `--v17b-gpkg-dir`) — they include endpoint overlap vertices so adjacent reaches connect visually. DuckDB geometries (from NetCDF) lack these overlap points. The load script reads GPKGs directly (no dblink dependency) and raises an error if any region ends up with NULL geometries.
 
 ## ⚠️ CRITICAL: Database Handling Rules
 
@@ -273,7 +276,7 @@ python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duck
 | **DuckDB lock contention** | Only one write connection at a time. Kill Streamlit/other processes before UPDATE. |
 | **end_reach divergence from v17b** | v17c recomputed end_reach from topology: junction=3 when n_up>1 OR n_down>1. ~30k v17b "phantom junctions" (n_up=1, n_dn=1, end_reach=3) relabeled to 0. UNC's original junction criterion is unknown. See `docs/validation_specs/end_reach_trib_flag_validation_spec.md` Section 1.8. |
 | **reconstruction.py end_reach bug** | `_reconstruct_reach_end_reach` uses `n_up > 1` only (misses bifurcations). `reactive.py` has the correct logic (`n_up > 1 OR n_down > 1`). Don't use the reconstruction function without fixing it. |
-| **DuckDB reach geometry missing endpoint overlap** | DuckDB geometries (rebuilt from NetCDF) lack the overlap vertices at endpoints that make adjacent reaches visually connect. The v17b PostgreSQL table (`postgres.sword_reaches_v17b`) has the full-fidelity geometries. `scripts/maintenance/load_from_duckdb.py` auto-copies v17b geometries to v17c PostgreSQL via dblink (`--skip-v17b-geom` to disable). See issue #187. |
+| **DuckDB reach geometry missing endpoint overlap** | DuckDB geometries (rebuilt from NetCDF) lack the overlap vertices at endpoints that make adjacent reaches visually connect. The v17b GeoPackage files (`{region}_sword_reaches_v17b.gpkg`) have the full-fidelity geometries. `scripts/maintenance/load_from_duckdb.py` auto-copies v17b geometries from GPKG to v17c PostgreSQL (`--skip-v17b-geom` to disable, `--v17b-gpkg-dir` to override path). Raises error if any region has NULL geometries after overwrite. See issue #187. |
 | **path_freq=0/-9999 on connected reaches** | 4,952 connected non-ghost reaches globally have invalid path_freq (34 with 0, 4,918 with -9999). 91% are 1:1 links (fixable by propagation), 9% are junctions (need full traversal). AS has 2,478. See issue #16. |
 | **POM lint findings (10 open investigation issues)** | POM validation checks found issues in v17c: 89K CL-node misallocations (#194), 4.8K WSE inversions (#195), 3.5K node spacing gaps (#193), 2.6K boundary dist_out gaps (#192), 553 dist_out jumps (#191), 467 boundary geo gaps (#188–#190), 197 name disagreements (#196). All are diagnose-first — see `docs/technical/pom_requests_summary.md` for full tracker. |
 | **Backwater override cascade danger** | Backwater QC overrides must ONLY go to `compute_main_neighbors`. NEVER pass them to `compute_best_headwater_outlet` — it propagates pathlen changes downstream through every reach, corrupting `best_outlet` for thousands of reaches (12,272 in prior incident). The `overrides` parameter was removed from `compute_best_headwater_outlet` to prevent this. |
