@@ -113,7 +113,7 @@ def compute_mainstem(
         return routing_score(
             math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
-            attrs.get("slope", 0) or 0,
+            attrs.get("effective_slope", 0) or 0,
             pathlen,
             attrs.get("stream_order", 0) or 0,
         )
@@ -221,7 +221,7 @@ def compute_main_neighbors(
         return routing_score(
             math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
-            attrs.get("slope", 0) or 0,
+            attrs.get("effective_slope", 0) or 0,
             pathlen,
             attrs.get("stream_order", 0) or 0,
         )
@@ -234,7 +234,7 @@ def compute_main_neighbors(
         return routing_score(
             math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
-            attrs.get("slope", 0) or 0,
+            attrs.get("effective_slope", 0) or 0,
             pathlen,
             attrs.get("stream_order", 0) or 0,
         )
