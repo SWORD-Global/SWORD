@@ -321,16 +321,16 @@ for idx_name, tbl, sql in indexes:
 Junction scoring uses a weighted scalar score learned from 1,967 human-labeled junction decisions (logistic regression on pairwise log1p-difference features):
 
 ```
-score = 1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*log1p(pathlen) + 0.29*stream_order
+score = 2.02*log1p(ew) + 0.17*log1p(facc) - 0.08*log1p(slope) + 0.35*log1p(pathlen) + 0.23*stream_order
 ```
 
 | Feature | Weight | Share | Note |
 |---------|--------|-------|------|
-| effective_width | +1.972 | 67% | SWOT-preferred (n_obs≥5), else GRWL |
-| stream_order | +0.288 | 10% | new vs old 3-tuple |
-| pathlen | +0.234 | 8% | cumulative path length |
-| slope | -0.228 | 8% | **negative** = prefer lower gradient (mainstem) — new |
-| facc | +0.227 | 8% | log1p(flow accumulation) |
+| effective_width | +2.023 | 71% | SWOT-preferred (n_obs≥5), else GRWL |
+| pathlen | +0.354 | 12% | cumulative path length |
+| stream_order | +0.229 | 8% | new vs old 3-tuple |
+| facc | +0.169 | 6% | log1p(flow accumulation) |
+| slope | -0.078 | 3% | effective_slope (SWOT-preferred, else MERIT DEM); **negative** = prefer lower gradient |
 
 Defined in `src/sword_v17c_pipeline/stages/graph.py` (`ROUTING_WEIGHTS`, `routing_score()`). Used by `compute_best_headwater_outlet`, `compute_mainstem`, `compute_main_neighbors` — all call the same function to prevent V002 divergence.
 
