@@ -10,15 +10,16 @@ from ._logging import log
 
 # Routing weights learned from 1,967 human-labeled junction decisions
 # (logistic regression on pairwise log1p-difference features).
-# Features: log1p(effective_width), log1p(facc), log1p(slope),
+# Features: log1p(effective_width), log1p(facc), log1p(effective_slope),
 #           log1p(pathlen), stream_order
+# effective_slope = SWOT slope_obs_p50 where reliable, else MERIT DEM slope.
 # Negative slope weight = prefer lower gradient (mainstem behavior).
 ROUTING_WEIGHTS = {
-    "effective_width": 1.972,
-    "facc": 0.227,
-    "slope": -0.228,
-    "pathlen": 0.234,
-    "stream_order": 0.288,
+    "effective_width": 2.023,
+    "facc": 0.169,
+    "slope": -0.078,
+    "pathlen": 0.354,
+    "stream_order": 0.229,
 }
 
 
