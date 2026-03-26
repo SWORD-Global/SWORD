@@ -134,16 +134,17 @@ def save_to_duckdb(
         """,
             [region.upper()],
         )
+
+        log(f"Updated {len(rows):,} reaches")
+
+        # Propagate reach-level v17c columns to child nodes
+        # (must run before RTREE indexes are recreated in finally)
+        _propagate_reach_to_nodes(conn, region)
     finally:
         conn.unregister("v17c_updates")
         # Always recreate RTREE indexes, even if UPDATE failed
         for _idx_name, _tbl, sql in rtree_indexes:
             conn.execute(sql)
-
-    log(f"Updated {len(rows):,} reaches")
-
-    # Propagate reach-level v17c columns to child nodes
-    _propagate_reach_to_nodes(conn, region)
 
     return len(rows)
 

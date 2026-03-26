@@ -211,8 +211,7 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
     Compute best headwater and outlet for each reach.
 
     Uses a weighted scalar score learned from 1,967 human-labeled junction
-    decisions: 1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) +
-    0.23*log1p(pathlen) + 0.29*stream_order.  See ``graph.ROUTING_WEIGHTS``.
+    decisions.  See ``graph.ROUTING_WEIGHTS`` for current coefficients.
 
     WARNING: Do NOT add an overrides parameter here. Forcing a predecessor in
     the upstream pass cascades through pathlen_hw/pathlen_out, changing
