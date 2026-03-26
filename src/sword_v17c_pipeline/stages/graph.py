@@ -32,7 +32,11 @@ def routing_score(
     """Compute scalar routing score for junction decisions.
 
     Higher score = more likely to be the mainstem branch.
-    All inputs except stream_order should be log1p-transformed.
+
+    Callers must log1p-transform ``effective_width`` and ``log_facc``
+    before passing them in.  ``slope`` and ``pathlen`` are passed as
+    raw values — this function applies log1p internally.
+    ``stream_order`` is passed as-is (integer scale).
     """
     w = ROUTING_WEIGHTS
     return (

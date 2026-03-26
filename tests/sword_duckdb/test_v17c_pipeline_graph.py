@@ -617,24 +617,24 @@ class TestRoutingScore:
         """Wider reach should score higher, all else equal."""
         import math
 
-        wide = routing_score(math.log1p(500), 10, 0.01, math.log1p(1000), 3)
-        narrow = routing_score(math.log1p(50), 10, 0.01, math.log1p(1000), 3)
+        wide = routing_score(math.log1p(500), 10, 0.01, 1000, 3)
+        narrow = routing_score(math.log1p(50), 10, 0.01, 1000, 3)
         assert wide > narrow
 
     def test_lower_slope_scores_higher(self):
         """Lower slope should score higher (negative weight)."""
         import math
 
-        low_slope = routing_score(math.log1p(100), 10, 0.001, math.log1p(1000), 3)
-        high_slope = routing_score(math.log1p(100), 10, 0.1, math.log1p(1000), 3)
+        low_slope = routing_score(math.log1p(100), 10, 0.001, 1000, 3)
+        high_slope = routing_score(math.log1p(100), 10, 0.1, 1000, 3)
         assert low_slope > high_slope
 
     def test_higher_facc_scores_higher(self):
         """Higher facc should score higher, all else equal."""
         import math
 
-        big_facc = routing_score(math.log1p(100), 12, 0.01, math.log1p(1000), 3)
-        small_facc = routing_score(math.log1p(100), 5, 0.01, math.log1p(1000), 3)
+        big_facc = routing_score(math.log1p(100), 12, 0.01, 1000, 3)
+        small_facc = routing_score(math.log1p(100), 5, 0.01, 1000, 3)
         assert big_facc > small_facc
 
     def test_width_dominates_slope(self):
@@ -646,7 +646,7 @@ class TestRoutingScore:
             math.log1p(4500),
             math.log1p(200000),
             0.12,
-            math.log1p(2000000),
+            2000000,
             5,
         )
         # 700m wide, gentle slope
@@ -654,7 +654,7 @@ class TestRoutingScore:
             math.log1p(700),
             math.log1p(30000),
             0.007,
-            math.log1p(2000000),
+            2000000,
             5,
         )
         assert wide_steep > narrow_gentle
@@ -663,7 +663,7 @@ class TestRoutingScore:
         """Negative width (GRWL fill=-1) should not crash."""
         import math
 
-        score = routing_score(math.log1p(max(-1, 0)), 10, 0.01, math.log1p(1000), 3)
+        score = routing_score(math.log1p(max(-1, 0)), 10, 0.01, 1000, 3)
         assert score > 0
 
     def test_weights_dict_has_five_keys(self):

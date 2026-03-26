@@ -216,9 +216,8 @@ def compute_main_neighbors(
 
     def _up_key(n: int) -> float:
         attrs = G.nodes[n]
-        pathlen = (hw_out_attrs.get(n, {}).get("pathlen_hw", 0) or 0) + (
-            attrs.get("reach_length", 0) or 0
-        )
+        # pathlen_hw already includes n's own reach_length — don't add it again
+        pathlen = hw_out_attrs.get(n, {}).get("pathlen_hw", 0) or 0
         return routing_score(
             math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
