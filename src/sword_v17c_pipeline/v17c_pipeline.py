@@ -55,6 +55,7 @@ from .stages.distances import (
     compute_hydro_distances,  # noqa: F401 — alias kept for backwards compat
     compute_best_headwater_outlet,
     compute_mainstem_distances,
+    compute_mainstem_distances_hw,
 )
 from .stages.mainstem import (
     compute_mainstem,
@@ -87,6 +88,7 @@ __all__ = [
     "compute_hydro_distances",
     "compute_best_headwater_outlet",
     "compute_mainstem_distances",
+    "compute_mainstem_distances_hw",
     "compute_mainstem",
     "compute_main_neighbors",
     "compute_main_paths",
@@ -511,6 +513,7 @@ def _process_region_inner(
         G, hw_out_attrs=hw_out, overrides=overrides, mainstem_chain=mainstem_chain
     )
     hydro_dist = compute_mainstem_distances(G, main_neighbors)
+    hydro_dist_hw = compute_mainstem_distances_hw(G, main_neighbors)
 
     # Compute subnetwork_id (weakly connected components, Pfafstetter-offset)
     subnetwork_ids = compute_subnetwork_ids(G, region=region)
@@ -544,6 +547,7 @@ def _process_region_inner(
             path_vars=path_vars,
             subnetwork_ids=subnetwork_ids,
             dijkstra_dist=dijkstra_dist,
+            hydro_dist_hw=hydro_dist_hw,
         )
         save_sections_to_duckdb(conn, region, sections_df, validation_df)
         update_node_columns(conn, region, flipped_reach_ids=flipped_reach_ids)

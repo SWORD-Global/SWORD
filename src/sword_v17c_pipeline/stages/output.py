@@ -23,6 +23,7 @@ def save_to_duckdb(
     path_vars: Optional[Dict[int, Dict]] = None,
     subnetwork_ids: Optional[Dict[int, int]] = None,
     dijkstra_dist: Optional[Dict[int, Dict]] = None,
+    hydro_dist_hw: Optional[Dict[int, Dict]] = None,
 ) -> int:
     """
     Save computed v17c attributes to DuckDB reaches table.
@@ -39,6 +40,7 @@ def save_to_duckdb(
     pv = path_vars or {}
     sn = subnetwork_ids or {}
     dd = dijkstra_dist or {}
+    hdh = hydro_dist_hw or {}
     for reach_id in hydro_dist.keys():
         hd = hydro_dist.get(reach_id, {})
         ho = hw_out.get(reach_id, {})
@@ -47,9 +49,11 @@ def save_to_duckdb(
         pvar = pv.get(reach_id, {})
         dij = dd.get(reach_id, {})
 
+        hdh_val = hdh.get(reach_id, {})
         row = {
             "reach_id": reach_id,
             "hydro_dist_out": hd.get("hydro_dist_out"),
+            "hydro_dist_hw": hdh_val.get("hydro_dist_hw"),
             "dist_out_dijkstra": dij.get("dist_out_dijkstra"),
             "best_headwater": ho.get("best_headwater"),
             "best_outlet": ho.get("best_outlet"),
@@ -93,6 +97,7 @@ def save_to_duckdb(
     # Build SET clause - always include base v17c columns
     set_clauses = [
         "hydro_dist_out = u.hydro_dist_out",
+        "hydro_dist_hw = u.hydro_dist_hw",
         "dist_out_dijkstra = u.dist_out_dijkstra",
         "best_headwater = u.best_headwater",
         "best_outlet = u.best_outlet",
@@ -136,7 +141,43 @@ def save_to_duckdb(
             conn.execute(sql)
 
     log(f"Updated {len(rows):,} reaches")
+
+    # Propagate reach-level v17c columns to child nodes
+    _propagate_reach_to_nodes(conn, region)
+
     return len(rows)
+
+
+def _propagate_reach_to_nodes(
+    conn: duckdb.DuckDBPyConnection,
+    region: str,
+) -> None:
+    """Copy v17c columns from reaches to child nodes.
+
+    Nodes inherit best_headwater, best_outlet, pathlen_hw, pathlen_out,
+    and subnetwork_id from their parent reach.
+    """
+    cols = [
+        "best_headwater",
+        "best_outlet",
+        "pathlen_hw",
+        "pathlen_out",
+        "subnetwork_id",
+    ]
+    set_clause = ", ".join(f"{c} = r.{c}" for c in cols)
+    result = conn.execute(
+        f"""
+        UPDATE nodes
+        SET {set_clause}
+        FROM reaches r
+        WHERE nodes.reach_id = r.reach_id
+          AND nodes.region = r.region
+          AND nodes.region = ?
+        """,
+        [region.upper()],
+    )
+    count = result.fetchone()[0]
+    log(f"Propagated {len(cols)} columns to {count:,} nodes from parent reaches")
 
 
 def update_node_columns(
