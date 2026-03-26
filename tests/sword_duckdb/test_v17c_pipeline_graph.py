@@ -11,6 +11,7 @@ import networkx as nx
 import pandas as pd
 from pathlib import Path
 
+from src.sword_v17c_pipeline.stages.graph import routing_score, ROUTING_WEIGHTS
 from src.sword_v17c_pipeline.v17c_pipeline import (
     build_reach_graph,
     identify_junctions,
@@ -602,3 +603,86 @@ class TestGraphIntegration:
         # first reach AFTER headwater (1) to outlet (99) = 99 reaches
         # The headwater junction itself is not included in the section
         assert total_in_sections == 99
+
+
+# =============================================================================
+# Test: routing_score
+# =============================================================================
+
+
+class TestRoutingScore:
+    """Tests for the learned routing score function."""
+
+    def test_wider_reach_scores_higher(self):
+        """Wider reach should score higher, all else equal."""
+        import math
+
+        wide = routing_score(math.log1p(500), 10, 0.01, 1000, 3)
+        narrow = routing_score(math.log1p(50), 10, 0.01, 1000, 3)
+        assert wide > narrow
+
+    def test_lower_slope_scores_higher(self):
+        """Lower slope should score higher (negative weight)."""
+        import math
+
+        low_slope = routing_score(math.log1p(100), 10, 0.001, 1000, 3)
+        high_slope = routing_score(math.log1p(100), 10, 0.1, 1000, 3)
+        assert low_slope > high_slope
+
+    def test_higher_facc_scores_higher(self):
+        """Higher facc should score higher, all else equal."""
+        import math
+
+        big_facc = routing_score(math.log1p(100), 12, 0.01, 1000, 3)
+        small_facc = routing_score(math.log1p(100), 5, 0.01, 1000, 3)
+        assert big_facc > small_facc
+
+    def test_width_dominates_slope(self):
+        """6:1 width ratio should beat any slope difference."""
+        import math
+
+        # 4500m wide, steep slope
+        wide_steep = routing_score(
+            math.log1p(4500),
+            math.log1p(200000),
+            0.12,
+            2000000,
+            5,
+        )
+        # 700m wide, gentle slope
+        narrow_gentle = routing_score(
+            math.log1p(700),
+            math.log1p(30000),
+            0.007,
+            2000000,
+            5,
+        )
+        assert wide_steep > narrow_gentle
+
+    def test_negative_width_treated_as_zero(self):
+        """Negative width (GRWL fill=-1) should not crash."""
+        import math
+
+        score = routing_score(math.log1p(max(-1, 0)), 10, 0.01, 1000, 3)
+        assert score > 0
+
+    def test_weights_dict_has_five_keys(self):
+        """ROUTING_WEIGHTS has exactly 5 learned weights."""
+        assert len(ROUTING_WEIGHTS) == 5
+        assert set(ROUTING_WEIGHTS.keys()) == {
+            "effective_width",
+            "facc",
+            "slope",
+            "pathlen",
+            "stream_order",
+        }
+
+    def test_slope_weight_is_negative(self):
+        """Slope weight must be negative (prefer lower gradient)."""
+        assert ROUTING_WEIGHTS["slope"] < 0
+
+    def test_width_weight_is_largest(self):
+        """Width weight should be the dominant signal."""
+        assert ROUTING_WEIGHTS["effective_width"] > max(
+            abs(v) for k, v in ROUTING_WEIGHTS.items() if k != "effective_width"
+        )

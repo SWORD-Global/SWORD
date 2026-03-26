@@ -8,6 +8,18 @@
 ## Changelog
 
 ### 0.0.3 (March 2026)
+- **Routing weights learned from human labels.** Replaced the handcrafted
+  lexicographic 3-tuple `(effective_width, log_facc, pathlen)` with a
+  weighted scalar score trained on 1,967 human-labeled junction decisions:
+  `1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*log1p(pathlen)
+  + 0.29*stream_order`. Two new signals vs prior releases: slope (negative
+  = prefer lower gradient) and stream_order. All routing functions use the
+  same score to prevent divergence.
+- **Caroline's reviewer fixes synced.** 127 C001 lakeflag fixes (NA) and
+  10 C004 type fixes (NA) from the Streamlit reviewer app.
+- **NA PostgreSQL geometry fix.** 38,696 NA reaches had NULL geometry in
+  PostgreSQL — v17b geometry overwrite via dblink silently failed. Rewrote
+  to read from v17b GPKG files on disk with verification gates.
 - Fixed `dn_node_id`, `up_node_id`, and `node_order` for 810 flow-corrected
   reaches where node ordering was stale (based on v17b `dist_out`). 639
   reaches now have `dn_node_id != min(node_id)`, reflecting the inverted
@@ -67,14 +79,18 @@ For a complete variable catalog, see
 `is_mainstem` is computed per `main_path_id` group: each group (a mainstem
 path plus its tributary branches) gets one canonical chain, identified by a
 greedy walk from the group's shared `best_headwater`. At each junction the
-algorithm selects the upstream branch with the highest effective width
-(primary), log(facc) (secondary), and cumulative path length (tertiary).
-Mainstem reaches within each group are then assigned `rch_id_up_main` /
-`rch_id_dn_main` from the chain; non-mainstem reaches use local width ranking.
-This produces 82–89% mainstem per region (varying by network complexity).
-Ghost reaches (type=6) are excluded from mainstem but still participate in
-routing topology. ~10% of mainstem reaches have no mainstem neighbor at
-`main_path_id` group boundaries — this is expected by design.
+algorithm selects the upstream branch with the highest weighted routing
+score: `1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) +
+0.23*log1p(pathlen) + 0.29*stream_order`. These weights were learned from 1,967
+human-labeled junction decisions via logistic regression on pairwise
+log1p-difference features. The negative slope weight captures the
+geomorphic pattern that mainstem channels have lower gradients than
+tributaries. Mainstem reaches within each group are then assigned
+`rch_id_up_main` / `rch_id_dn_main` from the chain; non-mainstem reaches
+use the same weighted score. Ghost reaches (type=6) are excluded from
+mainstem but still participate in routing topology. ~10% of mainstem
+reaches have no mainstem neighbor at `main_path_id` group boundaries —
+this is expected by design.
 
 | Variable | Type | Units | Description |
 |----------|------|-------|-------------|
@@ -83,8 +99,8 @@ routing topology. ~10% of mainstem reaches have no mainstem neighbor at
 | `hydro_dist_hw` | float64 | meters | Distance from `best_headwater` via `rch_id_up_main` chain walk |
 | `rch_id_up_main` | int64 | — | Main upstream neighbor reach_id (mainstem-preferred) |
 | `rch_id_dn_main` | int64 | — | Main downstream neighbor reach_id (mainstem-preferred) |
-| `best_headwater` | int64 | — | Width-prioritized headwater reach_id for the network component |
-| `best_outlet` | int64 | — | Width-prioritized outlet reach_id for the network component |
+| `best_headwater` | int64 | — | Routing-score-prioritized headwater reach_id for the network component |
+| `best_outlet` | int64 | — | Routing-score-prioritized outlet reach_id for the network component |
 | `pathlen_hw` | float64 | meters | Cumulative path length from `best_headwater` |
 | `pathlen_out` | float64 | meters | Cumulative path length to `best_outlet` |
 | `is_mainstem` | int32 | — | 1 if reach is on a mainstem path, 0 otherwise |

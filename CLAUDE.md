@@ -180,7 +180,7 @@ workflow.close()
 **New variables we compute via `v17c_pipeline.py`:**
 - `dist_out_dijkstra` - Dijkstra shortest-path distance to any outlet
 - `hydro_dist_out` - mainstem distance to best_outlet via rch_id_dn_main chain
-- `best_headwater`, `best_outlet` - width-prioritized endpoints
+- `best_headwater`, `best_outlet` - routing-score-prioritized endpoints
 - `pathlen_hw`, `pathlen_out` - cumulative path lengths
 - `is_mainstem_edge`, `main_path_id` - mainstem identification
 - `rch_id_up_main`, `rch_id_dn_main` - main neighbor selection
@@ -315,6 +315,24 @@ con.execute('UPDATE reaches SET ...')
 for idx_name, tbl, sql in indexes:
     con.execute(sql)
 ```
+
+## Routing Weights
+
+Junction scoring uses a weighted scalar score learned from 1,967 human-labeled junction decisions (logistic regression on pairwise log1p-difference features):
+
+```
+score = 1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*log1p(pathlen) + 0.29*stream_order
+```
+
+| Feature | Weight | Share | Note |
+|---------|--------|-------|------|
+| effective_width | +1.972 | 67% | SWOT-preferred (n_obs≥5), else GRWL |
+| stream_order | +0.288 | 10% | new vs old 3-tuple |
+| pathlen | +0.234 | 8% | cumulative path length |
+| slope | -0.228 | 8% | **negative** = prefer lower gradient (mainstem) — new |
+| facc | +0.227 | 8% | log1p(flow accumulation) |
+
+Defined in `src/sword_v17c_pipeline/stages/graph.py` (`ROUTING_WEIGHTS`, `routing_score()`). Used by `compute_best_headwater_outlet`, `compute_mainstem`, `compute_main_neighbors` — all call the same function to prevent V002 divergence.
 
 ## Reactive Recalculation
 

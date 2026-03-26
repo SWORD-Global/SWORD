@@ -1,10 +1,12 @@
 """Hydrologic distance computation stage for v17c pipeline."""
 
+import math
 from typing import Dict, Optional
 
 import networkx as nx
 
 from ._logging import log
+from .graph import routing_score
 
 
 def compute_dijkstra_distances(G: nx.DiGraph) -> Dict[int, Dict]:
@@ -127,8 +129,9 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
     """
     Compute best headwater and outlet for each reach.
 
-    Uses effective_width (SWOT if available), log(facc), and pathlen to select "main" path.
-    Ranking tuple: (effective_width, log_facc, pathlen) - all maximized.
+    Uses a weighted scalar score learned from 1,967 human-labeled junction
+    decisions: 1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) +
+    0.23*log1p(pathlen) + 0.29*stream_order.  See ``graph.ROUTING_WEIGHTS``.
 
     WARNING: Do NOT add an overrides parameter here. Forcing a predecessor in
     the upstream pass cascades through pathlen_hw/pathlen_out, changing
@@ -173,17 +176,19 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
                 union |= hw_sets[p]
                 reach_len = G.nodes[n].get("reach_length", 0)
                 total_len = pathlen_hw.get(p, 0) + reach_len
-                # Use effective_width (SWOT-preferred) and log_facc for ranking
-                eff_width = G.nodes[p].get("effective_width", 0) or 0
-                log_facc = G.nodes[p].get("log_facc", 0) or 0
-                candidates.append((eff_width, log_facc, total_len, best_hw.get(p), p))
+                pattrs = G.nodes[p]
+                ew = math.log1p(max(pattrs.get("effective_width", 0) or 0, 0))
+                lf = pattrs.get("log_facc", 0) or 0
+                sl = pattrs.get("slope", 0) or 0
+                so = pattrs.get("stream_order", 0) or 0
+                score = routing_score(ew, lf, sl, total_len, so)
+                candidates.append((score, best_hw.get(p), p, total_len))
 
             hw_sets[n] = union
 
-            # Select by effective_width (primary), log_facc (secondary), pathlen (tertiary)
-            best = max(candidates, key=lambda x: (x[0], x[1], x[2]))
-            best_hw[n] = best[3]
-            pathlen_hw[n] = best[2]
+            best = max(candidates, key=lambda x: x[0])
+            best_hw[n] = best[1]
+            pathlen_hw[n] = best[3]
 
     # Downstream pass: track outlet and choose best
     best_out = {}
@@ -202,14 +207,17 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
             for s in succs:
                 reach_len = G.nodes[s].get("reach_length", 0)
                 total_len = pathlen_out.get(s, 0) + reach_len
-                # Use effective_width (SWOT-preferred) and log_facc for ranking
-                eff_width = G.nodes[s].get("effective_width", 0) or 0
-                log_facc = G.nodes[s].get("log_facc", 0) or 0
-                candidates.append((eff_width, log_facc, total_len, best_out.get(s), s))
+                sattrs = G.nodes[s]
+                ew = math.log1p(max(sattrs.get("effective_width", 0) or 0, 0))
+                lf = sattrs.get("log_facc", 0) or 0
+                sl = sattrs.get("slope", 0) or 0
+                so = sattrs.get("stream_order", 0) or 0
+                score = routing_score(ew, lf, sl, total_len, so)
+                candidates.append((score, best_out.get(s), s, total_len))
 
-            best = max(candidates, key=lambda x: (x[0], x[1], x[2]))
-            best_out[n] = best[3]
-            pathlen_out[n] = best[2]
+            best = max(candidates, key=lambda x: x[0])
+            best_out[n] = best[1]
+            pathlen_out[n] = best[3]
 
     results = {}
     for node in G.nodes():
