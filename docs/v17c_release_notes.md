@@ -22,7 +22,7 @@
   `rch_id_up_main` chain walk (mirror of `hydro_dist_out`). Was stale from a
   prior pipeline run.
 - **facc monotonicity fix (T003).** 408 reaches corrected via iterative
-  downstream propagation (4 passes). T003 violations: 392 → 0.
+  downstream propagation (4 passes). T003 violations: 392 → 5.
 - **Routing weights retrained on `effective_slope`.** SWOT `slope_obs_p50`
   (where reliable and n≥5) replaces MERIT DEM slope in routing score training.
   Slope share: 8% → 3%, width: 67% → 71%. CV accuracy unchanged (88.5%).
@@ -33,10 +33,11 @@
 - **Routing weights learned from human labels.** Replaced the handcrafted
   lexicographic 3-tuple `(effective_width, log_facc, pathlen)` with a
   weighted scalar score trained on 1,967 human-labeled junction decisions:
-  `1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*log1p(pathlen)
-  + 0.29*stream_order`. Two new signals vs prior releases: slope (negative
+  `2.02*log1p(ew) + 0.17*log1p(facc) - 0.08*log1p(slope) + 0.35*log1p(pathlen)
+  + 0.23*stream_order`. Two new signals vs prior releases: slope (negative
   = prefer lower gradient) and stream_order. All routing functions use the
-  same score to prevent divergence.
+  same score to prevent divergence. Weights retrained in 0.0.4 on
+  effective_slope (SWOT-preferred).
 - **Caroline's reviewer fixes synced.** 127 C001 lakeflag fixes (NA) and
   10 C004 type fixes (NA) from the Streamlit reviewer app.
 - **NA PostgreSQL geometry fix.** 38,696 NA reaches had NULL geometry in
@@ -102,10 +103,11 @@ For a complete variable catalog, see
 path plus its tributary branches) gets one canonical chain, identified by a
 greedy walk from the group's shared `best_headwater`. At each junction the
 algorithm selects the upstream branch with the highest weighted routing
-score: `1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) +
-0.23*log1p(pathlen) + 0.29*stream_order`. These weights were learned from 1,967
+score: `2.02*log1p(ew) + 0.17*log1p(facc) - 0.08*log1p(slope) +
+0.35*log1p(pathlen) + 0.23*stream_order`. These weights were learned from 1,967
 human-labeled junction decisions via logistic regression on pairwise
-log1p-difference features. The negative slope weight captures the
+log1p-difference features, using SWOT slope where reliable (else MERIT DEM).
+The negative slope weight captures the
 geomorphic pattern that mainstem channels have lower gradients than
 tributaries. Mainstem reaches within each group are then assigned
 `rch_id_up_main` / `rch_id_dn_main` from the chain; non-mainstem reaches
@@ -125,7 +127,7 @@ this is expected by design.
 | `best_outlet` | int64 | — | Routing-score-prioritized outlet reach_id for the network component |
 | `pathlen_hw` | float64 | meters | Cumulative path length from `best_headwater` |
 | `pathlen_out` | float64 | meters | Cumulative path length to `best_outlet` |
-| `is_mainstem` | int32 | — | 1 if reach is on a mainstem path, 0 otherwise |
+| `is_mainstem` | int8 | — | 1 if reach is on a mainstem path, 0 otherwise |
 | `main_path_id` | int64 | — | Unique identifier for each mainstem path group |
 | `subnetwork_id` | int32 | — | Connected component ID (Pfafstetter-offset, globally unique; see Section 4) |
 | `dn_node_id` | int64 | — | Node ID at the downstream end of the reach (lowest `dist_out`) |
