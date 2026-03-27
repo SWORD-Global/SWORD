@@ -17,12 +17,12 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | rch_id_dn_main | i8 | | -9999 | | Main downstream neighbor reach ID (mainstem-preferred) |
 | subnetwork_id | i4 | | -9999 | | Connected component ID (Pfafstetter-offset, globally unique; differs from v17b `network`) |
 | main_path_id | i8 | | -9999 | | ID of the mainstem path this reach belongs to |
-| is_mainstem | i4 | | -9999 | BOOL->i4 (True=1, False=0) | Whether reach is on a mainstem path |
+| is_mainstem | i1 | | -9999 | BOOL->i1 (True=1, False=0) | Whether reach is on a mainstem path |
 | best_headwater | i8 | | -9999 | | Width-prioritized upstream headwater reach ID |
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
 | pathlen_hw | f8 | meters | -9999.0 | | Cumulative path length from headwater |
 | pathlen_out | f8 | meters | -9999.0 | | Cumulative path length to outlet |
-| facc_quality | i4 | | -9999 | VARCHAR->i4 (denoise_v3=1, else fill) | Flow accumulation correction flag |
+| facc_quality | string | | | VARCHAR (denoise_v3 or empty) | Flow accumulation correction flag |
 | dl_grod_id | i8 | | -9999 | | Dam/lake GROD ID (downstream lookup) |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
@@ -59,11 +59,11 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | slope_obs_mad | f8 | meters/kilometers | -9999.0 | | SWOT slope median absolute deviation |
 | slope_obs_adj | f8 | meters/kilometers | -9999.0 | | Adjusted SWOT slope (bias-corrected) |
 | slope_obs_slopeF | f8 | | -9999.0 | | Slope quality F-statistic |
-| slope_obs_reliable | i4 | | -9999 | BOOL->i4 (True=1, False=0) | Whether SWOT slope is reliable |
-| slope_obs_quality | i4 | | -9999 | VARCHAR->i4 (0=reliable, 1=small_negative, 2=moderate_negative, 3=large_negative, 4=negative, 5=below_ref_uncertainty, 6=high_uncertainty, 7=noise_high_nobs, 8=flat_water_noise) | SWOT slope quality category |
-| slope_obs_n | i4 | | -9999 | | Number of SWOT slope observations |
-| slope_obs_n_passes | i4 | | -9999 | | Number of SWOT passes with slope |
-| slope_obs_q | i4 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
+| slope_obs_reliable | i1 | | -9999 | BOOL->i1 (True=1, False=0) | Whether SWOT slope is reliable |
+| slope_obs_quality | string | | | VARCHAR (reliable, small_negative, moderate_negative, large_negative, negative, below_ref_uncertainty, high_uncertainty, noise_high_nobs, flat_water_noise) | SWOT slope quality category |
+| slope_obs_n | i8 | | -9999 | | Number of SWOT slope observations |
+| slope_obs_n_passes | i8 | | -9999 | | Number of SWOT passes with slope |
+| slope_obs_q | i8 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
 
 ## New v17c Node Variables
@@ -98,7 +98,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | width_obs_range | f8 | meters | -9999.0 | | SWOT width range (p90 - p10) |
 | width_obs_mad | f8 | meters | -9999.0 | | SWOT width median absolute deviation |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
-| facc_quality | i4 | | -9999 | VARCHAR->i4 (denoise_v3=1, else fill) | Flow accumulation correction flag |
+| facc_quality | string | | | VARCHAR (denoise_v3 or empty) | Flow accumulation correction flag |
 
 ## v17b Variables (unchanged)
 
@@ -130,8 +130,10 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | n_rch_up | i4 | | -9999 | Number of upstream neighbor reaches |
 | n_rch_down | i4 | | -9999 | Number of downstream neighbor reaches |
 | lakeflag | i4 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal) |
-| type | i4 | | -9999 | Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not in v17b NetCDF; added in v17c. Values from v17b database. |
+| type | i8 | | -9999 | Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not in v17b NetCDF; added in v17c. Values from v17b database. |
+| add_flag | i8 | | -9999 | Manually added reach flag |
 | swot_obs | i4 | | -9999 | Number of expected SWOT observations per cycle |
+| swot_obs_source | string | | | Source of SWOT observation data |
 | max_width | f8 | meters | -9999.0 | Maximum width at any node |
 | low_slope_flag | i4 | | -9999 | Low slope flag |
 | trib_flag | i4 | | -9999 | MHV tributary enters (0=no, 1=yes, spatial proximity) |
@@ -145,7 +147,10 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | dn_node_id | i8 | | -9999 | Downstream boundary node ID |
 | up_node_id | i8 | | -9999 | Upstream boundary node ID |
 | river_name | string | | | River name from GRWL |
+| river_name_en | string | | | River name (English) |
+| river_name_local | string | | | River name (local language) |
 | edit_flag | string | | | Edit provenance tag (e.g. lake_sandwich, harp_lake) |
+| version | string | | | Data version identifier |
 
 ### Nodes
 
@@ -183,24 +188,29 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | main_side | i4 | | -9999 | Channel role (0=main, 1=side, 2=secondary outlet) |
 | end_reach | i4 | | -9999 | Endpoint type (0=middle, 1=headwater, 2=outlet, 3=junction) |
 | network | i4 | | -9999 | Connected component ID |
+| add_flag | i8 | | -9999 | Manually added node flag |
 | river_name | string | | | River name |
 | edit_flag | string | | | Edit provenance tag (e.g. lake_sandwich, harp_lake) |
+| version | string | | | Data version identifier |
 
 ### Multi-dimensional Arrays
 
 | Variable | Group | Shape | Type | Description |
 |---|---|---|---|---|
-| cl_ids | reaches | [2, num_reaches] | i8 | Min/max centerline IDs bounding this reach |
+| cl_id_min | reaches | [num_reaches] | i8 | Minimum centerline ID bounding this reach |
+| cl_id_max | reaches | [num_reaches] | i8 | Maximum centerline ID bounding this reach |
 | rch_id_up | reaches | [4, num_reaches] | i8 | Up to 4 upstream neighbor reach IDs |
 | rch_id_dn | reaches | [4, num_reaches] | i8 | Up to 4 downstream neighbor reach IDs |
 | iceflag | reaches | [366, num_reaches] | i4 | Daily ice presence flag (Julian day 1-366) |
 | swot_orbits | reaches | [75, num_reaches] | i8 | SWOT orbit IDs that observe this reach |
-| cl_ids | nodes | [2, num_nodes] | i8 | Min/max centerline IDs bounding this node |
+| cl_id_min | nodes | [num_nodes] | i8 | Minimum centerline ID bounding this node |
+| cl_id_max | nodes | [num_nodes] | i8 | Maximum centerline ID bounding this node |
 | cl_id | centerlines | [num_points] | i8 | Centerline point ID |
 | x | centerlines | [num_points] | f8 | Centerline point longitude (degrees east) |
 | y | centerlines | [num_points] | f8 | Centerline point latitude (degrees north) |
-| reach_id | centerlines | [4, num_points] | i8 | Reach IDs associated with this centerline point |
-| node_id | centerlines | [4, num_points] | i8 | Node IDs associated with this centerline point |
+| reach_id | centerlines | [num_points] | i8 | Parent reach ID for this centerline point |
+| node_id | centerlines | [num_points] | i8 | Parent node ID for this centerline point |
+| version | centerlines | [num_points] | string | Data version identifier |
 
 ### Subgroups (copied from v17b)
 

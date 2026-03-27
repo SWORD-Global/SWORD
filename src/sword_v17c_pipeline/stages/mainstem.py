@@ -113,7 +113,7 @@ def compute_mainstem(
         return routing_score(
             math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
-            attrs.get("slope", 0) or 0,
+            attrs.get("effective_slope", 0) or 0,
             pathlen,
             attrs.get("stream_order", 0) or 0,
         )
@@ -221,7 +221,7 @@ def compute_main_neighbors(
         return routing_score(
             math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
-            attrs.get("slope", 0) or 0,
+            attrs.get("effective_slope", 0) or 0,
             pathlen,
             attrs.get("stream_order", 0) or 0,
         )
@@ -234,7 +234,7 @@ def compute_main_neighbors(
         return routing_score(
             math.log1p(max(attrs.get("effective_width", 0) or 0, 0)),
             attrs.get("log_facc", 0) or 0,
-            attrs.get("slope", 0) or 0,
+            attrs.get("effective_slope", 0) or 0,
             pathlen,
             attrs.get("stream_order", 0) or 0,
         )
@@ -261,9 +261,16 @@ def compute_main_neighbors(
 
             # Verify chain_succ is actually a successor in the graph
             succs = set(G.successors(node))
-            rch_id_dn_main = chain_succ if chain_succ in succs else None
-            if rch_id_dn_main is None and succs:
-                rch_id_dn_main = max(succs, key=_dn_key)
+            if len(succs) > 1 and chain_succ in succs:
+                # Bifurcation: chain is constrained to within-group successors
+                # but the best successor may be in a different group. Use score.
+                best_by_score = max(succs, key=_dn_key)
+                rch_id_dn_main = best_by_score
+            elif chain_succ in succs:
+                # 1:1 link: chain is authoritative
+                rch_id_dn_main = chain_succ
+            else:
+                rch_id_dn_main = max(succs, key=_dn_key) if succs else None
 
             n_from_chain += 1
         else:

@@ -21,8 +21,16 @@ def compute_dijkstra_distances(G: nx.DiGraph) -> Dict[int, Dict]:
         log("Empty graph, returning empty results")
         return {}
 
-    outlets = [n for n in G.nodes() if G.out_degree(n) == 0]
-    log(f"Found {len(outlets):,} outlets")
+    # Use ALL sinks as Dijkstra sources for full coverage, then null out
+    # ghost sinks so they don't appear as outlets (dist_out_dijkstra=0).
+    all_sinks = [n for n in G.nodes() if G.out_degree(n) == 0]
+    ghost_sinks = set(n for n in all_sinks if G.nodes[n].get("type") == 6)
+    outlets = all_sinks
+    log(
+        f"Found {len(all_sinks):,} sinks "
+        f"({len(all_sinks) - len(ghost_sinks):,} real, "
+        f"{len(ghost_sinks):,} ghost)"
+    )
 
     R = G.reverse()
 
@@ -38,11 +46,15 @@ def compute_dijkstra_distances(G: nx.DiGraph) -> Dict[int, Dict]:
 
     results = {}
     for node in G.nodes():
-        results[node] = {
-            "dist_out_dijkstra": dist_out.get(node, float("inf")),
-        }
+        d = dist_out.get(node, float("inf"))
+        # Ghost sinks used as Dijkstra sources get dist=0, but they aren't
+        # real hydrologic outlets.  Set to inf so they export as NULL.
+        if node in ghost_sinks and d == 0:
+            d = float("inf")
+        results[node] = {"dist_out_dijkstra": d}
 
-    log("Dijkstra distances computed")
+    n_real_outlets = sum(1 for n, r in results.items() if r["dist_out_dijkstra"] == 0)
+    log(f"Dijkstra distances computed ({n_real_outlets:,} real outlets)")
     return results
 
 
@@ -119,8 +131,81 @@ def compute_mainstem_distances(
 
     n_terminal = sum(1 for r in dn_main.values() if r is None)
     log(
-        f"Mainstem distances: {len(results):,} reaches, "
+        f"Mainstem distances (downstream): {len(results):,} reaches, "
         f"{n_terminal:,} terminal (NULL rch_id_dn_main)"
+    )
+    return results
+
+
+def compute_mainstem_distances_hw(
+    G: nx.DiGraph,
+    main_neighbors: Dict[int, Dict],
+) -> Dict[int, Dict]:
+    """
+    Compute distance from best_headwater by walking the rch_id_up_main chain.
+
+    For each reach, follow rch_id_up_main until a terminal reach (NULL
+    upstream or missing from graph), accumulating reach_length (including
+    self).  Headwater reach gets its own reach_length (not 0).
+
+    Returns ``{reach_id: {"hydro_dist_hw": float}}``.
+    """
+    log("Computing mainstem distances (rch_id_up_main chain walk)...")
+
+    if G.number_of_nodes() == 0:
+        return {}
+
+    # Build lookup: reach_id → rch_id_up_main
+    up_main: Dict[int, Optional[int]] = {}
+    for rid, nb in main_neighbors.items():
+        up = nb.get("rch_id_up_main")
+        if up is not None and up in G.nodes:
+            up_main[rid] = up
+        else:
+            up_main[rid] = None
+
+    # Cache: once a reach's distance is known, reuse it
+    cache: Dict[int, float] = {}
+
+    def _walk(start: int) -> float:
+        """Walk upstream from *start*, return total distance."""
+        if start in cache:
+            return cache[start]
+
+        path: list[int] = []
+        visited: set[int] = set()
+        cur = start
+
+        while cur is not None and cur not in cache:
+            if cur in visited:
+                raise RuntimeError(f"Cycle in rch_id_up_main chain: {path + [cur]}")
+            visited.add(cur)
+            path.append(cur)
+            cur = up_main.get(cur)
+
+        # cur is either None (terminal) or already cached
+        suffix = cache[cur] if cur is not None else 0.0
+
+        # Walk backwards through path (i.e. back downstream), filling cache
+        cumulative = suffix
+        for rid in reversed(path):
+            cumulative += G.nodes[rid].get("reach_length", 0)
+            cache[rid] = cumulative
+
+        return cache[start]
+
+    results: Dict[int, Dict] = {}
+    for rid in G.nodes():
+        if rid not in up_main:
+            dist = G.nodes[rid].get("reach_length", 0)
+        else:
+            dist = _walk(rid)
+        results[rid] = {"hydro_dist_hw": dist}
+
+    n_terminal = sum(1 for r in up_main.values() if r is None)
+    log(
+        f"Mainstem distances (upstream): {len(results):,} reaches, "
+        f"{n_terminal:,} terminal (NULL rch_id_up_main)"
     )
     return results
 
@@ -130,8 +215,7 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
     Compute best headwater and outlet for each reach.
 
     Uses a weighted scalar score learned from 1,967 human-labeled junction
-    decisions: 1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) +
-    0.23*log1p(pathlen) + 0.29*stream_order.  See ``graph.ROUTING_WEIGHTS``.
+    decisions.  See ``graph.ROUTING_WEIGHTS`` for current coefficients.
 
     WARNING: Do NOT add an overrides parameter here. Forcing a predecessor in
     the upstream pass cascades through pathlen_hw/pathlen_out, changing
@@ -179,7 +263,7 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
                 pattrs = G.nodes[p]
                 ew = math.log1p(max(pattrs.get("effective_width", 0) or 0, 0))
                 lf = pattrs.get("log_facc", 0) or 0
-                sl = pattrs.get("slope", 0) or 0
+                sl = pattrs.get("effective_slope", 0) or 0
                 so = pattrs.get("stream_order", 0) or 0
                 score = routing_score(ew, lf, sl, total_len, so)
                 candidates.append((score, best_hw.get(p), p, total_len))
@@ -210,7 +294,7 @@ def compute_best_headwater_outlet(G: nx.DiGraph) -> Dict[int, Dict]:
                 sattrs = G.nodes[s]
                 ew = math.log1p(max(sattrs.get("effective_width", 0) or 0, 0))
                 lf = sattrs.get("log_facc", 0) or 0
-                sl = sattrs.get("slope", 0) or 0
+                sl = sattrs.get("effective_slope", 0) or 0
                 so = sattrs.get("stream_order", 0) or 0
                 score = routing_score(ew, lf, sl, total_len, so)
                 candidates.append((score, best_out.get(s), s, total_len))

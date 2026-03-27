@@ -10,15 +10,16 @@ from ._logging import log
 
 # Routing weights learned from 1,967 human-labeled junction decisions
 # (logistic regression on pairwise log1p-difference features).
-# Features: log1p(effective_width), log1p(facc), log1p(slope),
+# Features: log1p(effective_width), log1p(facc), log1p(effective_slope),
 #           log1p(pathlen), stream_order
+# effective_slope = SWOT slope_obs_p50 where reliable, else MERIT DEM slope.
 # Negative slope weight = prefer lower gradient (mainstem behavior).
 ROUTING_WEIGHTS = {
-    "effective_width": 1.972,
-    "facc": 0.227,
-    "slope": -0.228,
-    "pathlen": 0.234,
-    "stream_order": 0.288,
+    "effective_width": 2.023,
+    "facc": 0.169,
+    "slope": -0.078,
+    "pathlen": 0.354,
+    "stream_order": 0.229,
 }
 
 
@@ -68,6 +69,29 @@ def get_effective_width(attrs: Dict, min_obs: int = 5) -> float:
     return width or 0
 
 
+def get_effective_slope(attrs: Dict, min_obs: int = 5) -> float:
+    """
+    Get effective slope for routing decisions.
+
+    Prefers SWOT-observed slope (slope_obs_p50) if slope_obs_reliable == 1
+    and slope_obs_n >= min_obs, otherwise falls back to MERIT DEM slope.
+    """
+    reliable = attrs.get("slope_obs_reliable", 0)
+    if pd.isna(reliable):
+        reliable = 0
+    slope_n = attrs.get("slope_obs_n", 0)
+    if pd.isna(slope_n):
+        slope_n = 0
+    if reliable == 1 and slope_n >= min_obs:
+        swot_slope = attrs.get("slope_obs_p50")
+        if swot_slope is not None and not pd.isna(swot_slope):
+            return swot_slope
+    slope = attrs.get("slope", 0)
+    if pd.isna(slope):
+        return 0
+    return slope or 0
+
+
 def build_reach_graph(
     topology_df: pd.DataFrame, reaches_df: pd.DataFrame
 ) -> nx.DiGraph:
@@ -85,6 +109,7 @@ def build_reach_graph(
     # Create reach attributes dict
     reach_attrs = {}
     n_swot_width = 0
+    n_swot_slope = 0
 
     for _, row in reaches_df.iterrows():
         rid = int(row["reach_id"])
@@ -106,10 +131,14 @@ def build_reach_graph(
             "wse_obs_p50": row.get("wse_obs_p50"),
             "width_obs_p50": row.get("width_obs_p50"),
             "n_obs": row.get("n_obs", 0),
+            "slope_obs_p50": row.get("slope_obs_p50"),
+            "slope_obs_reliable": row.get("slope_obs_reliable", 0),
+            "slope_obs_n": row.get("slope_obs_n", 0),
         }
 
-        # Compute effective width (SWOT-preferred) and use facc directly (already corrected in DB)
+        # Compute effective width/slope (SWOT-preferred) and use facc directly
         eff_width = get_effective_width(base_attrs)
+        eff_slope = get_effective_slope(base_attrs)
         eff_facc = base_attrs.get("facc", 0)
         if pd.isna(eff_facc):
             eff_facc = 0
@@ -124,14 +153,23 @@ def build_reach_graph(
             and not pd.isna(width_obs_val)
         ):
             n_swot_width += 1
+        if (
+            not pd.isna(base_attrs.get("slope_obs_reliable", 0))
+            and base_attrs.get("slope_obs_reliable", 0) == 1
+            and not pd.isna(base_attrs.get("slope_obs_n", 0))
+            and base_attrs.get("slope_obs_n", 0) >= 5
+        ):
+            n_swot_slope += 1
 
         base_attrs["effective_width"] = eff_width
+        base_attrs["effective_slope"] = eff_slope
         base_attrs["effective_facc"] = eff_facc
         base_attrs["log_facc"] = math.log1p(eff_facc)
 
         reach_attrs[rid] = base_attrs
 
     log(f"Using SWOT width for {n_swot_width:,} reaches (n_obs >= 5)")
+    log(f"Using SWOT slope for {n_swot_slope:,} reaches (reliable, n >= 5)")
 
     # Add all reaches as nodes
     for rid, attrs in reach_attrs.items():

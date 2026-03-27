@@ -1,11 +1,33 @@
 # SWORD v17c Beta Release Notes
 
-**Version:** v17c beta 0.0.3
+**Version:** v17c beta 0.0.4
 **Date:** March 2026
-**Authors:** Gearon, Pavelsky
+**Authors:** James H. Gearon, Tamlin M. Pavelsky, Niek Collot d'Escury
 **Base version:** SWORD v17b (March 2025, UNC)
 
 ## Changelog
+
+### 0.0.4 (March 2026)
+- **Node propagation to 11.1M nodes.** Five v17c columns (`best_headwater`,
+  `best_outlet`, `pathlen_hw`, `pathlen_out`, `subnetwork_id`) were NULL on
+  all nodes. Now propagated from parent reaches.
+- **Dijkstra ghost outlet fix.** Ghost reaches (type=6) with out_degree=0 no
+  longer report `dist_out_dijkstra=0`. All sinks are used as Dijkstra sources
+  for full coverage (94–99% per region); ghost sinks receive NULL. Real outlet
+  counts: NA=7, SA=1, EU=2, AF=1, AS=11, OC=1.
+- **Bifurcation routing fix (V023).** At multi-successor nodes,
+  `rch_id_dn_main` now uses score-based ranking instead of the mainstem chain,
+  which was constrained to within-group successors. V023 violations: 2 → 0.
+- **`hydro_dist_hw` computed.** Mainstem distance from headwater via
+  `rch_id_up_main` chain walk (mirror of `hydro_dist_out`). Was stale from a
+  prior pipeline run.
+- **facc monotonicity fix (T003).** 408 reaches corrected via iterative
+  downstream propagation (4 passes). T003 violations: 392 → 0.
+- **Routing weights retrained on `effective_slope`.** SWOT `slope_obs_p50`
+  (where reliable and n≥5) replaces MERIT DEM slope in routing score training.
+  Slope share: 8% → 3%, width: 67% → 71%. CV accuracy unchanged (88.5%).
+- **Variable reference updated.** 7 missing variables added, 8 type mismatches
+  fixed, `cl_ids` shape corrected to `cl_id_min`/`cl_id_max`.
 
 ### 0.0.3 (March 2026)
 - **Routing weights learned from human labels.** Replaced the handcrafted

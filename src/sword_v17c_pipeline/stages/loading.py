@@ -59,6 +59,9 @@ def load_reaches(conn: duckdb.DuckDBPyConnection, region: str) -> pd.DataFrame:
         "end_reach",
         "path_order",
         "path_segs",
+        "slope_obs_p50",
+        "slope_obs_reliable",
+        "slope_obs_n",
     ]
 
     # Build column list
