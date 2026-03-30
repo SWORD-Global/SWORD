@@ -166,9 +166,9 @@ def propagate_reach_to_nodes(
         (node dist_out is stale v17b; v17c downstream has HIGH v17b dist_out)
       - Single-node: offset = reach_length / 2 (centroid)
 
-    Then:
-      - hydro_dist_out, dist_out_dijkstra: reach_value - offset
-      - hydro_dist_hw: reach_value - reach_length + offset
+    Then (NULL reach values pass through as NULL):
+      - hydro_dist_out, dist_out_dijkstra: GREATEST(0, reach_value - offset)
+      - hydro_dist_hw: GREATEST(0, reach_value - reach_length + offset)
       - pathlen_hw: GREATEST(0, reach_value - reach_length + offset)
       - pathlen_out: GREATEST(0, reach_value + reach_length - offset)
     """
@@ -214,11 +214,16 @@ def propagate_reach_to_nodes(
         SET best_headwater = ofs.best_headwater,
             best_outlet = ofs.best_outlet,
             subnetwork_id = ofs.subnetwork_id,
-            hydro_dist_out = GREATEST(0, ofs.hydro_dist_out - ofs.o),
-            dist_out_dijkstra = GREATEST(0, ofs.dist_out_dijkstra - ofs.o),
-            hydro_dist_hw = GREATEST(0, ofs.hydro_dist_hw - ofs.reach_length + ofs.o),
-            pathlen_hw = GREATEST(0, ofs.pathlen_hw - ofs.reach_length + ofs.o),
-            pathlen_out = GREATEST(0, ofs.pathlen_out + ofs.reach_length - ofs.o)
+            hydro_dist_out = CASE WHEN ofs.hydro_dist_out IS NULL THEN NULL
+                ELSE GREATEST(0, ofs.hydro_dist_out - ofs.o) END,
+            dist_out_dijkstra = CASE WHEN ofs.dist_out_dijkstra IS NULL THEN NULL
+                ELSE GREATEST(0, ofs.dist_out_dijkstra - ofs.o) END,
+            hydro_dist_hw = CASE WHEN ofs.hydro_dist_hw IS NULL THEN NULL
+                ELSE GREATEST(0, ofs.hydro_dist_hw - ofs.reach_length + ofs.o) END,
+            pathlen_hw = CASE WHEN ofs.pathlen_hw IS NULL THEN NULL
+                ELSE GREATEST(0, ofs.pathlen_hw - ofs.reach_length + ofs.o) END,
+            pathlen_out = CASE WHEN ofs.pathlen_out IS NULL THEN NULL
+                ELSE GREATEST(0, ofs.pathlen_out + ofs.reach_length - ofs.o) END
         FROM ofs
         WHERE nodes.node_id = ofs.node_id
           AND nodes.region = ofs.region
