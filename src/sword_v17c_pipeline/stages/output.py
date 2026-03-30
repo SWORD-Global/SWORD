@@ -169,11 +169,11 @@ def _propagate_reach_to_nodes(
         SET best_headwater = r.best_headwater,
             best_outlet = r.best_outlet,
             subnetwork_id = r.subnetwork_id,
-            hydro_dist_out = r.hydro_dist_out - (r.dist_out - nodes.dist_out),
-            dist_out_dijkstra = r.dist_out_dijkstra - (r.dist_out - nodes.dist_out),
-            hydro_dist_hw = r.hydro_dist_hw - r.reach_length + (r.dist_out - nodes.dist_out),
+            hydro_dist_out = GREATEST(0, r.hydro_dist_out - (r.dist_out - nodes.dist_out)),
+            dist_out_dijkstra = GREATEST(0, r.dist_out_dijkstra - (r.dist_out - nodes.dist_out)),
+            hydro_dist_hw = GREATEST(0, r.hydro_dist_hw - r.reach_length + (r.dist_out - nodes.dist_out)),
             pathlen_hw = GREATEST(0, r.pathlen_hw - r.reach_length + (r.dist_out - nodes.dist_out)),
-            pathlen_out = r.pathlen_out + r.reach_length - (r.dist_out - nodes.dist_out)
+            pathlen_out = GREATEST(0, r.pathlen_out + r.reach_length - (r.dist_out - nodes.dist_out))
         FROM reaches r
         WHERE nodes.reach_id = r.reach_id
           AND nodes.region = r.region
