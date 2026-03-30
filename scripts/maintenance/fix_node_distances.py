@@ -119,6 +119,9 @@ def fix_region(
             "single": n_single,
         }
 
+    # Use the shared interpolation function (same logic as pipeline)
+    from sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
+
     # Load spatial extension + drop RTREE indexes
     conn.execute("INSTALL spatial; LOAD spatial;")
     rtree_indexes = conn.execute(
@@ -129,50 +132,7 @@ def fix_region(
         conn.execute(f'DROP INDEX "{idx_name}"')
 
     try:
-        # Build offset expression
-        if flipped:
-            ids_csv = ",".join(str(r) for r in flipped)
-            offset_expr = f"""
-                CASE
-                    WHEN r.n_nodes = 1 THEN r.reach_length / 2.0
-                    WHEN r.reach_id IN ({ids_csv})
-                        THEN r.reach_length - (r.dist_out - nodes.dist_out)
-                    ELSE r.dist_out - nodes.dist_out
-                END"""
-        else:
-            offset_expr = """
-                CASE
-                    WHEN r.n_nodes = 1 THEN r.reach_length / 2.0
-                    ELSE r.dist_out - nodes.dist_out
-                END"""
-
-        result = conn.execute(
-            f"""
-            WITH ofs AS (
-                SELECT nodes.node_id, nodes.region,
-                       r.hydro_dist_out, r.dist_out_dijkstra,
-                       r.hydro_dist_hw, r.pathlen_hw, r.pathlen_out,
-                       r.reach_length,
-                       {offset_expr} AS o
-                FROM nodes
-                JOIN reaches r
-                  ON nodes.reach_id = r.reach_id
-                 AND nodes.region = r.region
-                WHERE nodes.region = ?
-            )
-            UPDATE nodes
-            SET hydro_dist_out = GREATEST(0, ofs.hydro_dist_out - ofs.o),
-                dist_out_dijkstra = GREATEST(0, ofs.dist_out_dijkstra - ofs.o),
-                hydro_dist_hw = GREATEST(0, ofs.hydro_dist_hw - ofs.reach_length + ofs.o),
-                pathlen_hw = GREATEST(0, ofs.pathlen_hw - ofs.reach_length + ofs.o),
-                pathlen_out = GREATEST(0, ofs.pathlen_out + ofs.reach_length - ofs.o)
-            FROM ofs
-            WHERE nodes.node_id = ofs.node_id
-              AND nodes.region = ofs.region
-            """,
-            [reg],
-        )
-        count = result.fetchone()[0]
+        count = propagate_reach_to_nodes(conn, reg, flipped or None)
         elapsed = time.time() - t0
         print(f"  Updated {count:,} nodes in {elapsed:.1f}s")
     finally:

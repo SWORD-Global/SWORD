@@ -610,7 +610,7 @@ class TestSaveToDuckdbWithPathVars:
 
 
 class TestPropagateReachToNodes:
-    """Tests for _propagate_reach_to_nodes with normal, flipped, and single-node reaches."""
+    """Tests for propagate_reach_to_nodes with normal, flipped, and single-node reaches."""
 
     @pytest.fixture
     def interpolation_db(self, tmp_path):
@@ -684,9 +684,9 @@ class TestPropagateReachToNodes:
 
     def test_normal_reach_interpolation(self, interpolation_db):
         """Normal multi-node reach: offset = reach.dist_out - node.dist_out."""
-        from src.sword_v17c_pipeline.stages.output import _propagate_reach_to_nodes
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
-        _propagate_reach_to_nodes(interpolation_db, "NA")
+        propagate_reach_to_nodes(interpolation_db, "NA")
 
         # Upstream node (dist_out=10000, offset=0)
         up = self._get_node(interpolation_db, 1004)
@@ -711,9 +711,9 @@ class TestPropagateReachToNodes:
 
     def test_flipped_reach_interpolation(self, interpolation_db):
         """Flipped reach: offset = reach_length - (reach.dist_out - node.dist_out)."""
-        from src.sword_v17c_pipeline.stages.output import _propagate_reach_to_nodes
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
-        _propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
+        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
 
         # v17c upstream node (LOW v17b dist_out=7200, flipped offset=0)
         up = self._get_node(interpolation_db, 2000)
@@ -738,9 +738,9 @@ class TestPropagateReachToNodes:
 
     def test_single_node_centroid(self, interpolation_db):
         """Single-node reach: offset = reach_length / 2 (centroid)."""
-        from src.sword_v17c_pipeline.stages.output import _propagate_reach_to_nodes
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
-        _propagate_reach_to_nodes(interpolation_db, "NA")
+        propagate_reach_to_nodes(interpolation_db, "NA")
 
         # offset = 400/2 = 200
         node = self._get_node(interpolation_db, 3000)
@@ -752,9 +752,9 @@ class TestPropagateReachToNodes:
 
     def test_flipped_does_not_affect_normal(self, interpolation_db):
         """Passing flipped_reach_ids must not change normal reach results."""
-        from src.sword_v17c_pipeline.stages.output import _propagate_reach_to_nodes
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
-        _propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
+        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
 
         # Normal reach upstream node should be unaffected by flipped set
         up = self._get_node(interpolation_db, 1004)
@@ -763,9 +763,9 @@ class TestPropagateReachToNodes:
 
     def test_no_negative_values(self, interpolation_db):
         """GREATEST(0, ...) clamp prevents negative node distances."""
-        from src.sword_v17c_pipeline.stages.output import _propagate_reach_to_nodes
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
-        _propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
+        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
 
         rows = interpolation_db.execute(
             "SELECT MIN(hydro_dist_out), MIN(hydro_dist_hw), "

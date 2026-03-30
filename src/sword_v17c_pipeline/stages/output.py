@@ -140,7 +140,7 @@ def save_to_duckdb(
 
         # Propagate reach-level v17c columns to child nodes
         # (must run before RTREE indexes are recreated in finally)
-        _propagate_reach_to_nodes(conn, region, flipped_reach_ids)
+        propagate_reach_to_nodes(conn, region, flipped_reach_ids)
     finally:
         conn.unregister("v17c_updates")
         # Always recreate RTREE indexes, even if UPDATE failed
@@ -150,12 +150,14 @@ def save_to_duckdb(
     return len(rows)
 
 
-def _propagate_reach_to_nodes(
+def propagate_reach_to_nodes(
     conn: duckdb.DuckDBPyConnection,
     region: str,
     flipped_reach_ids: Optional[set[int]] = None,
-) -> None:
+) -> int:
     """Propagate v17c columns from reaches to child nodes.
+
+    Returns the number of nodes updated.
 
     Flat-copy columns: best_headwater, best_outlet, subnetwork_id.
     Interpolated by node position using an offset within the reach:
@@ -228,6 +230,7 @@ def _propagate_reach_to_nodes(
     log(
         f"Propagated 8 columns to {count:,} nodes (5 interpolated, 3 flat, {n_flipped} flipped reaches)"
     )
+    return count
 
 
 def update_node_columns(
