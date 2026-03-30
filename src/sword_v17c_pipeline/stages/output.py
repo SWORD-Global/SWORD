@@ -153,32 +153,36 @@ def _propagate_reach_to_nodes(
     conn: duckdb.DuckDBPyConnection,
     region: str,
 ) -> None:
-    """Copy v17c columns from reaches to child nodes.
+    """Propagate v17c columns from reaches to child nodes.
 
-    Nodes inherit best_headwater, best_outlet, pathlen_hw, pathlen_out,
-    and subnetwork_id from their parent reach.
+    Flat-copy columns: best_headwater, best_outlet, subnetwork_id.
+    Interpolated by node position (using offset = reach.dist_out - node.dist_out):
+      - hydro_dist_out, dist_out_dijkstra: reach_value - offset (decrease downstream)
+      - hydro_dist_hw: reach_value - reach_length + offset (increase downstream)
+      - pathlen_hw: GREATEST(0, reach_value - reach_length + offset)
+      - pathlen_out: reach_value + reach_length - offset
     """
-    cols = [
-        "best_headwater",
-        "best_outlet",
-        "pathlen_hw",
-        "pathlen_out",
-        "subnetwork_id",
-    ]
-    set_clause = ", ".join(f"{c} = r.{c}" for c in cols)
+    reg = region.upper()
     result = conn.execute(
-        f"""
+        """
         UPDATE nodes
-        SET {set_clause}
+        SET best_headwater = r.best_headwater,
+            best_outlet = r.best_outlet,
+            subnetwork_id = r.subnetwork_id,
+            hydro_dist_out = r.hydro_dist_out - (r.dist_out - nodes.dist_out),
+            dist_out_dijkstra = r.dist_out_dijkstra - (r.dist_out - nodes.dist_out),
+            hydro_dist_hw = r.hydro_dist_hw - r.reach_length + (r.dist_out - nodes.dist_out),
+            pathlen_hw = GREATEST(0, r.pathlen_hw - r.reach_length + (r.dist_out - nodes.dist_out)),
+            pathlen_out = r.pathlen_out + r.reach_length - (r.dist_out - nodes.dist_out)
         FROM reaches r
         WHERE nodes.reach_id = r.reach_id
           AND nodes.region = r.region
           AND nodes.region = ?
         """,
-        [region.upper()],
+        [reg],
     )
     count = result.fetchone()[0]
-    log(f"Propagated {len(cols)} columns to {count:,} nodes from parent reaches")
+    log(f"Propagated 8 columns to {count:,} nodes (5 interpolated, 3 flat)")
 
 
 def update_node_columns(

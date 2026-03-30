@@ -22,10 +22,14 @@
   `rch_id_up_main` chain walk (mirror of `hydro_dist_out`). Was stale from a
   prior pipeline run.
 - **facc monotonicity fix (T003).** 408 reaches corrected via iterative
-  downstream propagation (4 passes). T003 violations: 392 → 5.
+  downstream propagation (4 passes). T003 violations: 392 → 7.
 - **Routing weights retrained on `effective_slope`.** SWOT `slope_obs_p50`
   (where reliable and n≥5) replaces MERIT DEM slope in routing score training.
   Slope share: 8% → 3%, width: 67% → 71%. CV accuracy unchanged (88.5%).
+- **Node-level distance interpolation.** `hydro_dist_out`, `hydro_dist_hw`, and
+  `dist_out_dijkstra` added to nodes table, interpolated by node position within
+  reach (using v17b `dist_out` offset). `pathlen_hw` and `pathlen_out` changed
+  from flat reach copies to per-node interpolated values.
 - **Variable reference updated.** 7 missing variables added, 8 type mismatches
   fixed, `cl_ids` shape corrected to `cl_id_min`/`cl_id_max`.
 
