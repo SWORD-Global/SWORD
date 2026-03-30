@@ -27,9 +27,11 @@ def conn():
     c = duckdb.connect(":memory:")
     c.execute("""
         CREATE TABLE reach_topology (
-            reach_id BIGINT, direction VARCHAR,
-            neighbor_rank INTEGER, neighbor_reach_id BIGINT,
-            region VARCHAR(2)
+            reach_id BIGINT, region VARCHAR(2),
+            direction VARCHAR, neighbor_rank INTEGER,
+            neighbor_reach_id BIGINT,
+            topology_suspect BOOLEAN DEFAULT FALSE,
+            topology_approved BOOLEAN DEFAULT FALSE
         )
     """)
     return c
@@ -38,7 +40,11 @@ def conn():
 def _insert_topology(conn, rows):
     """Insert topology rows: [(reach_id, direction, rank, neighbor, region), ...]"""
     for row in rows:
-        conn.execute("INSERT INTO reach_topology VALUES (?, ?, ?, ?, ?)", list(row))
+        conn.execute(
+            "INSERT INTO reach_topology (reach_id, direction, neighbor_rank, neighbor_reach_id, region) "
+            "VALUES (?, ?, ?, ?, ?)",
+            list(row),
+        )
 
 
 def _make_reaches_df(**overrides):

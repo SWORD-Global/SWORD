@@ -548,6 +548,7 @@ def _process_region_inner(
             subnetwork_ids=subnetwork_ids,
             dijkstra_dist=dijkstra_dist,
             hydro_dist_hw=hydro_dist_hw,
+            flipped_reach_ids=flipped_reach_ids,
         )
         save_sections_to_duckdb(conn, region, sections_df, validation_df)
         update_node_columns(conn, region, flipped_reach_ids=flipped_reach_ids)

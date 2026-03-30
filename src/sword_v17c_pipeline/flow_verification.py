@@ -37,11 +37,17 @@ from .stages.distances import (
     compute_best_headwater_outlet,
     compute_dijkstra_distances,
     compute_mainstem_distances,
+    compute_mainstem_distances_hw,
 )
 from .stages.graph import build_reach_graph, build_section_graph, identify_junctions
 from .stages.loading import load_reaches, load_topology
-from .stages.mainstem import compute_main_neighbors, compute_mainstem
-from .stages.output import save_sections_to_duckdb, save_to_duckdb
+from .stages.mainstem import (
+    compute_main_neighbors,
+    compute_main_paths,
+    compute_mainstem,
+)
+from .stages.output import save_sections_to_duckdb, save_to_duckdb, update_node_columns
+from .pfaf_offsets import compute_subnetwork_ids
 from .stages.path_variables import compute_path_variables
 
 
@@ -688,17 +694,21 @@ def rebuild_derived_attrs(
 ) -> None:
     """Rebuild all derived attributes after topology changes.
 
-    Sequence
+    Sequence (must match v17c_pipeline.py order)
     --------
     1. Recompute n_rch_up, n_rch_down, end_reach via SQL.
     2. Reload topology/reaches, rebuild graph.
     3. compute_path_variables
-    4. compute_hydro_distances
+    4. compute_dijkstra_distances
     5. compute_best_headwater_outlet
-    6. compute_main_neighbors
-    7. compute_mainstem (uses rch_id_dn_main chain from main_neighbors)
-    8. save_to_duckdb
-    9. save_sections_to_duckdb (with re-validated slopes)
+    6. compute_main_paths
+    7. compute_mainstem (before main_neighbors)
+    8. compute_main_neighbors (uses mainstem_chain)
+    9. compute_mainstem_distances / _hw
+    10. compute_subnetwork_ids
+    11. save_to_duckdb (with flipped_reach_ids for node interpolation)
+    12. update_node_columns (node_order, dn_node_id, up_node_id)
+    13. save_sections_to_duckdb (with re-validated slopes)
     """
     from .v17c_pipeline import compute_junction_slopes
 
@@ -742,15 +752,34 @@ def rebuild_derived_attrs(
     except duckdb.CatalogException:
         pass  # table doesn't exist yet
 
-    # Steps 3-7: compute all v17c attributes
+    # Steps 3-7: compute all v17c attributes (must match v17c_pipeline.py order)
     path_vars = compute_path_variables(G, sections_df, region=region)
     dijkstra_dist = compute_dijkstra_distances(G)
     hw_out = compute_best_headwater_outlet(G)
-    main_neighbors = compute_main_neighbors(G, hw_out_attrs=hw_out, overrides=overrides)
-    is_mainstem = compute_mainstem(G, hw_out, main_neighbors=main_neighbors)
+    main_paths = compute_main_paths(G, hw_out, region=region)
+    is_mainstem, mainstem_chain = compute_mainstem(G, hw_out, main_paths=main_paths)
+    main_neighbors = compute_main_neighbors(
+        G, hw_out_attrs=hw_out, overrides=overrides, mainstem_chain=mainstem_chain
+    )
     hydro_dist = compute_mainstem_distances(G, main_neighbors)
+    hydro_dist_hw = compute_mainstem_distances_hw(G, main_neighbors)
+    subnetwork_ids = compute_subnetwork_ids(G, region=region)
 
-    # Step 8: save (use keyword args to match v17c_pipeline.py)
+    # Get flipped reach IDs for correct node interpolation
+    flipped_reach_ids: set[int] = set()
+    try:
+        flip_rows = conn.execute(
+            "SELECT DISTINCT UNNEST("
+            "  string_split(trim(reach_ids_flipped, '[] '), ',')::BIGINT[]"
+            ") FROM v17c_flow_corrections "
+            "WHERE region = ? AND action = 'flip'",
+            [region.upper()],
+        ).fetchall()
+        flipped_reach_ids = {r[0] for r in flip_rows}
+    except duckdb.CatalogException:
+        pass  # table doesn't exist
+
+    # Step 11: save (use keyword args to match v17c_pipeline.py)
     save_to_duckdb(
         conn,
         region,
@@ -758,11 +787,18 @@ def rebuild_derived_attrs(
         hw_out,
         is_mainstem,
         main_neighbors,
+        main_paths=main_paths,
         path_vars=path_vars,
+        subnetwork_ids=subnetwork_ids,
         dijkstra_dist=dijkstra_dist,
+        hydro_dist_hw=hydro_dist_hw,
+        flipped_reach_ids=flipped_reach_ids,
     )
 
-    # Step 9: recompute and save sections
+    # Step 12: update node_order, dn_node_id, up_node_id
+    update_node_columns(conn, region, flipped_reach_ids=flipped_reach_ids)
+
+    # Step 13: recompute and save sections
     validation_df = compute_junction_slopes(G, sections_df, reaches_df)
     save_sections_to_duckdb(conn, region, sections_df, validation_df)
 

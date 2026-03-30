@@ -501,9 +501,11 @@ class TestApplyVerifiedFlips:
         c = duckdb.connect(":memory:")
         c.execute("""
             CREATE TABLE reach_topology (
-                reach_id BIGINT, direction VARCHAR,
-                neighbor_rank INTEGER, neighbor_reach_id BIGINT,
-                region VARCHAR(2)
+                reach_id BIGINT, region VARCHAR(2),
+                direction VARCHAR, neighbor_rank INTEGER,
+                neighbor_reach_id BIGINT,
+                topology_suspect BOOLEAN DEFAULT FALSE,
+                topology_approved BOOLEAN DEFAULT FALSE
             )
         """)
         return c
@@ -511,8 +513,14 @@ class TestApplyVerifiedFlips:
     def test_apply_flips_and_log(self, conn):
         """Flips are applied and logged to v17c_flow_corrections."""
         # Insert reciprocal topology: 1->2 (1 has up=2, 2 has down=1)
-        conn.execute("INSERT INTO reach_topology VALUES (1, 'up', 0, 2, 'NA')")
-        conn.execute("INSERT INTO reach_topology VALUES (2, 'down', 0, 1, 'NA')")
+        conn.execute(
+            "INSERT INTO reach_topology (reach_id, region, direction, neighbor_rank, neighbor_reach_id) "
+            "VALUES (1, 'NA', 'up', 0, 2)"
+        )
+        conn.execute(
+            "INSERT INTO reach_topology (reach_id, region, direction, neighbor_rank, neighbor_reach_id) "
+            "VALUES (2, 'NA', 'down', 0, 1)"
+        )
 
         section = _make_section(0, [1, 2], 1, 2)
         entry = {**section, "tier": "HIGH", "diagnostics": {}}
@@ -530,7 +538,10 @@ class TestApplyVerifiedFlips:
 
     def test_snapshot_created(self, conn):
         """Snapshot backup table is created before flipping."""
-        conn.execute("INSERT INTO reach_topology VALUES (1, 'up', 0, 2, 'NA')")
+        conn.execute(
+            "INSERT INTO reach_topology (reach_id, region, direction, neighbor_rank, neighbor_reach_id) "
+            "VALUES (1, 'NA', 'up', 0, 2)"
+        )
 
         section = _make_section(0, [1, 2], 1, 2)
         entry = {**section, "tier": "HIGH", "diagnostics": {}}
