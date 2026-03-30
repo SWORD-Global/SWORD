@@ -73,8 +73,11 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | subnetwork_id | i4 | | -9999 | | Connected component ID (from parent reach) |
 | best_headwater | i8 | | -9999 | | Width-prioritized upstream headwater reach ID |
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
-| pathlen_hw | f8 | meters | -9999.0 | | Cumulative path length from headwater |
-| pathlen_out | f8 | meters | -9999.0 | | Cumulative path length to outlet |
+| pathlen_hw | f8 | meters | -9999.0 | | Cumulative path length from headwater (interpolated by node position) |
+| pathlen_out | f8 | meters | -9999.0 | | Cumulative path length to outlet (interpolated by node position) |
+| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance to best_outlet (interpolated by node position) |
+| hydro_dist_hw | f8 | meters | -9999.0 | | Distance from best_headwater (interpolated by node position) |
+| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to outlet (interpolated by node position) |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
 | wse_obs_p30 | f8 | meters | -9999.0 | | SWOT WSE 30th percentile |
