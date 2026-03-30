@@ -136,8 +136,12 @@ this is expected by design.
 | `dn_node_id` | int64 | — | Node ID at the downstream end of the reach (lowest `dist_out`) |
 | `up_node_id` | int64 | — | Node ID at the upstream end of the reach (highest `dist_out`) |
 
-Five of these variables also appear at node level: `subnetwork_id`,
-`best_headwater`, `best_outlet`, `pathlen_hw`, and `pathlen_out`.
+Eight of these variables also appear at node level, interpolated by node
+position within the reach: `hydro_dist_out`, `hydro_dist_hw`,
+`dist_out_dijkstra`, `pathlen_hw`, `pathlen_out`, `subnetwork_id`,
+`best_headwater`, and `best_outlet`. For flow-corrected reaches (639),
+node `dist_out` is stale v17b; the interpolation reverses the offset
+direction to produce correct monotonic distances.
 
 `node_order` is a node-level variable (not in the reaches table): 1-based
 position within a reach, ordered by `dist_out` ascending (1 = downstream

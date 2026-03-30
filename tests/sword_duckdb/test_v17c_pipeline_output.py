@@ -24,11 +24,14 @@ pytestmark = [pytest.mark.pipeline, pytest.mark.db]
 
 @pytest.fixture
 def writable_db(tmp_path):
-    """Create a writable copy of the test database."""
+    """Create a writable copy of the test database with v17c columns."""
+    from sword_duckdb.schema import add_v17c_columns
+
     src = Path(__file__).parent / "fixtures" / "sword_test_minimal.duckdb"
     dst = tmp_path / "test.duckdb"
     shutil.copy2(src, dst)
     conn = duckdb.connect(str(dst))
+    add_v17c_columns(conn)
     yield conn
     conn.close()
 
@@ -604,3 +607,170 @@ class TestSaveToDuckdbWithPathVars:
             "SELECT path_freq FROM reaches WHERE reach_id = ?", [rid]
         ).fetchone()[0]
         assert after == orig
+
+
+class TestPropagateReachToNodes:
+    """Tests for propagate_reach_to_nodes with normal, flipped, and single-node reaches."""
+
+    @pytest.fixture
+    def interpolation_db(self, tmp_path):
+        """Create an in-memory DB with 3 reaches and their nodes for interpolation tests.
+
+        Reach 100 (normal, 5 nodes): dist_out=10000, reach_length=1000
+        Reach 200 (flipped, 5 nodes): dist_out=8000, reach_length=800
+        Reach 300 (single-node, 1 node): dist_out=5000, reach_length=400
+        """
+        db_path = tmp_path / "interp_test.duckdb"
+        conn = duckdb.connect(str(db_path))
+
+        conn.execute("""
+            CREATE TABLE reaches (
+                reach_id BIGINT, region VARCHAR, dist_out DOUBLE,
+                reach_length DOUBLE, n_nodes INTEGER,
+                hydro_dist_out DOUBLE, hydro_dist_hw DOUBLE,
+                dist_out_dijkstra DOUBLE, pathlen_hw DOUBLE, pathlen_out DOUBLE,
+                best_headwater BIGINT, best_outlet BIGINT, subnetwork_id INTEGER
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE nodes (
+                node_id BIGINT, region VARCHAR, reach_id BIGINT, dist_out DOUBLE,
+                hydro_dist_out DOUBLE, hydro_dist_hw DOUBLE,
+                dist_out_dijkstra DOUBLE, pathlen_hw DOUBLE, pathlen_out DOUBLE,
+                best_headwater BIGINT, best_outlet BIGINT, subnetwork_id INTEGER
+            )
+        """)
+
+        # Reach 100: normal, 5 nodes spaced 250m apart
+        conn.execute(
+            "INSERT INTO reaches VALUES (100,'NA',10000,1000,5, 5000,3000,4500,2000,4000, 99,1,10)"
+        )
+        for i, ndo in enumerate([9000, 9250, 9500, 9750, 10000]):
+            conn.execute(
+                "INSERT INTO nodes (node_id,region,reach_id,dist_out) "
+                f"VALUES ({1000 + i},'NA',100,{ndo})"
+            )
+
+        # Reach 200: flipped, 5 nodes spaced 200m apart (stale v17b dist_out)
+        conn.execute(
+            "INSERT INTO reaches VALUES (200,'NA',8000,800,5, 6000,3000,5500,2500,3500, 98,2,20)"
+        )
+        for i, ndo in enumerate([7200, 7400, 7600, 7800, 8000]):
+            conn.execute(
+                "INSERT INTO nodes (node_id,region,reach_id,dist_out) "
+                f"VALUES ({2000 + i},'NA',200,{ndo})"
+            )
+
+        # Reach 300: single-node
+        conn.execute(
+            "INSERT INTO reaches VALUES (300,'NA',5000,400,1, 2000,1500,1800,1200,800, 97,3,30)"
+        )
+        conn.execute(
+            "INSERT INTO nodes (node_id,region,reach_id,dist_out) "
+            "VALUES (3000,'NA',300,5000)"
+        )
+
+        yield conn
+        conn.close()
+
+    def _get_node(self, conn, node_id):
+        """Fetch interpolated columns for a single node."""
+        return conn.execute(
+            "SELECT hydro_dist_out, hydro_dist_hw, dist_out_dijkstra, "
+            "pathlen_hw, pathlen_out, best_headwater, best_outlet, subnetwork_id "
+            "FROM nodes WHERE node_id = ?",
+            [node_id],
+        ).fetchone()
+
+    def test_normal_reach_interpolation(self, interpolation_db):
+        """Normal multi-node reach: offset = reach.dist_out - node.dist_out."""
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
+
+        propagate_reach_to_nodes(interpolation_db, "NA")
+
+        # Upstream node (dist_out=10000, offset=0)
+        up = self._get_node(interpolation_db, 1004)
+        assert up[0] == pytest.approx(5000.0)  # hydro_dist_out = 5000 - 0
+        assert up[1] == pytest.approx(2000.0)  # hydro_dist_hw = 3000 - 1000 + 0
+        assert up[2] == pytest.approx(4500.0)  # dist_out_dijkstra = 4500 - 0
+        assert up[3] == pytest.approx(1000.0)  # pathlen_hw = 2000 - 1000 + 0
+        assert up[4] == pytest.approx(5000.0)  # pathlen_out = 4000 + 1000 - 0
+
+        # Downstream node (dist_out=9000, offset=1000)
+        dn = self._get_node(interpolation_db, 1000)
+        assert dn[0] == pytest.approx(4000.0)  # 5000 - 1000
+        assert dn[1] == pytest.approx(3000.0)  # 3000 - 1000 + 1000
+        assert dn[2] == pytest.approx(3500.0)  # 4500 - 1000
+        assert dn[3] == pytest.approx(2000.0)  # 2000 - 1000 + 1000
+        assert dn[4] == pytest.approx(4000.0)  # 4000 + 1000 - 1000
+
+        # Flat-copy columns
+        assert up[5] == 99  # best_headwater
+        assert up[6] == 1  # best_outlet
+        assert up[7] == 10  # subnetwork_id
+
+    def test_flipped_reach_interpolation(self, interpolation_db):
+        """Flipped reach: offset = reach_length - (reach.dist_out - node.dist_out)."""
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
+
+        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
+
+        # v17c upstream node (LOW v17b dist_out=7200, flipped offset=0)
+        up = self._get_node(interpolation_db, 2000)
+        assert up[0] == pytest.approx(6000.0)  # 6000 - 0
+        assert up[1] == pytest.approx(2200.0)  # 3000 - 800 + 0
+        assert up[2] == pytest.approx(5500.0)  # 5500 - 0
+        assert up[3] == pytest.approx(1700.0)  # 2500 - 800 + 0
+        assert up[4] == pytest.approx(4300.0)  # 3500 + 800 - 0
+
+        # v17c downstream node (HIGH v17b dist_out=8000, flipped offset=800)
+        dn = self._get_node(interpolation_db, 2004)
+        assert dn[0] == pytest.approx(5200.0)  # 6000 - 800
+        assert dn[1] == pytest.approx(3000.0)  # 3000 - 800 + 800
+        assert dn[2] == pytest.approx(4700.0)  # 5500 - 800
+        assert dn[3] == pytest.approx(2500.0)  # 2500 - 800 + 800
+        assert dn[4] == pytest.approx(3500.0)  # 3500 + 800 - 800
+
+        # Middle node (v17b dist_out=7600, flipped offset=400)
+        mid = self._get_node(interpolation_db, 2002)
+        assert mid[0] == pytest.approx(5600.0)  # 6000 - 400
+        assert mid[1] == pytest.approx(2600.0)  # 3000 - 800 + 400
+
+    def test_single_node_centroid(self, interpolation_db):
+        """Single-node reach: offset = reach_length / 2 (centroid)."""
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
+
+        propagate_reach_to_nodes(interpolation_db, "NA")
+
+        # offset = 400/2 = 200
+        node = self._get_node(interpolation_db, 3000)
+        assert node[0] == pytest.approx(1800.0)  # 2000 - 200
+        assert node[1] == pytest.approx(1300.0)  # 1500 - 400 + 200
+        assert node[2] == pytest.approx(1600.0)  # 1800 - 200
+        assert node[3] == pytest.approx(1000.0)  # 1200 - 400 + 200
+        assert node[4] == pytest.approx(1000.0)  # 800 + 400 - 200
+
+    def test_flipped_does_not_affect_normal(self, interpolation_db):
+        """Passing flipped_reach_ids must not change normal reach results."""
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
+
+        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
+
+        # Normal reach upstream node should be unaffected by flipped set
+        up = self._get_node(interpolation_db, 1004)
+        assert up[0] == pytest.approx(5000.0)
+        assert up[1] == pytest.approx(2000.0)
+
+    def test_no_negative_values(self, interpolation_db):
+        """GREATEST(0, ...) clamp prevents negative node distances."""
+        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
+
+        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
+
+        rows = interpolation_db.execute(
+            "SELECT MIN(hydro_dist_out), MIN(hydro_dist_hw), "
+            "MIN(dist_out_dijkstra), MIN(pathlen_hw), MIN(pathlen_out) "
+            "FROM nodes WHERE region = 'NA'"
+        ).fetchone()
+        for val in rows:
+            assert val >= 0, f"Negative distance found: {val}"

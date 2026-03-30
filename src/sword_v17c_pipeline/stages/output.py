@@ -24,6 +24,7 @@ def save_to_duckdb(
     subnetwork_ids: Optional[Dict[int, int]] = None,
     dijkstra_dist: Optional[Dict[int, Dict]] = None,
     hydro_dist_hw: Optional[Dict[int, Dict]] = None,
+    flipped_reach_ids: Optional[set[int]] = None,
 ) -> int:
     """
     Save computed v17c attributes to DuckDB reaches table.
@@ -139,7 +140,7 @@ def save_to_duckdb(
 
         # Propagate reach-level v17c columns to child nodes
         # (must run before RTREE indexes are recreated in finally)
-        _propagate_reach_to_nodes(conn, region)
+        propagate_reach_to_nodes(conn, region, flipped_reach_ids)
     finally:
         conn.unregister("v17c_updates")
         # Always recreate RTREE indexes, even if UPDATE failed
@@ -149,40 +150,87 @@ def save_to_duckdb(
     return len(rows)
 
 
-def _propagate_reach_to_nodes(
+def propagate_reach_to_nodes(
     conn: duckdb.DuckDBPyConnection,
     region: str,
-) -> None:
+    flipped_reach_ids: Optional[set[int]] = None,
+) -> int:
     """Propagate v17c columns from reaches to child nodes.
 
+    Returns the number of nodes updated.
+
     Flat-copy columns: best_headwater, best_outlet, subnetwork_id.
-    Interpolated by node position (using offset = reach.dist_out - node.dist_out):
-      - hydro_dist_out, dist_out_dijkstra: reach_value - offset (decrease downstream)
-      - hydro_dist_hw: reach_value - reach_length + offset (increase downstream)
+    Interpolated by node position using an offset within the reach:
+      - Normal multi-node: offset = reach.dist_out - node.dist_out
+      - Flipped multi-node: offset = reach_length - (reach.dist_out - node.dist_out)
+        (node dist_out is stale v17b; v17c downstream has HIGH v17b dist_out)
+      - Single-node: offset = reach_length / 2 (centroid)
+
+    Then:
+      - hydro_dist_out, dist_out_dijkstra: reach_value - offset
+      - hydro_dist_hw: reach_value - reach_length + offset
       - pathlen_hw: GREATEST(0, reach_value - reach_length + offset)
-      - pathlen_out: reach_value + reach_length - offset
+      - pathlen_out: GREATEST(0, reach_value + reach_length - offset)
     """
     reg = region.upper()
+    flipped = flipped_reach_ids or set()
+
+    # Build the offset expression as a CASE:
+    #   single-node → reach_length / 2
+    #   flipped     → reach_length - (dist_out - node.dist_out)
+    #   normal      → dist_out - node.dist_out
+    if flipped:
+        ids_csv = ",".join(str(r) for r in flipped)
+        offset_expr = f"""
+            CASE
+                WHEN r.n_nodes = 1 THEN r.reach_length / 2.0
+                WHEN r.reach_id IN ({ids_csv})
+                    THEN r.reach_length - (r.dist_out - nodes.dist_out)
+                ELSE r.dist_out - nodes.dist_out
+            END"""
+    else:
+        offset_expr = """
+            CASE
+                WHEN r.n_nodes = 1 THEN r.reach_length / 2.0
+                ELSE r.dist_out - nodes.dist_out
+            END"""
+
     result = conn.execute(
-        """
+        f"""
+        WITH ofs AS (
+            SELECT nodes.node_id, nodes.region,
+                   r.best_headwater, r.best_outlet, r.subnetwork_id,
+                   r.hydro_dist_out, r.dist_out_dijkstra,
+                   r.hydro_dist_hw, r.pathlen_hw, r.pathlen_out,
+                   r.reach_length,
+                   {offset_expr} AS o
+            FROM nodes
+            JOIN reaches r
+              ON nodes.reach_id = r.reach_id
+             AND nodes.region = r.region
+            WHERE nodes.region = ?
+        )
         UPDATE nodes
-        SET best_headwater = r.best_headwater,
-            best_outlet = r.best_outlet,
-            subnetwork_id = r.subnetwork_id,
-            hydro_dist_out = GREATEST(0, r.hydro_dist_out - (r.dist_out - nodes.dist_out)),
-            dist_out_dijkstra = GREATEST(0, r.dist_out_dijkstra - (r.dist_out - nodes.dist_out)),
-            hydro_dist_hw = GREATEST(0, r.hydro_dist_hw - r.reach_length + (r.dist_out - nodes.dist_out)),
-            pathlen_hw = GREATEST(0, r.pathlen_hw - r.reach_length + (r.dist_out - nodes.dist_out)),
-            pathlen_out = GREATEST(0, r.pathlen_out + r.reach_length - (r.dist_out - nodes.dist_out))
-        FROM reaches r
-        WHERE nodes.reach_id = r.reach_id
-          AND nodes.region = r.region
-          AND nodes.region = ?
+        SET best_headwater = ofs.best_headwater,
+            best_outlet = ofs.best_outlet,
+            subnetwork_id = ofs.subnetwork_id,
+            hydro_dist_out = GREATEST(0, ofs.hydro_dist_out - ofs.o),
+            dist_out_dijkstra = GREATEST(0, ofs.dist_out_dijkstra - ofs.o),
+            hydro_dist_hw = GREATEST(0, ofs.hydro_dist_hw - ofs.reach_length + ofs.o),
+            pathlen_hw = GREATEST(0, ofs.pathlen_hw - ofs.reach_length + ofs.o),
+            pathlen_out = GREATEST(0, ofs.pathlen_out + ofs.reach_length - ofs.o)
+        FROM ofs
+        WHERE nodes.node_id = ofs.node_id
+          AND nodes.region = ofs.region
         """,
         [reg],
     )
     count = result.fetchone()[0]
-    log(f"Propagated 8 columns to {count:,} nodes (5 interpolated, 3 flat)")
+    n_flipped = len(flipped)
+    log(
+        f"Propagated 8 columns to {count:,} nodes (5 interpolated, 3 flat, {n_flipped} flipped reaches)"
+    )
+    return count
 
 
 def update_node_columns(

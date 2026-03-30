@@ -872,6 +872,9 @@ def add_v17c_columns(db) -> bool:
         ("best_outlet", "BIGINT"),
         ("pathlen_hw", "DOUBLE"),
         ("pathlen_out", "DOUBLE"),
+        ("hydro_dist_out", "DOUBLE"),
+        ("hydro_dist_hw", "DOUBLE"),
+        ("dist_out_dijkstra", "DOUBLE"),
         ("subnetwork_id", "INTEGER"),  # weakly connected component ID
         ("facc_quality", "VARCHAR"),  # facc correction status flag
     ]

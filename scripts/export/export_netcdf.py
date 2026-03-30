@@ -327,6 +327,9 @@ def _v17c_node_scalar_specs():
         ("subnetwork_id", "i4", FILL_I4, "subnetwork_id", {}),
         ("best_headwater", "i8", FILL_I8, "best_headwater", {}),
         ("best_outlet", "i8", FILL_I8, "best_outlet", {}),
+        ("hydro_dist_out", "f8", FILL_F8, "hydro_dist_out", {"units": "meters"}),
+        ("hydro_dist_hw", "f8", FILL_F8, "hydro_dist_hw", {"units": "meters"}),
+        ("dist_out_dijkstra", "f8", FILL_F8, "dist_out_dijkstra", {"units": "meters"}),
         ("pathlen_hw", "f8", FILL_F8, "pathlen_hw", {"units": "meters"}),
         ("pathlen_out", "f8", FILL_F8, "pathlen_out", {"units": "meters"}),
         # WSE obs percentiles
