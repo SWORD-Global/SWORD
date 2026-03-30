@@ -102,7 +102,7 @@ def fix_region(
                 f"  {'node_order':>10} {'current_hdo':>12} {'reach_hdo':>10} {'offset_old':>10} {'offset_new':>10}"
             )
             for row in rows[:5]:
-                node_order, cur_hdo, reach_hdo, r_do, n_do, rlen = row[:6]
+                _nid, node_order, cur_hdo, reach_hdo, r_do, n_do, rlen = row
                 old_ofs = r_do - n_do
                 new_ofs = rlen - (r_do - n_do)
                 print(
