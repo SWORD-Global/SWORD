@@ -33,11 +33,10 @@
 - **Routing weights learned from human labels.** Replaced the handcrafted
   lexicographic 3-tuple `(effective_width, log_facc, pathlen)` with a
   weighted scalar score trained on 1,967 human-labeled junction decisions:
-  `2.02*log1p(ew) + 0.17*log1p(facc) - 0.08*log1p(slope) + 0.35*log1p(pathlen)
-  + 0.23*stream_order`. Two new signals vs prior releases: slope (negative
+  `1.97*log1p(ew) + 0.23*log1p(facc) - 0.23*log1p(slope) + 0.23*log1p(pathlen)
+  + 0.29*stream_order`. Two new signals vs prior releases: slope (negative
   = prefer lower gradient) and stream_order. All routing functions use the
-  same score to prevent divergence. Weights retrained in 0.0.4 on
-  effective_slope (SWOT-preferred).
+  same score to prevent divergence. (Weights retrained in 0.0.4; see above.)
 - **Caroline's reviewer fixes synced.** 127 C001 lakeflag fixes (NA) and
   10 C004 type fixes (NA) from the Streamlit reviewer app.
 - **NA PostgreSQL geometry fix.** 38,696 NA reaches had NULL geometry in
