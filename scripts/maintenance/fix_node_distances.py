@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import duckdb
 
@@ -120,7 +120,7 @@ def fix_region(
         }
 
     # Use the shared interpolation function (same logic as pipeline)
-    from sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
+    from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
     # Load spatial extension + drop RTREE indexes
     conn.execute("INSTALL spatial; LOAD spatial;")
@@ -170,7 +170,7 @@ def main():
     conn = duckdb.connect(args.db, read_only=args.dry_run)
 
     # Ensure v17c node columns exist
-    from sword_duckdb.schema import add_v17c_columns
+    from src.sword_duckdb.schema import add_v17c_columns
 
     if not args.dry_run:
         add_v17c_columns(conn)
