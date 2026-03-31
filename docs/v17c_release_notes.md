@@ -307,8 +307,8 @@ Example: 5 = negative slope (1) + high variance (4).
 - **SWOT observation coverage:** SWOT statistics are fill_value (-9999) for
   reaches and nodes lacking SWOT data.
 
-- **facc correction scope:** 95,913 reaches corrected (38.6%); the
-  remaining 152,761 retain v17b values. Node-level facc propagates from
+- **facc correction scope:** 96,589 reaches corrected (38.8%); the
+  remaining 152,084 retain v17b values. Node-level facc propagates from
   the parent reach.
 
 - **Lake sandwich corrections:** 1,252 reaches reclassified to

@@ -125,8 +125,8 @@ across all boundaries).
 | slope_obs_mad | f8 | meters/kilometers | -9999.0 | | SWOT slope median absolute deviation |
 | slope_obs_adj | f8 | meters/kilometers | -9999.0 | | Adjusted SWOT slope (bias-corrected) |
 | slope_obs_slopeF | f8 | | -9999.0 | | Slope quality F-statistic |
-| slope_obs_reliable | i1 | | -9999 | BOOL->i1 (True=1, False=0) | Whether SWOT slope is reliable |
-| slope_obs_quality | string | | | VARCHAR (reliable, small_negative, moderate_negative, large_negative, negative, below_ref_uncertainty, high_uncertainty, noise_high_nobs, flat_water_noise) | SWOT slope quality category |
+| slope_obs_reliable | i4 | | -9999 | flag_values=[0,1], flag_meanings="unreliable reliable" | Whether SWOT slope is reliable |
+| slope_obs_quality | i4 | | -9999 | flag_values=[0..8], flag_meanings="reliable small_negative moderate_negative large_negative negative below_ref_uncertainty high_uncertainty noise_high_nobs flat_water_noise" | SWOT slope quality category |
 | slope_obs_n | i8 | | -9999 | | Number of SWOT slope observations |
 | slope_obs_n_passes | i8 | | -9999 | | Number of SWOT passes with slope |
 | slope_obs_q | i8 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
