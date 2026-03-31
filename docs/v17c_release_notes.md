@@ -124,7 +124,7 @@ this is expected by design.
 |----------|------|-------|-------------|
 | `dist_out_dijkstra` | float64 | meters | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet (outlet = 0; NULL for ghost reaches) |
 | `hydro_dist_out` | float64 | meters | Mainstem distance from the upstream end of the reach to `best_outlet` via `rch_id_dn_main` chain (outlet = `reach_length`) |
-| `hydro_dist_hw` | float64 | meters | Mainstem distance from `best_headwater` to the downstream end of the reach via `rch_id_up_main` chain (headwater = `reach_length`) |
+| `hydro_dist_hw` | float64 | meters | Mainstem distance from `best_headwater` to the upstream end of the reach via `rch_id_up_main` chain (headwater = 0) |
 | `rch_id_up_main` | int64 | — | Main upstream neighbor reach_id (mainstem-preferred) |
 | `rch_id_dn_main` | int64 | — | Main downstream neighbor reach_id (mainstem-preferred) |
 | `best_headwater` | int64 | — | Routing-score-prioritized headwater reach_id for the network component |
@@ -160,14 +160,12 @@ interpolated distance values (verified gap = 0 m across all boundaries).
 position within a reach, ordered by `dist_out` ascending (1 = downstream
 end, n = upstream end).
 
-**Distance convention note.** `dist_out` (v17b) and `hydro_dist_out`
-both measure from the upstream end of the reach and assign
-`reach_length` at the outlet. `dist_out_dijkstra` also measures from the
-upstream end but assigns 0 at the outlet; the offset between
-`hydro_dist_out` and `dist_out_dijkstra` at any reach equals the
-outlet's `reach_length`. `hydro_dist_hw` measures from the headwater to
-the downstream end of the reach. See the variable reference for the full
-convention table.
+**Distance convention note.** All four distance variables anchor at the
+upstream end of the reach. `dist_out` (v17b) and `hydro_dist_out` assign
+`reach_length` at the outlet. `dist_out_dijkstra` assigns 0 at the
+outlet; the offset at any reach equals the outlet's `reach_length`.
+`hydro_dist_hw` assigns 0 at the headwater and increases downstream.
+See the variable reference for the full convention table.
 
 ### 2.2 SWOT Observation Statistics
 

@@ -18,16 +18,15 @@ extends to nodes.
 | `dist_out` (v17b) | v17b topology | upstream end of reach | `reach_length` | has value |
 | `hydro_dist_out` | `rch_id_dn_main` chain | upstream end of reach | `reach_length` | has value |
 | `dist_out_dijkstra` | Dijkstra shortest path | upstream end of reach | **0** | **NULL** |
-| `hydro_dist_hw` | `rch_id_up_main` chain | downstream end of reach | headwater `reach_length` | has value |
+| `hydro_dist_hw` | `rch_id_up_main` chain | upstream end of reach | 0 | has value |
 
-**Anchor convention.** For `dist_out`, `hydro_dist_out`, and
-`dist_out_dijkstra`, the reach-level value equals the distance from the
-upstream end of the reach to the outlet. Each reach's value therefore
-exceeds its downstream neighbor's value by exactly its own
-`reach_length`. For `hydro_dist_hw` the convention is reversed: the
-reach-level value equals the distance from the headwater to the
-downstream end of the reach, so each reach's value exceeds its upstream
-neighbor's value by exactly its own `reach_length`.
+**Anchor convention.** All four distance variables anchor at the upstream
+end of the reach. For `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra`, the value equals the distance from the upstream end
+of the reach to the outlet; each reach exceeds its downstream neighbor
+by its own `reach_length`. For `hydro_dist_hw`, the value equals the
+distance from the headwater to the upstream end of the reach; each reach
+exceeds its upstream neighbor by the upstream neighbor's `reach_length`.
 
 **Zero-point difference.** `dist_out` and `hydro_dist_out` assign the
 outlet reach a value equal to its `reach_length` (the upstream end is
@@ -51,7 +50,7 @@ reversed.
 |---|---|---|---|
 | `hydro_dist_out` | `reach.hdo - offset` | `reach.hdo` | `reach.hdo - reach_length` |
 | `dist_out_dijkstra` | `reach.dod - offset` | `reach.dod` | `reach.dod - reach_length` |
-| `hydro_dist_hw` | `reach.hdh - reach_length + offset` | `reach.hdh - reach_length` | `reach.hdh` |
+| `hydro_dist_hw` | `reach.hdh + offset` | `reach.hdh` | `reach.hdh + reach_length` |
 | `pathlen_hw` | `reach.plh - reach_length + offset` | `reach.plh - reach_length` | `reach.plh` |
 | `pathlen_out` | `reach.plo + reach_length - offset` | `reach.plo + reach_length` | `reach.plo` |
 
@@ -79,7 +78,7 @@ across all boundaries).
 |---|---|---|---|---|---|
 | dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet; outlet reach = 0; NULL for ghost reaches (type=6) |
 | hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance from the upstream end of the reach to best_outlet via rch_id_dn_main chain; outlet reach = reach_length |
-| hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem distance from best_headwater to the downstream end of the reach via rch_id_up_main chain; headwater reach = reach_length |
+| hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem distance from best_headwater to the upstream end of the reach via rch_id_up_main chain; headwater = 0 |
 | rch_id_up_main | i8 | | -9999 | | Main upstream neighbor reach ID (mainstem-preferred) |
 | rch_id_dn_main | i8 | | -9999 | | Main downstream neighbor reach ID (mainstem-preferred) |
 | subnetwork_id | i4 | | -9999 | | Connected component ID (Pfafstetter-offset, globally unique; differs from v17b `network`) |
