@@ -65,6 +65,7 @@ compute_hydro_distances = compute_dijkstra_distances
 def compute_mainstem_distances(
     G: nx.DiGraph,
     main_neighbors: Dict[int, Dict],
+    dijkstra_results: Dict[int, Dict] | None = None,
 ) -> Dict[int, Dict]:
     """
     Compute distance to best_outlet by walking the rch_id_dn_main chain.
@@ -74,8 +75,12 @@ def compute_mainstem_distances(
     self).  Convention matches v17b dist_out: outlet reach gets its own
     reach_length, not 0.
 
+    If a cycle is detected in the chain, falls back to dist_out_dijkstra
+    from *dijkstra_results* (if provided).
+
     Returns ``{reach_id: {"hydro_dist_out": float}}``.
     """
+    dijkstra_results = dijkstra_results or {}
     log("Computing mainstem distances (rch_id_dn_main chain walk)...")
 
     if G.number_of_nodes() == 0:
@@ -90,10 +95,11 @@ def compute_mainstem_distances(
         else:
             dn_main[rid] = None
 
-    # Cache: once a reach's distance is known, reuse it
-    cache: Dict[int, float] = {}
+    # Cache: once a reach's distance is known, reuse it.
+    # None sentinel means "cycle detected, use fallback".
+    cache: Dict[int, Optional[float]] = {}
 
-    def _walk(start: int) -> float:
+    def _walk(start: int) -> Optional[float]:
         """Walk downstream from *start*, return total distance."""
         if start in cache:
             return cache[start]
@@ -104,13 +110,24 @@ def compute_mainstem_distances(
 
         while cur is not None and cur not in cache:
             if cur in visited:
-                raise RuntimeError(f"Cycle in rch_id_dn_main chain: {path + [cur]}")
+                log(
+                    f"WARNING: cycle in rch_id_dn_main chain at {cur}, "
+                    f"using dist_out_dijkstra fallback: {path + [cur]}"
+                )
+                for rid in path:
+                    cache[rid] = None  # sentinel: use dijkstra fallback
+                return None
             visited.add(cur)
             path.append(cur)
             cur = dn_main.get(cur)
 
         # cur is either None (terminal) or already cached
         suffix = cache[cur] if cur is not None else 0.0
+        if suffix is None:
+            # Downstream reach hit a cycle — propagate fallback
+            for rid in path:
+                cache[rid] = None
+            return None
 
         # Walk backwards through path, filling cache
         cumulative = suffix
@@ -120,6 +137,7 @@ def compute_mainstem_distances(
 
         return cache[start]
 
+    n_cycle_fallback = 0
     results: Dict[int, Dict] = {}
     for rid in G.nodes():
         if rid not in dn_main:
@@ -127,13 +145,20 @@ def compute_mainstem_distances(
             dist = G.nodes[rid].get("reach_length", 0)
         else:
             dist = _walk(rid)
+        if dist is None:
+            # Cycle detected — fall back to dist_out_dijkstra
+            dist = dijkstra_results.get(rid, {}).get("dist_out_dijkstra")
+            n_cycle_fallback += 1
         results[rid] = {"hydro_dist_out": dist}
 
     n_terminal = sum(1 for r in dn_main.values() if r is None)
-    log(
+    msg = (
         f"Mainstem distances (downstream): {len(results):,} reaches, "
         f"{n_terminal:,} terminal (NULL rch_id_dn_main)"
     )
+    if n_cycle_fallback:
+        msg += f", {n_cycle_fallback:,} used dijkstra fallback (cycle)"
+    log(msg)
     return results
 
 
@@ -164,10 +189,11 @@ def compute_mainstem_distances_hw(
         else:
             up_main[rid] = None
 
-    # Cache: once a reach's distance is known, reuse it
-    cache: Dict[int, float] = {}
+    # Cache: once a reach's distance is known, reuse it.
+    # None sentinel means "cycle detected, no valid distance".
+    cache: Dict[int, Optional[float]] = {}
 
-    def _walk(start: int) -> float:
+    def _walk(start: int) -> Optional[float]:
         """Walk upstream from *start*, return total distance."""
         if start in cache:
             return cache[start]
@@ -178,13 +204,24 @@ def compute_mainstem_distances_hw(
 
         while cur is not None and cur not in cache:
             if cur in visited:
-                raise RuntimeError(f"Cycle in rch_id_up_main chain: {path + [cur]}")
+                log(
+                    f"WARNING: cycle in rch_id_up_main chain at {cur}, "
+                    f"setting NULL: {path + [cur]}"
+                )
+                for rid in path:
+                    cache[rid] = None  # no valid upstream distance
+                return None
             visited.add(cur)
             path.append(cur)
             cur = up_main.get(cur)
 
         # cur is either None (terminal) or already cached
         suffix = cache[cur] if cur is not None else 0.0
+        if suffix is None:
+            # Upstream reach hit a cycle — propagate NULL
+            for rid in path:
+                cache[rid] = None
+            return None
 
         # Walk backwards through path (i.e. back downstream), filling cache
         cumulative = suffix
@@ -194,19 +231,25 @@ def compute_mainstem_distances_hw(
 
         return cache[start]
 
+    n_cycle_fallback = 0
     results: Dict[int, Dict] = {}
     for rid in G.nodes():
         if rid not in up_main:
             dist = G.nodes[rid].get("reach_length", 0)
         else:
             dist = _walk(rid)
+        if dist is None:
+            n_cycle_fallback += 1
         results[rid] = {"hydro_dist_hw": dist}
 
     n_terminal = sum(1 for r in up_main.values() if r is None)
-    log(
+    msg = (
         f"Mainstem distances (upstream): {len(results):,} reaches, "
         f"{n_terminal:,} terminal (NULL rch_id_up_main)"
     )
+    if n_cycle_fallback:
+        msg += f", {n_cycle_fallback:,} set to NULL (cycle)"
+    log(msg)
     return results
 
 

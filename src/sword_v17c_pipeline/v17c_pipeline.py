@@ -512,7 +512,7 @@ def _process_region_inner(
     main_neighbors = compute_main_neighbors(
         G, hw_out_attrs=hw_out, overrides=overrides, mainstem_chain=mainstem_chain
     )
-    hydro_dist = compute_mainstem_distances(G, main_neighbors)
+    hydro_dist = compute_mainstem_distances(G, main_neighbors, dijkstra_dist)
     hydro_dist_hw = compute_mainstem_distances_hw(G, main_neighbors)
 
     # Compute subnetwork_id (weakly connected components, Pfafstetter-offset)

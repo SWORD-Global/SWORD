@@ -624,7 +624,14 @@ def export_region(
     t0 = time.time()
 
     v17b = nc.Dataset(str(v17b_path), "r")
+    try:
+        return _export_region_inner(v17b, con, region, out_path, t0)
+    finally:
+        v17b.close()
 
+
+def _export_region_inner(v17b, con, region, out_path, t0):
+    """Inner export logic, v17b handle closed by caller."""
     # -- Query DuckDB reach data -------------------------------------------
     reach_scalar_specs = _v17b_reach_scalar_specs() + _v17c_reach_scalar_specs()
     reach_duckdb_cols = [s[3] for s in reach_scalar_specs]
@@ -641,13 +648,11 @@ def export_region(
     # Validate reach count matches v17b
     v17b_reach_ids = v17b.groups["reaches"].variables["reach_id"][:]
     if num_reaches != len(v17b_reach_ids):
-        v17b.close()
         raise ValueError(
             f"Reach count mismatch for {region}: "
             f"v17c={num_reaches}, v17b={len(v17b_reach_ids)}"
         )
     if set(reach_data["reach_id"].tolist()) != set(v17b_reach_ids.tolist()):
-        v17b.close()
         raise ValueError(f"Reach ID set mismatch for {region}")
 
     # Build reorder index: v17b ordering is canonical.
@@ -677,7 +682,6 @@ def export_region(
     # Validate node count and reorder to match v17b
     v17b_node_ids = v17b.groups["nodes"].variables["node_id"][:]
     if num_nodes != len(v17b_node_ids):
-        v17b.close()
         raise ValueError(
             f"Node count mismatch for {region}: v17c={num_nodes}, v17b={len(v17b_node_ids)}"
         )
@@ -692,7 +696,6 @@ def export_region(
 
     v17b_cl_ids = v17b.groups["centerlines"].variables["cl_id"][:]
     if num_points != len(v17b_cl_ids):
-        v17b.close()
         raise ValueError(
             f"Centerline count mismatch for {region}: "
             f"v17c={num_points}, v17b={len(v17b_cl_ids)}"
@@ -850,7 +853,6 @@ def export_region(
     _passthrough_v17b_subgroups(root, v17b, reorder_reach)
 
     root.close()
-    v17b.close()
 
     elapsed = time.time() - t0
     print(f"  Done in {elapsed:.1f}s: {out_path}")
