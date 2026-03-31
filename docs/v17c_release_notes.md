@@ -22,7 +22,7 @@
 - **`hydro_dist_hw` computed.** Mainstem distance from headwater via
   `rch_id_up_main` chain walk (mirror of `hydro_dist_out`). Was stale from a
   prior pipeline run.
-- **facc monotonicity fix (T003).** 417 reaches corrected via iterative
+- **facc monotonicity fix (T003).** 419 reaches corrected via iterative
   downstream propagation. T003 violations: 392 → 0.
 - **Routing weights retrained on `effective_slope`.** SWOT `slope_obs_p50`
   (where reliable and n≥5) replaces MERIT DEM slope in routing score training.
