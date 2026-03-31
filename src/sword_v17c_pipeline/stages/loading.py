@@ -112,8 +112,9 @@ def recompute_facc_flow_corrected(
     safe_v17b = v17b_path.replace("'", "''")
     try:
         con.execute(f"ATTACH '{safe_v17b}' AS v17b_fc (READ_ONLY)")
-    except Exception:
-        pass  # already attached
+    except Exception as exc:
+        if "already attached" not in str(exc).lower():
+            raise
 
     flipped_df = con.execute(f"""
         SELECT DISTINCT c.reach_id

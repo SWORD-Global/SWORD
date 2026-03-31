@@ -261,15 +261,11 @@ def compute_main_neighbors(
 
             # Verify chain_succ is actually a successor in the graph
             succs = set(G.successors(node))
-            if len(succs) > 1 and chain_succ in succs:
-                # Bifurcation: chain is constrained to within-group successors
-                # but the best successor may be in a different group. Use score.
-                best_by_score = max(succs, key=_dn_key)
-                rch_id_dn_main = best_by_score
-            elif chain_succ in succs:
-                # 1:1 link: chain is authoritative
+            if chain_succ in succs:
+                # Chain is authoritative (both 1:1 and bifurcations)
                 rch_id_dn_main = chain_succ
             else:
+                # chain_succ not in graph (shouldn't happen) — fall back to ranking
                 rch_id_dn_main = max(succs, key=_dn_key) if succs else None
 
             n_from_chain += 1

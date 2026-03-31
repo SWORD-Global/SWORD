@@ -182,18 +182,20 @@ def propagate_reach_to_nodes(
     if flipped:
         ids_csv = ",".join(str(r) for r in flipped)
         offset_expr = f"""
+            GREATEST(0, LEAST(r.reach_length,
             CASE
                 WHEN r.n_nodes = 1 THEN r.reach_length / 2.0
                 WHEN r.reach_id IN ({ids_csv})
                     THEN r.reach_length - (r.dist_out - nodes.dist_out)
                 ELSE r.dist_out - nodes.dist_out
-            END"""
+            END))"""
     else:
         offset_expr = """
+            GREATEST(0, LEAST(r.reach_length,
             CASE
                 WHEN r.n_nodes = 1 THEN r.reach_length / 2.0
                 ELSE r.dist_out - nodes.dist_out
-            END"""
+            END))"""
 
     result = conn.execute(
         f"""

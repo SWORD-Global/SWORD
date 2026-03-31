@@ -162,6 +162,11 @@ def main():
 
     regions = [args.region.upper()] if args.region else REGIONS
 
+    # Guard against accidentally modifying v17b
+    if "v17b" in Path(args.db).name and not args.dry_run:
+        print("ERROR: refusing to modify a v17b database (read-only reference)")
+        sys.exit(1)
+
     print(f"Database: {args.db}")
     print(f"Regions: {', '.join(regions)}")
     if args.dry_run:

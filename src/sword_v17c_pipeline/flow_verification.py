@@ -761,7 +761,7 @@ def rebuild_derived_attrs(
     main_neighbors = compute_main_neighbors(
         G, hw_out_attrs=hw_out, overrides=overrides, mainstem_chain=mainstem_chain
     )
-    hydro_dist = compute_mainstem_distances(G, main_neighbors)
+    hydro_dist = compute_mainstem_distances(G, main_neighbors, dijkstra_dist)
     hydro_dist_hw = compute_mainstem_distances_hw(G, main_neighbors)
     subnetwork_ids = compute_subnetwork_ids(G, region=region)
 

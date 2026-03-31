@@ -208,8 +208,6 @@ def export_table_to_postgres(
 
     # For geometry, use ST_SetSRID(ST_GeomFromWKB(...), 4326)
     if has_geom and convert_geometry:
-        # Find geometry column index
-        geom_idx = col_names.index("geom")
         # Use execute_values with a template that handles geometry
         col_templates = []
         for i, c in enumerate(col_names):
@@ -220,6 +218,23 @@ def export_table_to_postgres(
         insert_template = f"({', '.join(col_templates)})"
         insert_sql = f"INSERT INTO {table_name} ({', '.join(col_names)}) VALUES %s"
 
+    # Determine ORDER BY for deterministic batching (LIMIT/OFFSET requires stable order)
+    pk_map = {
+        "centerlines": "cl_id",
+        "centerline_neighbors": "cl_id, region, neighbor_rank",
+        "nodes": "node_id",
+        "reaches": "reach_id",
+        "reach_topology": "reach_id, direction, neighbor_rank",
+        "reach_swot_orbits": "reach_id",
+        "reach_ice_flags": "reach_id",
+        "sword_operations": "operation_id",
+        "sword_value_snapshots": "snapshot_id",
+        "v17c_sections": "section_id",
+        "v17c_section_slope_validation": "section_id",
+    }
+    order_col = pk_map.get(table_name, col_names[0])
+    order_clause = f" ORDER BY {order_col}"
+
     # Stream data in batches
     loaded = 0
     offset = 0
@@ -227,7 +242,7 @@ def export_table_to_postgres(
     with tqdm(total=total_rows, desc=f"Loading {table_name}", unit="rows") as pbar:
         while True:
             # Fetch batch from DuckDB
-            batch_query = f"{query} LIMIT {batch_size} OFFSET {offset}"
+            batch_query = f"{query}{order_clause} LIMIT {batch_size} OFFSET {offset}"
             if params:
                 rows = duck_conn.execute(batch_query, params).fetchall()
             else:
@@ -611,8 +626,8 @@ Examples:
     )
     parser.add_argument(
         "--v17b-gpkg-dir",
-        default="/Users/jakegearon/projects/sword_v17c/data",
-        help="Directory containing {region}_sword_reaches_v17b.gpkg files",
+        default=None,
+        help="Directory containing {region}_sword_reaches_v17b.gpkg files (required unless --skip-v17b-geom)",
     )
     parser.add_argument("--batch-size", type=int, help="Override default batch size")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
@@ -625,6 +640,11 @@ Examples:
     # Validate arguments
     if not args.region and not args.all:
         parser.error("Must specify --region or --all")
+
+    if not args.skip_v17b_geom and not args.dry_run and args.v17b_gpkg_dir is None:
+        parser.error(
+            "--v17b-gpkg-dir is required unless --skip-v17b-geom or --dry-run is set"
+        )
 
     regions = VALID_REGIONS if args.all else [args.region]
 
