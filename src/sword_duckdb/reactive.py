@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 SWORD Reactive Update System
-============================
+----------------------------
 
 Automatic recalculation of derived attributes when upstream values change.
 Implements a dependency graph with topological ordering for cascading updates.
@@ -675,13 +675,13 @@ class SWORDReactive:
         # Create reach_id to index mapping
         id_to_idx = {rid: i for i, rid in enumerate(reach_ids)}
 
-        # Initialize all as main channel
-        main_side = np.ones(n_reaches, dtype=np.int32)
+        # Initialize all as main channel (0=main, 1=side, 2=secondary outlet)
+        main_side = np.zeros(n_reaches, dtype=np.int32)
 
         for i in range(n_reaches):
             # Linear reach - always main
             if n_rch_up[i] <= 1 and n_rch_down[i] <= 1:
-                main_side[i] = 1
+                main_side[i] = 0
                 continue
 
             # Junction: check if this reach is the main upstream branch
@@ -701,7 +701,7 @@ class SWORDReactive:
                     n_up_of_dn = n_rch_up[dn_idx]
                     if n_up_of_dn <= 1:
                         # Single upstream = main
-                        main_side[i] = 1
+                        main_side[i] = 0
                         continue
 
                     # Multiple upstream branches - compare path_freq
@@ -720,14 +720,14 @@ class SWORDReactive:
                                 is_main = False
                                 break
 
-                    main_side[i] = 1 if is_main else 2
+                    main_side[i] = 0 if is_main else 1
 
         # Apply updates
         for i in range(n_reaches):
             reaches.main_side[i] = main_side[i]
 
         logger.info(
-            f"Recalculated main_side: {np.sum(main_side == 1)} main, {np.sum(main_side == 2)} side"
+            f"Recalculated main_side: {np.sum(main_side == 0)} main, {np.sum(main_side == 1)} side"
         )
 
     def _recalc_node_lengths(self) -> None:

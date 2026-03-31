@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Facc Denoising — Topology-Aware v3 Pipeline
-============================================
+--------------------------------------------
 
 Two-stage architecture that cleans baseline accuracy FIRST, then propagates:
 
@@ -1169,7 +1169,13 @@ def _apply_to_db(
 
     if "edit_flag" in cols:
         conn.execute(
-            "UPDATE reaches SET edit_flag = 'facc_denoise_v3' "
+            "UPDATE reaches SET edit_flag = CASE "
+            "  WHEN edit_flag IS NULL OR edit_flag = '' OR edit_flag = 'NaN' "
+            "    THEN 'facc_denoise_v3' "
+            "  WHEN edit_flag LIKE '%facc_denoise_v3%' "
+            "    THEN edit_flag "
+            "  ELSE edit_flag || ',facc_denoise_v3' "
+            "END "
             "FROM _v3_tag_ids t WHERE reaches.reach_id = t.reach_id"
         )
     if "facc_quality" in cols:
@@ -1389,10 +1395,13 @@ def _clear_old_tags(
         "'conservation_corrected_p3','denoise_v3',"
         "'traced','suspect'"
     )
-    old_edit = (
-        "'facc_conservation_p1','facc_conservation_p2',"
-        "'facc_conservation_p3','facc_conservation_single','facc_denoise_v3'"
-    )
+    old_edit_tags = [
+        "facc_conservation_p1",
+        "facc_conservation_p2",
+        "facc_conservation_p3",
+        "facc_conservation_single",
+        "facc_denoise_v3",
+    ]
     if "facc_quality" in cols:
         conn.execute(
             f"UPDATE reaches SET facc_quality = NULL "
@@ -1401,9 +1410,26 @@ def _clear_old_tags(
         )
         print("    Cleared facc_quality tags")
     if "edit_flag" in cols:
+        # Strip old facc tags from comma-delimited edit_flag, preserving
+        # unrelated tags (e.g. harp_lake, lake_sandwich).
+        old_edit_sql = ", ".join(f"'{t}'" for t in old_edit_tags)
         conn.execute(
-            f"UPDATE reaches SET edit_flag = NULL "
-            f"WHERE region = ? AND edit_flag IN ({old_edit})",
+            f"""
+            UPDATE reaches SET edit_flag = NULLIF(
+                array_to_string(
+                    list_filter(
+                        str_split(edit_flag, ','),
+                        x -> trim(x) NOT IN ({old_edit_sql})
+                           AND trim(x) != ''
+                    ),
+                    ','
+                ),
+                ''
+            )
+            WHERE region = ?
+              AND edit_flag IS NOT NULL
+              AND edit_flag != ''
+            """,
             [region],
         )
         print("    Cleared edit_flag tags")
