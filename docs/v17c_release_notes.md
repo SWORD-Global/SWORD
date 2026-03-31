@@ -31,6 +31,20 @@
   `dist_out_dijkstra` added to nodes table, interpolated by node position within
   reach (using v17b `dist_out` offset). `pathlen_hw` and `pathlen_out` changed
   from flat reach copies to per-node interpolated values.
+- **`hydro_dist_hw` convention fix.** Reach-level values shifted from
+  downstream-end anchor to upstream-end anchor, matching `dist_out`,
+  `hydro_dist_out`, and `dist_out_dijkstra`. Headwater reaches now
+  report 0 (was `reach_length`). Node-level values unchanged.
+- **F006 junction conservation fix.** 2 remaining junction violations
+  (OC 53130100215, AS 45311901585) resolved by setting downstream facc
+  to sum of upstream facc. F006 violations: 2 → 0.
+- **13 AS `main_side` reverted to v17b.** Reaches had `main_side` changed
+  from 0 (main) to 1 (side) by an undetermined prior operation; 9 of 13
+  are linear reaches where side-channel classification is impossible.
+- **Distance convention documented.** Variable reference now includes a
+  convention table specifying the measurement anchor, zero-point, and
+  ghost reach behavior for all distance variables, plus node-level
+  interpolation formulas.
 - **Variable reference updated.** 7 missing variables added, 8 type mismatches
   fixed, `cl_ids` shape corrected to `cl_id_min`/`cl_id_max`.
 
