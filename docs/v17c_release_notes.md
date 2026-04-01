@@ -52,6 +52,10 @@
   (geometric position) instead of `node_id`. This fixes an issue where
   flow-corrected reaches had incorrect node distances after recalculation
   (e.g., downstream-most node getting downstream reach's `dist_out`).
+- **Ghost reach dist_out_dijkstra fix.** Connected ghost reaches (type=6 with
+  upstream neighbors) now receive proper `dist_out_dijkstra` values instead of
+  NULL. Previously all ghost sinks were set to NULL, but connected ghosts should
+  have calculated distances like v17b (3,911 reaches affected).
 
 ### 0.0.3 (March 2026)
 - **Routing weights learned from human labels.** Replaced the handcrafted

@@ -21,36 +21,33 @@ def compute_dijkstra_distances(G: nx.DiGraph) -> Dict[int, Dict]:
         log("Empty graph, returning empty results")
         return {}
 
-    # Use ALL sinks as Dijkstra sources for full coverage, then null out
-    # ghost sinks so they don't appear as outlets (dist_out_dijkstra=0).
+    # Use only REAL sinks (non-ghost) as Dijkstra sources for proper outlet detection.
+    # Ghost sinks upstream of real outlets will get proper distances;
+    # isolated ghost sinks will remain NULL.
     all_sinks = [n for n in G.nodes() if G.out_degree(n) == 0]
     ghost_sinks = set(n for n in all_sinks if G.nodes[n].get("type") == 6)
-    outlets = all_sinks
+    real_outlets = [n for n in all_sinks if n not in ghost_sinks]
     log(
         f"Found {len(all_sinks):,} sinks "
-        f"({len(all_sinks) - len(ghost_sinks):,} real, "
+        f"({len(real_outlets):,} real, "
         f"{len(ghost_sinks):,} ghost)"
     )
 
     R = G.reverse()
 
     dist_out: Dict[int, float] = {n: float("inf") for n in G.nodes()}
-    for outlet in outlets:
+    for outlet in real_outlets:
         dist_out[outlet] = 0
 
-    if outlets:
+    if real_outlets:
         lengths = nx.multi_source_dijkstra_path_length(
-            R, outlets, weight=lambda u, v, d: G.nodes[v].get("reach_length", 0)
+            R, real_outlets, weight=lambda u, v, d: G.nodes[v].get("reach_length", 0)
         )
         dist_out.update(lengths)
 
     results = {}
     for node in G.nodes():
         d = dist_out.get(node, float("inf"))
-        # Ghost sinks used as Dijkstra sources get dist=0, but they aren't
-        # real hydrologic outlets.  Set to inf so they export as NULL.
-        if node in ghost_sinks and d == 0:
-            d = float("inf")
         results[node] = {"dist_out_dijkstra": d}
 
     n_real_outlets = sum(1 for n, r in results.items() if r["dist_out_dijkstra"] == 0)
