@@ -1,7 +1,7 @@
 # SWORD v17c Beta Release Notes
 
 **Version:** v17c beta 0.0.4
-**Date:** March 2026
+**Date:** April 2026
 **Authors:** James H. Gearon, Tamlin M. Pavelsky, Niek Collot d'Escury
 **Base version:** SWORD v17b (March 2025, UNC)
 
@@ -58,6 +58,8 @@
   matching v17b `dist_out` behavior. Previously these 703 reaches in NA
   (similar counts in other regions) had NULL, but they should report the
   distance from their start to the ocean outlet point.
+- **Exports regenerated (April 1, 2026).** All NetCDF, GeoPackage, and
+  Parquet files updated with the above fixes. SHA256SUMS refreshed.
 
 ### 0.0.3 (March 2026)
 - **Routing weights learned from human labels.** Replaced the handcrafted
