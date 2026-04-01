@@ -691,7 +691,7 @@ class TestPropagateReachToNodes:
         # Upstream node (dist_out=10000, offset=0)
         up = self._get_node(interpolation_db, 1004)
         assert up[0] == pytest.approx(5000.0)  # hydro_dist_out = 5000 - 0
-        assert up[1] == pytest.approx(2000.0)  # hydro_dist_hw = 3000 - 1000 + 0
+        assert up[1] == pytest.approx(3000.0)  # hydro_dist_hw = 3000 + 0
         assert up[2] == pytest.approx(4500.0)  # dist_out_dijkstra = 4500 - 0
         assert up[3] == pytest.approx(1000.0)  # pathlen_hw = 2000 - 1000 + 0
         assert up[4] == pytest.approx(5000.0)  # pathlen_out = 4000 + 1000 - 0
@@ -699,7 +699,7 @@ class TestPropagateReachToNodes:
         # Downstream node (dist_out=9000, offset=1000)
         dn = self._get_node(interpolation_db, 1000)
         assert dn[0] == pytest.approx(4000.0)  # 5000 - 1000
-        assert dn[1] == pytest.approx(3000.0)  # 3000 - 1000 + 1000
+        assert dn[1] == pytest.approx(4000.0)  # 3000 + 1000
         assert dn[2] == pytest.approx(3500.0)  # 4500 - 1000
         assert dn[3] == pytest.approx(2000.0)  # 2000 - 1000 + 1000
         assert dn[4] == pytest.approx(4000.0)  # 4000 + 1000 - 1000
@@ -718,7 +718,7 @@ class TestPropagateReachToNodes:
         # v17c upstream node (LOW v17b dist_out=7200, flipped offset=0)
         up = self._get_node(interpolation_db, 2000)
         assert up[0] == pytest.approx(6000.0)  # 6000 - 0
-        assert up[1] == pytest.approx(2200.0)  # 3000 - 800 + 0
+        assert up[1] == pytest.approx(3000.0)  # 3000 + 0
         assert up[2] == pytest.approx(5500.0)  # 5500 - 0
         assert up[3] == pytest.approx(1700.0)  # 2500 - 800 + 0
         assert up[4] == pytest.approx(4300.0)  # 3500 + 800 - 0
@@ -726,7 +726,7 @@ class TestPropagateReachToNodes:
         # v17c downstream node (HIGH v17b dist_out=8000, flipped offset=800)
         dn = self._get_node(interpolation_db, 2004)
         assert dn[0] == pytest.approx(5200.0)  # 6000 - 800
-        assert dn[1] == pytest.approx(3000.0)  # 3000 - 800 + 800
+        assert dn[1] == pytest.approx(3800.0)  # 3000 + 800
         assert dn[2] == pytest.approx(4700.0)  # 5500 - 800
         assert dn[3] == pytest.approx(2500.0)  # 2500 - 800 + 800
         assert dn[4] == pytest.approx(3500.0)  # 3500 + 800 - 800
@@ -734,7 +734,7 @@ class TestPropagateReachToNodes:
         # Middle node (v17b dist_out=7600, flipped offset=400)
         mid = self._get_node(interpolation_db, 2002)
         assert mid[0] == pytest.approx(5600.0)  # 6000 - 400
-        assert mid[1] == pytest.approx(2600.0)  # 3000 - 800 + 400
+        assert mid[1] == pytest.approx(3400.0)  # 3000 + 400
 
     def test_single_node_centroid(self, interpolation_db):
         """Single-node reach: offset = reach_length / 2 (centroid)."""
@@ -745,7 +745,7 @@ class TestPropagateReachToNodes:
         # offset = 400/2 = 200
         node = self._get_node(interpolation_db, 3000)
         assert node[0] == pytest.approx(1800.0)  # 2000 - 200
-        assert node[1] == pytest.approx(1300.0)  # 1500 - 400 + 200
+        assert node[1] == pytest.approx(1700.0)  # 1500 + 200
         assert node[2] == pytest.approx(1600.0)  # 1800 - 200
         assert node[3] == pytest.approx(1000.0)  # 1200 - 400 + 200
         assert node[4] == pytest.approx(1000.0)  # 800 + 400 - 200
@@ -759,7 +759,7 @@ class TestPropagateReachToNodes:
         # Normal reach upstream node should be unaffected by flipped set
         up = self._get_node(interpolation_db, 1004)
         assert up[0] == pytest.approx(5000.0)
-        assert up[1] == pytest.approx(2000.0)
+        assert up[1] == pytest.approx(3000.0)
 
     def test_no_negative_values(self, interpolation_db):
         """GREATEST(0, ...) clamp prevents negative node distances."""

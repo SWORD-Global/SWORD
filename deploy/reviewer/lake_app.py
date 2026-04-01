@@ -22,6 +22,9 @@ import folium
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
+
+from folium.plugins import AntPath
 from streamlit_folium import st_folium
 
 from lint.checks.classification import check_lake_sandwich
@@ -658,13 +661,14 @@ def get_nearby_reaches(
     ).fetchdf()
 
 
-def add_flow_line(m, coords, color, weight=3, opacity=0.9, tooltip=None, animate=True):
-    """Draw a reach line with optional animated flow direction via AntPath."""
+def add_flow_line(
+    m, coords, color, weight=3, opacity=0.9, tooltip=None, animate=True,
+    pulse_color="#000000",
+):
+    """Draw a reach line with animated flow direction via AntPath."""
     if len(coords) < 2:
         return
     if animate:
-        from folium.plugins import AntPath
-
         AntPath(
             coords,
             color=color,
@@ -673,7 +677,7 @@ def add_flow_line(m, coords, color, weight=3, opacity=0.9, tooltip=None, animate
             tooltip=tooltip,
             delay=800,
             dash_array=[10, 20],
-            pulse_color="#000000",
+            pulse_color=pulse_color,
         ).add_to(m)
     else:
         folium.PolyLine(
@@ -752,8 +756,9 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
             include_all=False,
             max_reaches=max_r,
         )
-        type_colors = {0: "#ffffff", 1: "#00ffff", 2: "#ffff00", 3: "#ff00ff"}
-        type_names = {0: "River", 1: "Lake", 2: "Canal", 3: "Tidal"}
+        type_colors = {0: "#ff8800", 1: "#00ffff", 2: "#ffff00", 3: "#ff00ff"}
+        type_weights = {0: 3, 1: 6, 2: 3, 3: 3}
+        type_names = {0: "River", 1: "LAKE", 2: "Canal", 3: "Tidal"}
         highlight_id = st.session_state.get("highlight_reach") or st.session_state.get(
             "clicked_reach"
         )
@@ -768,6 +773,7 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
                 coords = [[c[1], c[0]] for c in ng]
                 tn = type_names.get(lf, "?")
                 clr = type_colors.get(lf, "#ffffff")
+                tw = type_weights.get(lf, 3)
                 if highlight_id and int(rid) == int(highlight_id):
                     add_flow_line(
                         m,
@@ -782,7 +788,7 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
                         m,
                         coords,
                         clr,
-                        weight=3,
+                        weight=tw,
                         opacity=0.9,
                         tooltip=f"{tn}: {rid} (facc={facc:,.0f}, w={w:.0f}m)",
                         animate=False,
@@ -801,20 +807,21 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
             connected_lakeflags = {
                 r[0]: int(r[1]) if r[1] is not None else 0 for r in lf_rows
             }
-    tc = {0: "#ffffff", 1: "#00ffff", 2: "#ffff00", 3: "#ff00ff"}
-    tn_map = {0: "River", 1: "Lake", 2: "Canal", 3: "Tidal"}
+    tc = {0: "#ff8800", 1: "#00ffff", 2: "#ffff00", 3: "#ff00ff"}
+    tw = {0: 3, 1: 6, 2: 3, 3: 3}
+    tn_map = {0: "River", 1: "LAKE", 2: "Canal", 3: "Tidal"}
     for ug, i, rid in up_geoms:
         coords = [[c[1], c[0]] for c in ug]
-        opacity = max(0.4, 1.0 - (i / max(hops, 1)) * 0.6)
+        opacity = max(0.5, 1.0 - (i / max(hops, 1)) * 0.5)
         if color_by_type:
             lf = connected_lakeflags.get(rid, 0)
             add_flow_line(
                 m,
                 coords,
-                tc.get(lf, "#ffffff"),
-                weight=4,
+                tc.get(lf, "#ff8800"),
+                weight=tw.get(lf, 3),
                 opacity=opacity,
-                tooltip=f"Up {i + 1}: {rid} ({tn_map.get(lf, '?')})",
+                tooltip=f"UP {i + 1}: {rid} ({tn_map.get(lf, '?')})",
             )
         else:
             add_flow_line(
@@ -827,16 +834,16 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
             )
     for dg, i, rid in dn_geoms:
         coords = [[c[1], c[0]] for c in dg]
-        opacity = max(0.4, 1.0 - (i / max(hops, 1)) * 0.6)
+        opacity = max(0.5, 1.0 - (i / max(hops, 1)) * 0.5)
         if color_by_type:
             lf = connected_lakeflags.get(rid, 0)
             add_flow_line(
                 m,
                 coords,
-                tc.get(lf, "#ffffff"),
-                weight=4,
+                tc.get(lf, "#ff8800"),
+                weight=tw.get(lf, 3),
                 opacity=opacity,
-                tooltip=f"Down {i + 1}: {rid} ({tn_map.get(lf, '?')})",
+                tooltip=f"DOWN {i + 1}: {rid} ({tn_map.get(lf, '?')})",
             )
         else:
             add_flow_line(
@@ -880,36 +887,20 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
     st.session_state.nearby_reach_ids = (
         [int(rid) for _, rid, _ in nearby_unconnected] if show_all else []
     )
-    map_data = st_folium(
-        m, width=None, height=500, returned_objects=["last_object_clicked_tooltip"]
+    # Render via components.html to preserve AntPath animation
+    # (st_folium strips all plugins including AntPath)
+    map_html = m._repr_html_()
+    components.html(map_html, height=500, scrolling=False)
+    st.markdown(
+        '<span style="color:#FFFF00;font-weight:bold">&#9632; SELECTED</span>'
+        ' &nbsp; <span style="color:#00ffff;font-weight:bold">&#9632; LAKE (thick)</span>'
+        ' &nbsp; <span style="color:#ff8800;font-weight:bold">&#9632; River (thin)</span>'
+        ' &nbsp; <span style="color:#ffff00">&#9632; Canal</span>'
+        ' &nbsp; <span style="color:#ff00ff">&#9632; Tidal</span>'
+        f' &nbsp;&mdash;&nbsp; Up: {len(up_geoms)} | Down: {len(dn_geoms)}'
+        ' &nbsp; Dashes flow downstream &#x2192;',
+        unsafe_allow_html=True,
     )
-    if map_data and map_data.get("last_object_clicked_tooltip"):
-        tooltip = map_data["last_object_clicked_tooltip"]
-        match = re.search(
-            r"(?:River|Lake|Canal|Tidal|Unconnected|SELECTED):\s*(\d+)", tooltip
-        )
-        if match:
-            clicked_id = int(match.group(1))
-            if clicked_id in st.session_state.get("nearby_reach_ids", []):
-                st.session_state.clicked_reach = clicked_id
-    parts = [
-        f"Yellow=Selected | Orange=Up ({len(up_geoms)}) | Blue=Down ({len(dn_geoms)})"
-    ]
-    if show_all and nearby_unconnected:
-        type_counts = {}
-        for _, _rid, lf in nearby_unconnected:
-            type_counts[lf] = type_counts.get(lf, 0) + 1
-        type_labels = {
-            0: "White=River",
-            1: "Cyan=Lake",
-            2: "Yellow=Canal",
-            3: "Magenta=Tidal",
-        }
-        for lf_val in (0, 1, 2, 3):
-            cnt = type_counts.get(lf_val, 0)
-            if cnt > 0:
-                parts.append(f"{type_labels[lf_val]} ({cnt})")
-    st.caption(" | ".join(parts))
 
 
 # =============================================================================

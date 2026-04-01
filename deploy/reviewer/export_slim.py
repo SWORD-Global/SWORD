@@ -18,7 +18,7 @@ REACH_COLS = [
     "reach_id", "region", "facc", "width", "river_name", "x", "y",
     "lakeflag", "type", "slope", "facc_quality", "edit_flag",
     "n_rch_up", "n_rch_down", "reach_length", "network",
-    "dist_out", "path_freq", "end_reach",
+    "dist_out", "path_freq", "end_reach", "geom",
 ]
 
 
@@ -27,11 +27,13 @@ def export(source: str, out: str):
         os.remove(out)
 
     dst = duckdb.connect(out)
+    dst.execute("INSTALL spatial; LOAD spatial;")
     dst.execute(f"ATTACH '{source}' AS src (READ_ONLY)")
 
-    # reaches — only needed columns
-    cols = ", ".join(REACH_COLS)
-    print(f"Exporting reaches ({len(REACH_COLS)} cols)...")
+    # reaches — only needed columns (simplify geom to ~50m tolerance)
+    non_geom = [c for c in REACH_COLS if c != "geom"]
+    cols = ", ".join(non_geom) + ", ST_Simplify(geom, 0.0005) AS geom"
+    print(f"Exporting reaches ({len(REACH_COLS)} cols, simplified geom)...")
     dst.execute(f"CREATE TABLE reaches AS SELECT {cols} FROM src.reaches")
     cnt = dst.execute("SELECT COUNT(*) FROM reaches").fetchone()[0]
     print(f"  {cnt:,} reaches")

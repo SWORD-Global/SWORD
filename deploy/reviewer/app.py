@@ -20,6 +20,7 @@ import duckdb
 import pandas as pd
 import pydeck as pdk
 import folium
+import streamlit.components.v1 as components
 from folium.plugins import AntPath
 from streamlit_folium import st_folium
 import re
@@ -894,7 +895,7 @@ def get_nearby_reaches(
 
 
 def add_flow_line(m, coords, color, weight=3, opacity=0.9, tooltip=None, animate=True):
-    """Draw a reach line with optional animated flow direction via AntPath."""
+    """Draw a reach line with animated flow direction via AntPath."""
     if len(coords) < 2:
         return
     if animate:
@@ -1155,25 +1156,10 @@ def render_reach_map_satellite(reach_id, region, conn, hops=None, color_by_type=
         [int(rid) for _, rid, _ in nearby_unconnected] if show_all else []
     )
 
-    # Render in streamlit and capture clicks
-    map_data = st_folium(
-        m, width=None, height=500, returned_objects=["last_object_clicked_tooltip"]
-    )
-
-    # Check if user clicked on a reach - extract ID from tooltip
-    if map_data and map_data.get("last_object_clicked_tooltip"):
-        tooltip = map_data["last_object_clicked_tooltip"]
-        # Tooltips look like "River: 12345 (facc=...)" or "Lake: 12345 ..."
-        import re
-
-        match = re.search(
-            r"(?:River|Lake|Canal|Tidal|Unconnected|SELECTED):\s*(\d+)", tooltip
-        )
-        if match:
-            clicked_id = int(match.group(1))
-            # Only set if it's a nearby (unconnected) reach, not the selected or network reaches
-            if clicked_id in st.session_state.get("nearby_reach_ids", []):
-                st.session_state.clicked_reach = clicked_id
+    # Render via components.html to preserve AntPath animation
+    # (st_folium strips all plugins including AntPath)
+    map_html = m._repr_html_()
+    components.html(map_html, height=500, scrolling=False)
 
     parts = [
         f"Yellow=Selected | Orange=Up ({len(up_geoms)}) | Blue=Down ({len(dn_geoms)})"

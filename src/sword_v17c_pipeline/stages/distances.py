@@ -48,6 +48,10 @@ def compute_dijkstra_distances(G: nx.DiGraph) -> Dict[int, Dict]:
     results = {}
     for node in G.nodes():
         d = dist_out.get(node, float("inf"))
+        # Ghost coastal outlets (isolated ghost sinks) should get their reach_length
+        # as dist_out_dijkstra, matching v17b dist_out behavior for these reaches.
+        if d == float("inf") and node in ghost_sinks:
+            d = G.nodes[node].get("reach_length", 0)
         results[node] = {"dist_out_dijkstra": d}
 
     n_real_outlets = sum(1 for n, r in results.items() if r["dist_out_dijkstra"] == 0)
