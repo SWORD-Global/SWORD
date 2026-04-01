@@ -589,6 +589,11 @@ class NodesView:
         return self._writable("network")
 
     @property
+    def node_order(self) -> np.ndarray:
+        """Node order (1-based position within reach, 1=downstream). Read-only."""
+        return self._df["node_order"].values
+
+    @property
     def add_flag(self) -> WritableArray:
         return self._writable("add_flag")
 

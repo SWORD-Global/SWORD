@@ -837,8 +837,9 @@ class SWORDReactive:
             if len(node_indices) == 0:
                 continue
 
-            # Sort nodes by node_id
-            sorted_indices = node_indices[np.argsort(nodes.id[node_indices])]
+            # Sort nodes by node_order (geometric order, 1=downstream)
+            # This handles flow-corrected reaches where node_ids are in original order
+            sorted_indices = node_indices[np.argsort(nodes.node_order[node_indices])]
 
             # Base distance (upstream of this reach)
             base_dist = reaches.dist_out[r] - reaches.len[r]
