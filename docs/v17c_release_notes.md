@@ -47,6 +47,11 @@
   interpolation formulas.
 - **Variable reference updated.** 7 missing variables added, 8 type mismatches
   fixed, `cl_ids` shape corrected to `cl_id_min`/`cl_id_max`.
+- **Node dist_out reactive recalc fix.** `CALCULATE_DIST_OUT` operations now
+  correctly recalculate node-level `dist_out` by sorting nodes via `node_order`
+  (geometric position) instead of `node_id`. This fixes an issue where
+  flow-corrected reaches had incorrect node distances after recalculation
+  (e.g., downstream-most node getting downstream reach's `dist_out`).
 
 ### 0.0.3 (March 2026)
 - **Routing weights learned from human labels.** Replaced the handcrafted
