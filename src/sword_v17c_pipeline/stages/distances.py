@@ -235,11 +235,18 @@ def compute_mainstem_distances_hw(
     results: Dict[int, Dict] = {}
     for rid in G.nodes():
         if rid not in up_main:
-            dist = G.nodes[rid].get("reach_length", 0)
+            # Isolated reach: no upstream chain, headwater of own component.
+            # Upstream-end anchor → distance from headwater to upstream end = 0.
+            dist = 0.0
         else:
             dist = _walk(rid)
         if dist is None:
             n_cycle_fallback += 1
+        else:
+            # Shift from downstream-end to upstream-end anchor:
+            # the walk includes self reach_length, subtract it.
+            rl = G.nodes[rid].get("reach_length", 0)
+            dist = dist - rl
         results[rid] = {"hydro_dist_hw": dist}
 
     n_terminal = sum(1 for r in up_main.values() if r is None)

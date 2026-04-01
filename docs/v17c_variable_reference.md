@@ -6,23 +6,89 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 
 ---
 
+## Distance Variable Conventions
+
+SWORD contains four distance-to-outlet variables. They differ in routing
+method, zero-point, and measurement anchor within a reach. The table below
+summarizes these conventions; see "Node-Level Interpolation" for how each
+extends to nodes.
+
+| Variable | Routing | Reach-level anchor | Outlet value | Ghost reaches |
+|---|---|---|---|---|
+| `dist_out` (v17b) | v17b topology | upstream end of reach | `reach_length` | has value |
+| `hydro_dist_out` | `rch_id_dn_main` chain | upstream end of reach | `reach_length` | has value |
+| `dist_out_dijkstra` | Dijkstra shortest path | upstream end of reach | **0** | **NULL** |
+| `hydro_dist_hw` | `rch_id_up_main` chain | upstream end of reach | 0 | has value |
+
+**Anchor convention.** All four distance variables anchor at the upstream
+end of the reach. For `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra`, the value equals the distance from the upstream end
+of the reach to the outlet; each reach exceeds its downstream neighbor
+by its own `reach_length`. For `hydro_dist_hw`, the value equals the
+distance from the headwater to the upstream end of the reach; each reach
+exceeds its upstream neighbor by the upstream neighbor's `reach_length`.
+
+**Zero-point difference.** `dist_out` and `hydro_dist_out` assign the
+outlet reach a value equal to its `reach_length` (the upstream end is
+one reach_length from the outlet point). `dist_out_dijkstra` assigns the
+outlet reach a value of 0 (the outlet point itself is the reference).
+When comparing these variables, the offset at any reach equals the
+outlet's `reach_length`.
+
+**Ghost reaches.** `dist_out_dijkstra` is NULL for ghost reaches
+(type=6). The other three variables retain values for ghost reaches.
+
+### Node-Level Interpolation
+
+Five v17c variables are interpolated per node using the node's position
+within its parent reach. The offset from the reach's upstream end is
+`reach.dist_out - node.dist_out` (where `node.dist_out` is the v17b
+original). For flow-corrected reaches (660), the offset direction is
+reversed.
+
+| Variable | Node formula | node_order=n (upstream) | node_order=1 (downstream) |
+|---|---|---|---|
+| `hydro_dist_out` | `reach.hdo - offset` | `reach.hdo` | `reach.hdo - reach_length` |
+| `dist_out_dijkstra` | `reach.dod - offset` | `reach.dod` | `reach.dod - reach_length` |
+| `hydro_dist_hw` | `reach.hdh + offset` | `reach.hdh` | `reach.hdh + reach_length` |
+| `pathlen_hw` | `reach.plh - reach_length + offset` | `reach.plh - reach_length` | `reach.plh` |
+| `pathlen_out` | `reach.plo + reach_length - offset` | `reach.plo + reach_length` | `reach.plo` |
+
+For single-node reaches, the offset is `reach_length / 2` (midpoint).
+Three additional variables (`subnetwork_id`, `best_headwater`,
+`best_outlet`) are flat copies from the parent reach.
+
+**Node `dist_out` is the v17b original value, not interpolated.** It
+serves as the positional anchor for interpolation but is not itself
+recomputed. At single-node outlet reaches, `node.dist_out` equals the
+reach-level value (not the midpoint), while `node.hydro_dist_out` uses
+the midpoint convention. This difference is by design: v17b `dist_out`
+is preserved as-is for backward compatibility.
+
+**Boundary continuity.** At reach boundaries, the downstream-end node of
+the upstream reach and the upstream-end node of the downstream reach
+share identical interpolated distance values (verified gap = 0.00 m
+across all boundaries).
+
+---
+
 ## New v17c Reach Variables
 
 | Variable | NetCDF Type | Units | Fill Value | Encoding | Description |
 |---|---|---|---|---|---|
-| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to any outlet |
-| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance to best_outlet via rch_id_dn_main |
-| hydro_dist_hw | f8 | meters | -9999.0 | | Distance from best_headwater via rch_id_up_main chain walk |
+| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet; outlet reach = 0; NULL for ghost reaches (type=6) |
+| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance from the upstream end of the reach to best_outlet via rch_id_dn_main chain; outlet reach = reach_length |
+| hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem distance from best_headwater to the upstream end of the reach via rch_id_up_main chain; headwater = 0 |
 | rch_id_up_main | i8 | | -9999 | | Main upstream neighbor reach ID (mainstem-preferred) |
 | rch_id_dn_main | i8 | | -9999 | | Main downstream neighbor reach ID (mainstem-preferred) |
 | subnetwork_id | i4 | | -9999 | | Connected component ID (Pfafstetter-offset, globally unique; differs from v17b `network`) |
 | main_path_id | i8 | | -9999 | | ID of the mainstem path this reach belongs to |
-| is_mainstem | i1 | | -9999 | BOOL->i1 (True=1, False=0) | Whether reach is on a mainstem path |
+| is_mainstem | i4 | | -9999 | flag_values=[0,1], flag_meanings="not_mainstem mainstem" | Whether reach is on a mainstem path |
 | best_headwater | i8 | | -9999 | | Width-prioritized upstream headwater reach ID |
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
-| pathlen_hw | f8 | meters | -9999.0 | | Cumulative path length from headwater |
-| pathlen_out | f8 | meters | -9999.0 | | Cumulative path length to outlet |
-| facc_quality | string | | | VARCHAR (denoise_v3 or empty) | Flow accumulation correction flag |
+| pathlen_hw | f8 | meters | -9999.0 | | Cumulative reach_length sum from best_headwater to the downstream end of the reach (headwater = 0, increases downstream) |
+| pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum from the upstream end of the reach to best_outlet (outlet = 0, increases upstream) |
+| facc_quality | i4 | | -9999 | flag_values=[1], flag_meanings="denoise_v3" | Flow accumulation correction flag |
 | dl_grod_id | i8 | | -9999 | | Dam/lake GROD ID (downstream lookup) |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
@@ -59,8 +125,8 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | slope_obs_mad | f8 | meters/kilometers | -9999.0 | | SWOT slope median absolute deviation |
 | slope_obs_adj | f8 | meters/kilometers | -9999.0 | | Adjusted SWOT slope (bias-corrected) |
 | slope_obs_slopeF | f8 | | -9999.0 | | Slope quality F-statistic |
-| slope_obs_reliable | i1 | | -9999 | BOOL->i1 (True=1, False=0) | Whether SWOT slope is reliable |
-| slope_obs_quality | string | | | VARCHAR (reliable, small_negative, moderate_negative, large_negative, negative, below_ref_uncertainty, high_uncertainty, noise_high_nobs, flat_water_noise) | SWOT slope quality category |
+| slope_obs_reliable | i4 | | -9999 | flag_values=[0,1], flag_meanings="unreliable reliable" | Whether SWOT slope is reliable |
+| slope_obs_quality | i4 | | -9999 | flag_values=[0..8], flag_meanings="reliable small_negative moderate_negative large_negative negative below_ref_uncertainty high_uncertainty noise_high_nobs flat_water_noise" | SWOT slope quality category |
 | slope_obs_n | i8 | | -9999 | | Number of SWOT slope observations |
 | slope_obs_n_passes | i8 | | -9999 | | Number of SWOT passes with slope |
 | slope_obs_q | i8 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
@@ -73,11 +139,11 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | subnetwork_id | i4 | | -9999 | | Connected component ID (from parent reach) |
 | best_headwater | i8 | | -9999 | | Width-prioritized upstream headwater reach ID |
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
-| pathlen_hw | f8 | meters | -9999.0 | | Cumulative path length from headwater (interpolated by node position) |
-| pathlen_out | f8 | meters | -9999.0 | | Cumulative path length to outlet (interpolated by node position) |
-| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance to best_outlet (interpolated by node position) |
-| hydro_dist_hw | f8 | meters | -9999.0 | | Distance from best_headwater (interpolated by node position) |
-| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to outlet (interpolated by node position) |
+| pathlen_hw | f8 | meters | -9999.0 | | Cumulative path length from headwater, interpolated by node position within reach; single-node reaches use midpoint |
+| pathlen_out | f8 | meters | -9999.0 | | Cumulative path length to outlet, interpolated by node position within reach; single-node reaches use midpoint |
+| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance to best_outlet, interpolated by node position within reach; single-node reaches use midpoint |
+| hydro_dist_hw | f8 | meters | -9999.0 | | Distance from best_headwater, interpolated by node position within reach; single-node reaches use midpoint |
+| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to outlet, interpolated by node position within reach; single-node reaches use midpoint; NULL for ghost reaches |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
 | wse_obs_p30 | f8 | meters | -9999.0 | | SWOT WSE 30th percentile |
@@ -101,7 +167,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | width_obs_range | f8 | meters | -9999.0 | | SWOT width range (p90 - p10) |
 | width_obs_mad | f8 | meters | -9999.0 | | SWOT width median absolute deviation |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
-| facc_quality | string | | | VARCHAR (denoise_v3 or empty) | Flow accumulation correction flag |
+| facc_quality | i4 | | -9999 | flag_values=[1], flag_meanings="denoise_v3" | Flow accumulation correction flag |
 
 ## v17b Variables (unchanged)
 
@@ -129,7 +195,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | grod_id | i8 | | -9999 | GRanD/GROD dam ID |
 | hfalls_id | i8 | | -9999 | High falls ID |
 | slope | f8 | meters/kilometers | -9999.0 | Water surface slope from MERIT DEM |
-| dist_out | f8 | meters | -9999.0 | Distance to network outlet |
+| dist_out | f8 | meters | -9999.0 | Distance from upstream end of reach to network outlet (v17b original; outlet reach = reach_length, not 0). See "Distance Variable Conventions" for comparison with v17c distance variables |
 | n_rch_up | i4 | | -9999 | Number of upstream neighbor reaches |
 | n_rch_down | i4 | | -9999 | Number of downstream neighbor reaches |
 | lakeflag | i4 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal) |
@@ -174,7 +240,7 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 | obstr_type | i4 | | -9999 | Obstruction type |
 | grod_id | i8 | | -9999 | GRanD/GROD dam ID |
 | hfalls_id | i8 | | -9999 | High falls ID |
-| dist_out | f8 | meters | -9999.0 | Distance to network outlet |
+| dist_out | f8 | meters | -9999.0 | Distance to network outlet (v17b original, not interpolated; serves as positional anchor for v17c node interpolation). At single-node reaches, equals the reach-level value (not midpoint) |
 | wth_coef | f8 | | -9999.0 | Width coefficient |
 | ext_dist_coef | f8 | | -9999.0 | Extraction distance coefficient |
 | facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |

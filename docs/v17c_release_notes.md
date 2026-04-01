@@ -15,14 +15,15 @@
   longer report `dist_out_dijkstra=0`. All sinks are used as Dijkstra sources
   for full coverage (94–99% per region); ghost sinks receive NULL. Real outlet
   counts: NA=7, SA=1, EU=2, AF=1, AS=11, OC=1.
-- **Bifurcation routing fix (V023).** At multi-successor nodes,
-  `rch_id_dn_main` now uses score-based ranking instead of the mainstem chain,
-  which was constrained to within-group successors. V023 violations: 2 → 0.
+- **Bifurcation routing fix.** At multi-successor nodes, `rch_id_dn_main`
+  now follows the mainstem chain unconditionally (was falling back to
+  score-based ranking, which could disagree with `is_mainstem`).
+  V023 (pathlen_out step consistency) violations: 2 → 0.
 - **`hydro_dist_hw` computed.** Mainstem distance from headwater via
   `rch_id_up_main` chain walk (mirror of `hydro_dist_out`). Was stale from a
   prior pipeline run.
-- **facc monotonicity fix (T003).** 408 reaches corrected via iterative
-  downstream propagation (4 passes). T003 violations: 392 → 7.
+- **facc monotonicity fix (T003).** 419 reaches corrected via iterative
+  downstream propagation. T003 violations: 392 → 0.
 - **Routing weights retrained on `effective_slope`.** SWOT `slope_obs_p50`
   (where reliable and n≥5) replaces MERIT DEM slope in routing score training.
   Slope share: 8% → 3%, width: 67% → 71%. CV accuracy unchanged (88.5%).
@@ -30,6 +31,20 @@
   `dist_out_dijkstra` added to nodes table, interpolated by node position within
   reach (using v17b `dist_out` offset). `pathlen_hw` and `pathlen_out` changed
   from flat reach copies to per-node interpolated values.
+- **`hydro_dist_hw` convention fix.** Reach-level values shifted from
+  downstream-end anchor to upstream-end anchor, matching `dist_out`,
+  `hydro_dist_out`, and `dist_out_dijkstra`. Headwater reaches now
+  report 0 (was `reach_length`). Node-level values unchanged.
+- **F006 junction conservation fix.** 2 remaining junction violations
+  (OC 53130100215, AS 45311901585) resolved by setting downstream facc
+  to sum of upstream facc. F006 violations: 2 → 0.
+- **13 AS `main_side` reverted to v17b.** Reaches had `main_side` changed
+  from 0 (main) to 1 (side) by an undetermined prior operation; 9 of 13
+  are linear reaches where side-channel classification is impossible.
+- **Distance convention documented.** Variable reference now includes a
+  convention table specifying the measurement anchor, zero-point, and
+  ghost reach behavior for all distance variables, plus node-level
+  interpolation formulas.
 - **Variable reference updated.** 7 missing variables added, 8 type mismatches
   fixed, `cl_ids` shape corrected to `cl_id_min`/`cl_id_max`.
 
@@ -121,16 +136,16 @@ this is expected by design.
 
 | Variable | Type | Units | Description |
 |----------|------|-------|-------------|
-| `dist_out_dijkstra` | float64 | meters | Dijkstra shortest-path distance to any network outlet |
-| `hydro_dist_out` | float64 | meters | Mainstem distance to `best_outlet` via `rch_id_dn_main` chain |
-| `hydro_dist_hw` | float64 | meters | Distance from `best_headwater` via `rch_id_up_main` chain walk |
+| `dist_out_dijkstra` | float64 | meters | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet (outlet = 0; NULL for ghost reaches) |
+| `hydro_dist_out` | float64 | meters | Mainstem distance from the upstream end of the reach to `best_outlet` via `rch_id_dn_main` chain (outlet = `reach_length`) |
+| `hydro_dist_hw` | float64 | meters | Mainstem distance from `best_headwater` to the upstream end of the reach via `rch_id_up_main` chain (headwater = 0) |
 | `rch_id_up_main` | int64 | — | Main upstream neighbor reach_id (mainstem-preferred) |
 | `rch_id_dn_main` | int64 | — | Main downstream neighbor reach_id (mainstem-preferred) |
 | `best_headwater` | int64 | — | Routing-score-prioritized headwater reach_id for the network component |
 | `best_outlet` | int64 | — | Routing-score-prioritized outlet reach_id for the network component |
 | `pathlen_hw` | float64 | meters | Cumulative path length from `best_headwater` |
 | `pathlen_out` | float64 | meters | Cumulative path length to `best_outlet` |
-| `is_mainstem` | int8 | — | 1 if reach is on a mainstem path, 0 otherwise |
+| `is_mainstem` | int32 | — | 1 if reach is on a mainstem path, 0 otherwise |
 | `main_path_id` | int64 | — | Unique identifier for each mainstem path group |
 | `subnetwork_id` | int32 | — | Connected component ID (Pfafstetter-offset, globally unique; see Section 4) |
 | `dn_node_id` | int64 | — | Node ID at the downstream end of the reach (lowest `dist_out`) |
@@ -140,13 +155,31 @@ Eight of these variables also appear at node level. Five are interpolated
 by node position within the reach: `hydro_dist_out`, `hydro_dist_hw`,
 `dist_out_dijkstra`, `pathlen_hw`, and `pathlen_out`. Three are flat
 copies from the parent reach: `subnetwork_id`, `best_headwater`, and
-`best_outlet`. For flow-corrected reaches (660), node `dist_out` is stale
-v17b; the interpolation reverses the offset direction to produce correct
-monotonic distances.
+`best_outlet`. For flow-corrected reaches (660), the interpolation
+reverses the offset direction to produce correct monotonic distances.
+
+The interpolation offset for each node is `reach.dist_out -
+node.dist_out`, where `node.dist_out` is the v17b original (not
+recomputed). This offset equals 0 at the upstream end of the reach and
+`reach_length` at the downstream end. For single-node reaches the offset
+is `reach_length / 2` (midpoint). Node-level `dist_out` itself is the
+v17b value, preserved as-is for backward compatibility; at single-node
+reaches it equals the reach-level value rather than the midpoint.
+
+At reach boundaries the downstream-end node of the upstream reach and
+the upstream-end node of the downstream reach share identical
+interpolated distance values (verified gap = 0 m across all boundaries).
 
 `node_order` is a node-level variable (not in the reaches table): 1-based
 position within a reach, ordered by `dist_out` ascending (1 = downstream
 end, n = upstream end).
+
+**Distance convention note.** All four distance variables anchor at the
+upstream end of the reach. `dist_out` (v17b) and `hydro_dist_out` assign
+`reach_length` at the outlet. `dist_out_dijkstra` assigns 0 at the
+outlet; the offset at any reach equals the outlet's `reach_length`.
+`hydro_dist_hw` assigns 0 at the headwater and increases downstream.
+See the variable reference for the full convention table.
 
 ### 2.2 SWOT Observation Statistics
 
@@ -187,7 +220,7 @@ A two-stage denoise pipeline corrected flow accumulation (`facc`) values
 to address three systematic error modes in MERIT Hydro's D8
 (eight-direction flow routing) upstream area: bifurcation cloning,
 junction inflation, and raster-vector misalignment. The pipeline corrected
-95,913 of 248,673 reaches (38.6%). Uncorrected reaches retain v17b values.
+96,589 of 248,673 reaches (38.8%). Uncorrected reaches retain v17b values.
 See [facc_correction_methodology.md](technical/facc_correction_methodology.md)
 for the full algorithm description.
 
@@ -274,8 +307,8 @@ Example: 5 = negative slope (1) + high variance (4).
 - **SWOT observation coverage:** SWOT statistics are fill_value (-9999) for
   reaches and nodes lacking SWOT data.
 
-- **facc correction scope:** 95,913 reaches corrected (38.6%); the
-  remaining 152,761 retain v17b values. Node-level facc propagates from
+- **facc correction scope:** 96,589 reaches corrected (38.8%); the
+  remaining 152,084 retain v17b values. Node-level facc propagates from
   the parent reach.
 
 - **Lake sandwich corrections:** 1,252 reaches reclassified to

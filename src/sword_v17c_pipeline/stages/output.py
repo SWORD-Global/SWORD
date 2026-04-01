@@ -221,7 +221,7 @@ def propagate_reach_to_nodes(
             dist_out_dijkstra = CASE WHEN ofs.dist_out_dijkstra IS NULL THEN NULL
                 ELSE GREATEST(0, ofs.dist_out_dijkstra - ofs.o) END,
             hydro_dist_hw = CASE WHEN ofs.hydro_dist_hw IS NULL THEN NULL
-                ELSE GREATEST(0, ofs.hydro_dist_hw - ofs.reach_length + ofs.o) END,
+                ELSE GREATEST(0, ofs.hydro_dist_hw + ofs.o) END,
             pathlen_hw = CASE WHEN ofs.pathlen_hw IS NULL THEN NULL
                 ELSE GREATEST(0, ofs.pathlen_hw - ofs.reach_length + ofs.o) END,
             pathlen_out = CASE WHEN ofs.pathlen_out IS NULL THEN NULL
