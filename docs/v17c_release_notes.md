@@ -52,10 +52,12 @@
   (geometric position) instead of `node_id`. This fixes an issue where
   flow-corrected reaches had incorrect node distances after recalculation
   (e.g., downstream-most node getting downstream reach's `dist_out`).
-- **Ghost reach dist_out_dijkstra fix.** Connected ghost reaches (type=6 with
-  upstream neighbors) now receive proper `dist_out_dijkstra` values instead of
-  NULL. Previously all ghost sinks were set to NULL, but connected ghosts should
-  have calculated distances like v17b (3,911 reaches affected).
+- **Ghost coastal outlet dist_out_dijkstra fix.** Isolated ghost coastal
+  outlets (type=6 sinks with upstream neighbors but no path to real
+  hydrologic outlets) now receive `dist_out_dijkstra = reach_length`,
+  matching v17b `dist_out` behavior. Previously these 703 reaches in NA
+  (similar counts in other regions) had NULL, but they should report the
+  distance from their start to the ocean outlet point.
 
 ### 0.0.3 (March 2026)
 - **Routing weights learned from human labels.** Replaced the handcrafted
