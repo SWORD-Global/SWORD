@@ -780,7 +780,7 @@ class SWORDReactive:
 
                 node_idx = np.where(nodes.id == node_id)[0]
                 if len(node_idx) > 0:
-                    nodes.len[node_idx[0]] = node_length
+                    nodes.node_length[node_idx[0]] = node_length
 
     def _recalc_node_xy(self) -> None:
         """
@@ -841,13 +841,21 @@ class SWORDReactive:
             # This handles flow-corrected reaches where node_ids are in original order
             sorted_indices = node_indices[np.argsort(nodes.node_order[node_indices])]
 
-            # Base distance (upstream of this reach)
-            base_dist = reaches.dist_out[r] - reaches.len[r]
+            # Total length of all nodes in this reach
+            total_node_len = nodes.node_length[sorted_indices].sum()
 
-            # Cumulative node lengths
-            cumsum = np.cumsum(nodes.len[sorted_indices])
+            # Base distance (upstream of this reach) = reach.dist_out - total_node_len
+            base_dist = reaches.dist_out[r] - total_node_len
+
+            # Cumulative node lengths from UPSTREAM to DOWNSTREAM
+            # Reverse the sorted indices, cumsum, then reverse back
+            reversed_lengths = nodes.node_length[sorted_indices[::-1]]
+            reversed_cumsum = np.cumsum(reversed_lengths)
+            cumsum = reversed_cumsum[::-1]
 
             # Update node dist_out
+            # node_order=1 (downstream) gets base_dist + total_len = reach.dist_out (highest)
+            # node_order=n (upstream) gets base_dist + its_length (lowest)
             for i, idx in enumerate(sorted_indices):
                 nodes.dist_out[idx] = base_dist + cumsum[i]
 
