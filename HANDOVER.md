@@ -82,3 +82,22 @@ All files synced to `~/Google Drive/My Drive/SWORD_V17c_beta/`:
 - Issue: Niek Netherlands feedback (WhatsApp, April 1 2026)
 - Previous fix: Commit `e322542` (node ordering in pipeline, but not reactive)
 - Validation spec: `docs/validation_specs/validation_spec_dist_out.md`
+
+## 2026-04-01 Update - Ghost Coastal Outlet Fix
+
+**Issue discovered:** The ghost coastal outlet fix (commit d2a439d) was committed AFTER the initial 0.0.4 exports. The exports on Google Drive were missing this fix.
+
+**Action taken:**
+1. Applied ghost coastal outlet fix directly to database (1,188 reaches updated)
+2. Regenerated all exports (NetCDF, GeoPackage, Parquet) - took ~15 minutes
+3. Updated SHA256SUMS file
+4. Synced all files to Google Drive
+
+**Files now have:**
+- Node dist_out fix (sort by node_order, not node_id) ✓
+- Ghost coastal outlet fix (dist_out_dijkstra = reach_length) ✓
+- All other 0.0.4 fixes (V023, T003, etc.) ✓
+
+**Timestamps:** All exports now dated 2026-04-01 17:40-17:53
+
+**Checksums:** All files verified with matching SHA256 between local and Google Drive
