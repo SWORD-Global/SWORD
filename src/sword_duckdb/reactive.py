@@ -670,7 +670,7 @@ class SWORDReactive:
         n_rch_up = reaches.n_rch_up[:]
         n_rch_down = reaches.n_rch_down[:]
         rch_id_up = reaches.rch_id_up[:]  # Shape: (4, n_reaches)
-        rch_id_dn = reaches.rch_id_dn[:]  # Shape: (4, n_reaches)
+        rch_id_dn = reaches.rch_id_down[:]  # Shape: (4, n_reaches)
 
         # Create reach_id to index mapping
         id_to_idx = {rid: i for i, rid in enumerate(reach_ids)}
@@ -780,7 +780,7 @@ class SWORDReactive:
 
                 node_idx = np.where(nodes.id == node_id)[0]
                 if len(node_idx) > 0:
-                    nodes.node_length[node_idx[0]] = node_length
+                    nodes.len[node_idx[0]] = node_length
 
     def _recalc_node_xy(self) -> None:
         """
@@ -817,7 +817,7 @@ class SWORDReactive:
         Recalculate node dist_out from reach dist_out and node lengths.
 
         node.dist_out = reach_base_dist + cumulative_node_length
-        where reach_base_dist = reach.dist_out - reach.len
+        where reach_base_dist = reach.dist_out - sum(node.len)
         """
         logger.debug(
             "Recalculating node.dist_out from reach base + cumulative node.len"
@@ -842,20 +842,17 @@ class SWORDReactive:
             sorted_indices = node_indices[np.argsort(nodes.node_order[node_indices])]
 
             # Total length of all nodes in this reach
-            total_node_len = nodes.node_length[sorted_indices].sum()
+            total_node_len = nodes.len[sorted_indices].sum()
 
-            # Base distance (upstream of this reach) = reach.dist_out - total_node_len
+            # Base distance at the downstream end of this reach.
             base_dist = reaches.dist_out[r] - total_node_len
 
-            # Cumulative node lengths from UPSTREAM to DOWNSTREAM
-            # Reverse the sorted indices, cumsum, then reverse back
-            reversed_lengths = nodes.node_length[sorted_indices[::-1]]
-            reversed_cumsum = np.cumsum(reversed_lengths)
-            cumsum = reversed_cumsum[::-1]
+            # Cumulative node lengths from DOWNSTREAM to UPSTREAM.
+            cumsum = np.cumsum(nodes.len[sorted_indices])
 
             # Update node dist_out
-            # node_order=1 (downstream) gets base_dist + total_len = reach.dist_out (highest)
-            # node_order=n (upstream) gets base_dist + its_length (lowest)
+            # node_order=1 (downstream) gets the lowest dist_out.
+            # node_order=n (upstream) gets reach.dist_out, the highest.
             for i, idx in enumerate(sorted_indices):
                 nodes.dist_out[idx] = base_dist + cumsum[i]
 

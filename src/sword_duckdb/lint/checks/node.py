@@ -67,7 +67,7 @@ def check_node_spacing_gap(
     total = conn.execute(total_query).fetchone()[0]
 
     return CheckResult(
-        check_id="N009",
+        check_id="N003",
         name="node_spacing_gap",
         severity=Severity.WARNING,
         passed=len(issues) == 0,
@@ -84,32 +84,45 @@ def check_node_spacing_gap(
     "N004",
     Category.NETWORK,
     Severity.WARNING,
-    "Node dist_out must increase along node_id order within a reach",
+    "Node dist_out must increase along node_order within a reach",
 )
 def check_node_dist_out_monotonicity(
     conn: duckdb.DuckDBPyConnection,
     region: Optional[str] = None,
     threshold: Optional[float] = None,
 ) -> CheckResult:
-    """Check that node dist_out increases as node_id increases within each reach.
+    """Check that node dist_out increases as node_order increases within each reach.
 
-    SWORD convention: node_id increases upstream (higher node_id = higher dist_out).
-    A violation means dist_out decreases where it should increase.
+    SWORD convention: node_order is authoritative for within-reach position
+    after flow-direction corrections. The downstream boundary is node_order=1
+    and dist_out should increase monotonically upstream.
     """
     where_clause = f"AND n.region = '{region}'" if region else ""
 
     query = f"""
     WITH ordered_nodes AS (
         SELECT
-            node_id, reach_id, region, dist_out,
-            LAG(dist_out) OVER (PARTITION BY reach_id, region ORDER BY node_id) as prev_dist_out,
-            LAG(node_id) OVER (PARTITION BY reach_id, region ORDER BY node_id) as prev_node_id
+            node_id, reach_id, region, node_order, dist_out,
+            LAG(dist_out) OVER (
+                PARTITION BY reach_id, region
+                ORDER BY node_order, node_id
+            ) as prev_dist_out,
+            LAG(node_id) OVER (
+                PARTITION BY reach_id, region
+                ORDER BY node_order, node_id
+            ) as prev_node_id,
+            LAG(node_order) OVER (
+                PARTITION BY reach_id, region
+                ORDER BY node_order, node_id
+            ) as prev_node_order
         FROM nodes n
         WHERE dist_out IS NOT NULL AND dist_out != -9999
+            AND node_order IS NOT NULL AND node_order != -9999
             {where_clause}
     )
     SELECT
         node_id, prev_node_id, reach_id, region,
+        prev_node_order, node_order,
         prev_dist_out, dist_out,
         (prev_dist_out - dist_out) as dist_out_decrease
     FROM ordered_nodes
@@ -124,6 +137,7 @@ def check_node_dist_out_monotonicity(
     total_query = f"""
     SELECT COUNT(*) FROM nodes n
     WHERE dist_out IS NOT NULL AND dist_out != -9999
+      AND node_order IS NOT NULL AND node_order != -9999
     {where_clause}
     """
     total = conn.execute(total_query).fetchone()[0]
@@ -137,7 +151,7 @@ def check_node_dist_out_monotonicity(
         issues_found=len(issues),
         issue_pct=100 * len(issues) / total if total > 0 else 0,
         details=issues,
-        description="Nodes where dist_out decreases along node_id order (should increase)",
+        description="Nodes where dist_out decreases along node_order (should increase)",
     )
 
 
