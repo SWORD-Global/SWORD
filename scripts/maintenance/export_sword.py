@@ -136,8 +136,50 @@ def _query_region(
             select_parts.append(c)
 
     where = f"WHERE region = '{region}'" if has_region else ""
-    sql = f"SELECT {', '.join(select_parts)} FROM {table} {where}"
+    order_by = _canonical_order_clause(table, cols)
+    sql = f"SELECT {', '.join(select_parts)} FROM {table} {where}{order_by}"
     return con.execute(sql).fetchdf()
+
+
+def _canonical_order_clause(table: str, cols: list[str]) -> str:
+    """Return a stable ORDER BY clause for exported tables.
+
+    Export order must be deterministic and logically grouped. NetCDF consumers
+    in particular expect node arrays to be contiguous by reach and to follow
+    within-reach node order rather than DuckDB physical storage order.
+    """
+    order_cols: list[str]
+
+    if table == "reaches":
+        order_cols = ["reach_id"]
+    elif table == "nodes":
+        order_cols = ["reach_id"]
+        if "node_order" in cols:
+            order_cols.append("node_order")
+        order_cols.append("node_id")
+    elif table == "centerlines":
+        order_cols = ["reach_id", "cl_id"]
+    elif table == "reach_topology":
+        order_cols = ["reach_id", "direction", "neighbor_rank", "neighbor_reach_id"]
+    elif table == "reach_swot_orbits":
+        order_cols = ["reach_id"]
+        if "orbit_rank" in cols:
+            order_cols.append("orbit_rank")
+        elif "orbit_index" in cols:
+            order_cols.append("orbit_index")
+        order_cols.append("orbit_id" if "orbit_id" in cols else "pass_tile")
+    elif table == "reach_ice_flags":
+        order_cols = ["reach_id"]
+        if "day_of_year" in cols:
+            order_cols.append("day_of_year")
+        elif "julian_day" in cols:
+            order_cols.append("julian_day")
+    else:
+        order_cols = []
+
+    if not order_cols:
+        return ""
+    return f" ORDER BY {', '.join(order_cols)}"
 
 
 # ---------------------------------------------------------------------------
