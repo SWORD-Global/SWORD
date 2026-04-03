@@ -21,9 +21,9 @@ def compute_dijkstra_distances(G: nx.DiGraph) -> Dict[int, Dict]:
         log("Empty graph, returning empty results")
         return {}
 
-    # Use only REAL sinks (non-ghost) as Dijkstra sources for proper outlet detection.
-    # Ghost sinks upstream of real outlets will get proper distances;
-    # isolated ghost sinks will remain NULL.
+    # All sinks (out_degree=0) are Dijkstra sources — including ghost reaches.
+    # Every outlet in SWORD is type=6 (ghost coastal), so excluding ghosts
+    # would leave Dijkstra with zero sources and 58% of reaches with NULL.
     all_sinks = [n for n in G.nodes() if G.out_degree(n) == 0]
     ghost_sinks = set(n for n in all_sinks if G.nodes[n].get("type") == 6)
     real_outlets = [n for n in all_sinks if n not in ghost_sinks]
@@ -33,29 +33,37 @@ def compute_dijkstra_distances(G: nx.DiGraph) -> Dict[int, Dict]:
         f"{len(ghost_sinks):,} ghost)"
     )
 
+    # v17b convention: outlet reach has dist_out = reach_length (not 0).
+    # Dijkstra natively sets sources to 0.  To match the convention, add a
+    # virtual super-sink S with edge weight = reach_length(outlet) for each
+    # outlet.  Single-source Dijkstra from S then gives every node a distance
+    # that includes the closest outlet's own length.
     R = G.reverse()
+    SUPER = -1  # virtual node, not a real reach_id
+    R.add_node(SUPER)
+    for outlet in all_sinks:
+        rl = G.nodes[outlet].get("reach_length", 0)
+        R.add_edge(SUPER, outlet, _weight=rl)
 
     dist_out: Dict[int, float] = {n: float("inf") for n in G.nodes()}
-    for outlet in real_outlets:
-        dist_out[outlet] = 0
 
-    if real_outlets:
-        lengths = nx.multi_source_dijkstra_path_length(
-            R, real_outlets, weight=lambda u, v, d: G.nodes[v].get("reach_length", 0)
+    if all_sinks:
+        lengths = nx.single_source_dijkstra_path_length(
+            R,
+            SUPER,
+            weight=lambda u, v, d: d.get("_weight") if u == SUPER else G.nodes[v].get("reach_length", 0),
         )
-        dist_out.update(lengths)
+        for node, d in lengths.items():
+            if node != SUPER:
+                dist_out[node] = d
 
     results = {}
     for node in G.nodes():
         d = dist_out.get(node, float("inf"))
-        # Ghost coastal outlets (isolated ghost sinks) should get their reach_length
-        # as dist_out_dijkstra, matching v17b dist_out behavior for these reaches.
-        if d == float("inf") and node in ghost_sinks:
-            d = G.nodes[node].get("reach_length", 0)
         results[node] = {"dist_out_dijkstra": d}
 
-    n_real_outlets = sum(1 for n, r in results.items() if r["dist_out_dijkstra"] == 0)
-    log(f"Dijkstra distances computed ({n_real_outlets:,} real outlets)")
+    n_outlets = sum(1 for n in all_sinks if dist_out.get(n, float("inf")) < float("inf"))
+    log(f"Dijkstra distances computed ({n_outlets:,} outlets)")
     return results
 
 

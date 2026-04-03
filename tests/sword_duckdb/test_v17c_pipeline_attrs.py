@@ -156,15 +156,16 @@ class TestComputeDijkstraDistances:
         for node, attrs in dijkstra_distances.items():
             assert "dist_out_dijkstra" in attrs
 
-    def test_dist_out_dijkstra_at_outlet_is_zero(self, reach_graph, dijkstra_distances):
-        """dist_out_dijkstra should be 0 at outlets (no outgoing edges)."""
+    def test_dist_out_dijkstra_at_outlet_is_reach_length(self, reach_graph, dijkstra_distances):
+        """dist_out_dijkstra at outlets should equal reach_length (v17b convention)."""
         outlets = [n for n in reach_graph.nodes() if reach_graph.out_degree(n) == 0]
         assert len(outlets) > 0, "Should have at least one outlet"
 
         for outlet in outlets:
             dist_out = dijkstra_distances[outlet]["dist_out_dijkstra"]
-            assert dist_out == 0, (
-                f"Outlet {outlet} should have dist_out_dijkstra=0, got {dist_out}"
+            rl = reach_graph.nodes[outlet].get("reach_length", 0)
+            assert dist_out == pytest.approx(rl), (
+                f"Outlet {outlet} should have dist_out_dijkstra={rl}, got {dist_out}"
             )
 
     def test_dist_out_dijkstra_increases_upstream(
@@ -458,7 +459,8 @@ class TestEdgeCases:
 
         dij = compute_dijkstra_distances(G)
         assert 1 in dij
-        assert dij[1]["dist_out_dijkstra"] == 0
+        # v17b convention: outlet dist_out = reach_length, not 0
+        assert dij[1]["dist_out_dijkstra"] == pytest.approx(1000)
 
         hw_out = compute_best_headwater_outlet(G)
         assert hw_out[1]["best_headwater"] == 1
@@ -483,7 +485,10 @@ class TestEdgeCases:
         G.add_edge(1, 2)
 
         dij = compute_dijkstra_distances(G)
-        assert dij[2]["dist_out_dijkstra"] == 0
+        # v17b convention: outlet = reach_length
+        assert dij[2]["dist_out_dijkstra"] == pytest.approx(1500)
+        # Upstream: outlet_len + own_len = 1500 + 1000 = 2500
+        assert dij[1]["dist_out_dijkstra"] == pytest.approx(2500)
 
         hw_out = compute_best_headwater_outlet(G)
         assert hw_out[1]["best_headwater"] == 1
@@ -514,7 +519,8 @@ class TestEdgeCases:
         G.add_edge(3, 4)
 
         dij = compute_dijkstra_distances(G)
-        assert dij[4]["dist_out_dijkstra"] == 0
+        # v17b convention: outlet = reach_length
+        assert dij[4]["dist_out_dijkstra"] == pytest.approx(900)
 
         hw_out = compute_best_headwater_outlet(G)
         assert hw_out[3]["best_headwater"] == 2
@@ -561,14 +567,30 @@ class TestEdgeCases:
         assert ms[2] is False, "Ghost reach (type=6) must not be mainstem"
         assert ms[3] is True
 
-    def test_isolated_ghost_sink_gets_reach_length_dijkstra(self):
-        """Isolated ghost sinks should get reach_length, not NULL/inf."""
+    def test_ghost_sink_gets_reach_length_dijkstra(self):
+        """Ghost outlet dist_out_dijkstra = reach_length (v17b convention)."""
         G = nx.DiGraph()
         G.add_node(1, reach_length=175.0, type=6)
 
         dij = compute_dijkstra_distances(G)
 
         assert dij[1]["dist_out_dijkstra"] == pytest.approx(175.0)
+
+    def test_dijkstra_linear_chain_matches_dist_out(self):
+        """On an unbranched path, dist_out_dijkstra == cumulative reach_length."""
+        G = nx.DiGraph()
+        # outlet → mid → headwater
+        G.add_node(1, reach_length=100.0, type=6)  # outlet
+        G.add_node(2, reach_length=500.0, type=1)  # mid
+        G.add_node(3, reach_length=200.0, type=6)  # headwater
+        G.add_edge(3, 2)
+        G.add_edge(2, 1)
+
+        dij = compute_dijkstra_distances(G)
+
+        assert dij[1]["dist_out_dijkstra"] == pytest.approx(100.0)   # outlet: own length
+        assert dij[2]["dist_out_dijkstra"] == pytest.approx(600.0)   # 100 + 500
+        assert dij[3]["dist_out_dijkstra"] == pytest.approx(800.0)   # 100 + 500 + 200
 
     def test_empty_graph(self):
         """Test with an empty graph."""
