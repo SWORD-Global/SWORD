@@ -2039,8 +2039,8 @@ class TestN003NodeSpacingGap:
         _create_nodes_with_dist_out(
             conn,
             [
-                {"node_id": 1001, "reach_id": 1, "x": 0.0, "y": 0.0},
-                {"node_id": 1002, "reach_id": 1, "x": 0.001, "y": 0.0},
+                {"node_id": 1001, "reach_id": 1, "x": 0.0, "y": 0.0, "node_order": 1},
+                {"node_id": 1002, "reach_id": 1, "x": 0.001, "y": 0.0, "node_order": 2},
             ],
         )
         from src.sword_duckdb.lint.checks.node import check_node_spacing_gap
@@ -2055,8 +2055,8 @@ class TestN003NodeSpacingGap:
         _create_nodes_with_dist_out(
             conn,
             [
-                {"node_id": 1001, "reach_id": 1, "x": 0.0, "y": 0.0},
-                {"node_id": 1002, "reach_id": 1, "x": 1.0, "y": 0.0},
+                {"node_id": 1001, "reach_id": 1, "x": 0.0, "y": 0.0, "node_order": 1},
+                {"node_id": 1002, "reach_id": 1, "x": 1.0, "y": 0.0, "node_order": 2},
             ],
         )
         from src.sword_duckdb.lint.checks.node import check_node_spacing_gap
@@ -2192,7 +2192,8 @@ class TestN004NodeDistOutMonotonicity:
 class TestN005NodeDistOutJump:
     """Tests for N005 node_dist_out_jump.
 
-    SWORD convention: node_id increases upstream, so dist_out increases with node_id.
+    SWORD convention: node_order is authoritative for within-reach position.
+    dist_out increases from node_order=1 (downstream) to node_order=n (upstream).
     """
 
     def test_pass_small_jump(self, tmp_path):
@@ -2207,6 +2208,7 @@ class TestN005NodeDistOutJump:
                     "x": 0.0,
                     "y": 0.0,
                     "dist_out": 4800.0,
+                    "node_order": 1,
                 },
                 {
                     "node_id": 1002,
@@ -2214,6 +2216,7 @@ class TestN005NodeDistOutJump:
                     "x": 0.001,
                     "y": 0.0,
                     "dist_out": 5000.0,
+                    "node_order": 2,
                 },
             ],
         )
@@ -2235,6 +2238,7 @@ class TestN005NodeDistOutJump:
                     "x": 0.0,
                     "y": 0.0,
                     "dist_out": 3000.0,
+                    "node_order": 1,
                 },
                 {
                     "node_id": 1002,
@@ -2242,6 +2246,7 @@ class TestN005NodeDistOutJump:
                     "x": 0.001,
                     "y": 0.0,
                     "dist_out": 5000.0,
+                    "node_order": 2,
                 },
             ],
         )

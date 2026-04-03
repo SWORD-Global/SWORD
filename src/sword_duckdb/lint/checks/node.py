@@ -37,11 +37,12 @@ def check_node_spacing_gap(
     WITH ordered_nodes AS (
         SELECT
             node_id, reach_id, region, x, y,
-            LAG(node_id) OVER (PARTITION BY reach_id, region ORDER BY node_id) as prev_node_id,
-            LAG(x) OVER (PARTITION BY reach_id, region ORDER BY node_id) as prev_x,
-            LAG(y) OVER (PARTITION BY reach_id, region ORDER BY node_id) as prev_y
+            LAG(node_id) OVER (PARTITION BY reach_id, region ORDER BY node_order, node_id) as prev_node_id,
+            LAG(x) OVER (PARTITION BY reach_id, region ORDER BY node_order, node_id) as prev_x,
+            LAG(y) OVER (PARTITION BY reach_id, region ORDER BY node_order, node_id) as prev_y
         FROM nodes n
-        WHERE 1=1 {where_clause}
+        WHERE node_order IS NOT NULL AND node_order != -9999
+            {where_clause}
     )
     SELECT
         node_id, prev_node_id, reach_id, region, x, y,
@@ -175,10 +176,11 @@ def check_node_dist_out_jump(
     WITH ordered_nodes AS (
         SELECT
             node_id, reach_id, region, dist_out, x, y,
-            LAG(dist_out) OVER (PARTITION BY reach_id, region ORDER BY node_id) as prev_dist_out,
-            LAG(node_id) OVER (PARTITION BY reach_id, region ORDER BY node_id) as prev_node_id
+            LAG(dist_out) OVER (PARTITION BY reach_id, region ORDER BY node_order, node_id) as prev_dist_out,
+            LAG(node_id) OVER (PARTITION BY reach_id, region ORDER BY node_order, node_id) as prev_node_id
         FROM nodes n
         WHERE dist_out IS NOT NULL AND dist_out != -9999
+            AND node_order IS NOT NULL AND node_order != -9999
             {where_clause}
     )
     SELECT
