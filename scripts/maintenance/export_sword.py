@@ -179,7 +179,9 @@ def _canonical_order_clause(table: str, cols: list[str]) -> str:
 
     if not order_cols:
         return ""
-    return f" ORDER BY {', '.join(order_cols)}"
+    # NULLS LAST ensures fill-value / NULL node_order doesn't break contiguity
+    parts = [f"{c} NULLS LAST" for c in order_cols]
+    return f" ORDER BY {', '.join(parts)}"
 
 
 # ---------------------------------------------------------------------------

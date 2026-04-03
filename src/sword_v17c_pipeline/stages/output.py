@@ -173,7 +173,7 @@ def propagate_reach_to_nodes(
     Then (NULL reach values pass through as NULL):
       - dist_out (single-node only): GREATEST(0, reach.dist_out - offset)
       - hydro_dist_out, dist_out_dijkstra: GREATEST(0, reach_value - offset)
-      - hydro_dist_hw: GREATEST(0, reach_value - reach_length + offset)
+      - hydro_dist_hw: GREATEST(0, reach_value + offset)
       - pathlen_hw: GREATEST(0, reach_value - reach_length + offset)
       - pathlen_out: GREATEST(0, reach_value + reach_length - offset)
     """
@@ -245,7 +245,7 @@ def propagate_reach_to_nodes(
     count = result.fetchone()[0]
     n_flipped = len(flipped)
     log(
-        f"Propagated 8 columns to {count:,} nodes (5 interpolated, 3 flat, {n_flipped} flipped reaches)"
+        f"Propagated 9 columns to {count:,} nodes (6 interpolated, 3 flat, {n_flipped} flipped reaches)"
     )
     return count
 
@@ -295,8 +295,8 @@ def _update_node_columns_inner(
         """
         WITH boundary AS (
             SELECT reach_id, region,
-                FIRST(node_id ORDER BY dist_out ASC) AS dn_nid,
-                FIRST(node_id ORDER BY dist_out DESC) AS up_nid
+                FIRST(node_id ORDER BY dist_out ASC, node_id ASC) AS dn_nid,
+                FIRST(node_id ORDER BY dist_out DESC, node_id DESC) AS up_nid
             FROM nodes
             WHERE region = ?
             GROUP BY reach_id, region
@@ -317,7 +317,7 @@ def _update_node_columns_inner(
         WITH ordered AS (
             SELECT node_id, region,
                 ROW_NUMBER() OVER (
-                    PARTITION BY reach_id, region ORDER BY dist_out ASC
+                    PARTITION BY reach_id, region ORDER BY dist_out ASC, node_id ASC
                 ) AS rn
             FROM nodes
             WHERE region = ?
