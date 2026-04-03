@@ -166,7 +166,12 @@ def propagate_reach_to_nodes(
         (node dist_out is stale v17b; v17c downstream has HIGH v17b dist_out)
       - Single-node: offset = reach_length / 2 (centroid)
 
+    Node dist_out keeps the stored per-node distance values for multi-node
+    reaches, but single-node reaches use the same midpoint anchor as the
+    interpolated v17c node distances.
+
     Then (NULL reach values pass through as NULL):
+      - dist_out (single-node only): GREATEST(0, reach.dist_out - offset)
       - hydro_dist_out, dist_out_dijkstra: GREATEST(0, reach_value - offset)
       - hydro_dist_hw: GREATEST(0, reach_value - reach_length + offset)
       - pathlen_hw: GREATEST(0, reach_value - reach_length + offset)
@@ -202,9 +207,9 @@ def propagate_reach_to_nodes(
         WITH ofs AS (
             SELECT nodes.node_id, nodes.region,
                    r.best_headwater, r.best_outlet, r.subnetwork_id,
-                   r.hydro_dist_out, r.dist_out_dijkstra,
+                   r.dist_out, r.hydro_dist_out, r.dist_out_dijkstra,
                    r.hydro_dist_hw, r.pathlen_hw, r.pathlen_out,
-                   r.reach_length,
+                   r.reach_length, r.n_nodes,
                    {offset_expr} AS o
             FROM nodes
             JOIN reaches r
@@ -216,6 +221,11 @@ def propagate_reach_to_nodes(
         SET best_headwater = ofs.best_headwater,
             best_outlet = ofs.best_outlet,
             subnetwork_id = ofs.subnetwork_id,
+            dist_out = CASE
+                WHEN ofs.n_nodes = 1 AND ofs.dist_out IS NULL THEN NULL
+                WHEN ofs.n_nodes = 1 THEN GREATEST(0, ofs.dist_out - ofs.o)
+                ELSE nodes.dist_out
+            END,
             hydro_dist_out = CASE WHEN ofs.hydro_dist_out IS NULL THEN NULL
                 ELSE GREATEST(0, ofs.hydro_dist_out - ofs.o) END,
             dist_out_dijkstra = CASE WHEN ofs.dist_out_dijkstra IS NULL THEN NULL

@@ -1,11 +1,44 @@
 # SWORD v17c Beta Release Notes
 
-**Version:** v17c beta 0.0.4
+**Version:** v17c beta 0.0.6
 **Date:** April 2026
 **Authors:** James H. Gearon, Tamlin M. Pavelsky, Niek Collot d'Escury
 **Base version:** SWORD v17b (March 2025, UNC)
 
 ## Changelog
+
+### 0.0.6 (April 2026)
+- **Canonical export ordering restored.** The `0.0.5` flat-file exports were
+  written in DuckDB storage order through the generic maintenance exporter,
+  which does not preserve a stable logical row order unless it is told to do
+  so. As a result, node arrays in the distributed files could be split across
+  multiple blocks for the same reach even though the per-row attributes stayed
+  aligned.
+- **Nodes now export in reach-contiguous logical order.** `0.0.6` writes nodes
+  ordered by `reach_id`, then `node_order`, then `node_id` across NetCDF,
+  GeoPackage, and Parquet. This restores a clean in-file node sequence for
+  downstream consumers that expect each reach to occupy one contiguous node
+  block and to run from downstream (`node_order=1`) to upstream (`node_order=n`).
+- **Observed regression removed.** In Africa, the count of reaches whose NetCDF
+  node rows were split into multiple file blocks dropped from 536 in `0.0.5`
+  to 0 in `0.0.6`. Pierre-Olivier Malaterre's example reach `13341000591` now
+  appears as one contiguous node block with `node_order = 1..93`.
+
+### 0.0.5 (April 2026)
+- **Promoted corrected bundle to a new version.** The corrected April 2
+  reissue is now published as `0.0.5` instead of reusing `0.0.4`, so testers
+  do not keep hitting stale downloads or cached copies under the same name.
+  This `0.0.5` bundle supersedes all prior `0.0.4` beta uploads on Drive.
+- **Release regressions from distributed `0.0.4` artifacts fixed.** The
+  `0.0.5` bundle corrects the specific tester-reported regressions from the
+  prior `0.0.4` uploads: reversed node `dist_out` relative to `node_order`,
+  stale `dn_node_id` / `up_node_id` orientation on flow-corrected reaches,
+  missing `nodes` layers in some GeoPackages, NULL `dist_out_dijkstra` at
+  isolated ghost coastal outlets, and inconsistent single-node node-distance
+  anchoring relative to the other node-level outlet distances.
+- **Release artifacts renamed and resynced.** NetCDF, GeoPackage, Parquet,
+  release notes, and SHA256 manifests now use `0.0.5` filenames consistently
+  in the local beta folder and Google Drive beta folder.
 
 ### 0.0.4 (March 2026)
 - **Node propagation to 11.1M nodes.** Five v17c columns (`best_headwater`,
@@ -25,7 +58,7 @@
 - **facc monotonicity fix (T003).** 419 reaches corrected via iterative
   downstream propagation. T003 violations: 392 → 0.
 - **Routing weights retrained on `effective_slope`.** SWOT `slope_obs_p50`
-  (where reliable and n≥5) replaces MERIT DEM slope in routing score training.
+  (where reliable and n>=5) replaces MERIT DEM slope in routing score training.
   Slope share: 8% → 3%, width: 67% → 71%. CV accuracy unchanged (88.5%).
 - **Node-level distance interpolation.** `hydro_dist_out`, `hydro_dist_hw`, and
   `dist_out_dijkstra` added to nodes table, interpolated by node position within
@@ -52,14 +85,24 @@
   (geometric position) instead of `node_id`. This fixes an issue where
   flow-corrected reaches had incorrect node distances after recalculation
   (e.g., downstream-most node getting downstream reach's `dist_out`).
+- **April 2 artifact reissue.** The published April 1 `0.0.4` files still had
+  stale orientation metadata on 639 flow-corrected reaches. The reissued
+  NetCDF, GeoPackage, and Parquet bundles recompute `node_order`,
+  `dn_node_id`, and `up_node_id` from node `dist_out`, restore
+  `dist_out_dijkstra = reach_length` for isolated ghost coastal outlets,
+  and align single-node `node.dist_out` with the same midpoint anchor used
+  by the other node-level outlet distances.
 - **Ghost coastal outlet dist_out_dijkstra fix.** Isolated ghost coastal
   outlets (type=6 sinks with upstream neighbors but no path to real
   hydrologic outlets) now receive `dist_out_dijkstra = reach_length`,
   matching v17b `dist_out` behavior. Previously these 703 reaches in NA
   (similar counts in other regions) had NULL, but they should report the
   distance from their start to the ocean outlet point.
-- **Exports regenerated (April 1, 2026).** All NetCDF, GeoPackage, and
-  Parquet files updated with the above fixes. SHA256SUMS refreshed.
+- **Exports regenerated (April 1 and 2, 2026).** The initial April 1 bundle
+  captured the code fixes above. The April 2 reissue refreshed NetCDF,
+  GeoPackage, and Parquet artifacts plus SHA256SUMS after repairing published
+  `node_order` / boundary-node orientation metadata, ghost coastal outlet
+  `dist_out_dijkstra`, and single-node node-distance anchoring.
 
 ### 0.0.3 (March 2026)
 - **Routing weights learned from human labels.** Replaced the handcrafted
@@ -112,8 +155,10 @@ all six regions (NA, SA, EU, AF, AS, OC).
 Each region is distributed as a single NetCDF4 file
 (`{region}_sword_v17c_beta.nc`). The group structure matches v17b
 (centerlines, nodes, reaches), and the `area_fits` and `discharge_models`
-subgroups under reaches pass through from v17b unchanged. Reach and node
-ordering within each file matches v17b.
+subgroups under reaches pass through from v17b unchanged. Reach arrays are
+ordered stably by `reach_id`. Node arrays are grouped contiguously by
+`reach_id` and ordered within each reach by `node_order` (downstream to
+upstream).
 
 Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`)
 match v17b values across all formats (NetCDF, DuckDB, PostgreSQL).

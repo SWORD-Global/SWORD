@@ -561,6 +561,15 @@ class TestEdgeCases:
         assert ms[2] is False, "Ghost reach (type=6) must not be mainstem"
         assert ms[3] is True
 
+    def test_isolated_ghost_sink_gets_reach_length_dijkstra(self):
+        """Isolated ghost sinks should get reach_length, not NULL/inf."""
+        G = nx.DiGraph()
+        G.add_node(1, reach_length=175.0, type=6)
+
+        dij = compute_dijkstra_distances(G)
+
+        assert dij[1]["dist_out_dijkstra"] == pytest.approx(175.0)
+
     def test_empty_graph(self):
         """Test with an empty graph."""
         G = nx.DiGraph()

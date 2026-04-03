@@ -15,15 +15,19 @@ mock data, so we focus on method existence and RuntimeError checks.
 """
 
 import os
-import sys
-import pytest
+import subprocess
 import shutil
+import sys
+
+import numpy as np
+import pytest
 
 # Add project root to path
 main_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, main_dir)
 
-from src.sword_duckdb.workflow import SWORDWorkflow
+# Imported after path setup to support `python tests/.../test_workflow.py`.
+from src.sword_duckdb.workflow import SWORDWorkflow  # noqa: E402
 
 TEST_REGION = "NA"
 
@@ -64,6 +68,60 @@ class TestWorkflowLoad:
         assert not wf.is_loaded
 
 
+class TestWorkflowCommit:
+    """Test reactive recalculation on commit."""
+
+    def test_commit_updates_node_dist_out_in_node_order(
+        self, ensure_test_db, tmp_path
+    ):
+        """Commit keeps node dist_out increasing from downstream to upstream."""
+        temp_db = tmp_path / "sword_test.duckdb"
+        shutil.copy2(ensure_test_db, temp_db)
+
+        result = subprocess.run(
+            [sys.executable, "scripts/maintenance/add_node_columns.py", "--db", temp_db],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+        workflow = SWORDWorkflow(user_id="test", enable_provenance=False)
+        try:
+            workflow.load(str(temp_db), TEST_REGION)
+            sword = workflow._sword
+
+            target_reach = None
+            for reach_id in sword.reaches.id:
+                node_idx = np.where(sword.nodes.reach_id[:] == reach_id)[0]
+                if len(node_idx) >= 3:
+                    target_reach = int(reach_id)
+                    break
+
+            assert target_reach is not None, "Need a reach with at least 3 nodes"
+
+            reach_idx = np.where(sword.reaches.id[:] == target_reach)[0][0]
+            workflow.modify_reach(
+                target_reach,
+                dist_out=float(sword.reaches.dist_out[reach_idx]) + 1000.0,
+                reason="Test reactive node dist_out ordering",
+            )
+
+            stats = workflow.commit()
+            assert stats["dirty_attributes"] == 1
+            assert stats["attributes_affected"] == ["reach.dist_out"]
+
+            node_idx = np.where(sword.nodes.reach_id[:] == target_reach)[0]
+            sorted_idx = node_idx[np.argsort(sword.nodes.node_order[node_idx])]
+            dist_outs = sword.nodes.dist_out[sorted_idx]
+
+            assert np.all(np.diff(dist_outs) >= 0), (
+                "node dist_out should increase with node_order after commit"
+            )
+        finally:
+            if workflow.is_loaded:
+                workflow.close()
+
+
 class TestDeleteReach:
     """Test delete_reach method."""
 
@@ -74,7 +132,6 @@ class TestDeleteReach:
 
     def test_delete_reach_single(self, temp_workflow):
         """Test deleting a single reach via workflow."""
-        initial_count = len(temp_workflow._sword.reaches)
         reach_to_delete = int(temp_workflow._sword.reaches.id[0])
 
         result = temp_workflow.delete_reach(reach_to_delete)

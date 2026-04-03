@@ -2,6 +2,13 @@
 
 Prepared for Pierre-Olivier Malaterre (INRAE), February 2026.
 
+> Status note (April 2, 2026): this document is the February baseline report.
+> Current release-gate counts and dispositions now live in
+> [`pom_requests_summary.md`](./pom_requests_summary.md), which records the
+> active `0.0.5` gate status as passing all blocking checks and classifies the
+> remaining nonzero findings as defended nonblocking, accepted residual,
+> deferred to v18, or informational.
+
 ## 1. Introduction
 
 We received [`sword_validity.m`](../../src/_legacy/sword_validity.m), a 4,300-line MATLAB validation script containing 15 test suites. We ported all 15 suites to Python and ran them against the full v17c production database: 248,673 reaches, 11.1 million nodes, and 66.9 million centerlines across all 6 regions. Separately, we added the three columns you requested in your February 2025 emails. The results below confirm that v17c passes 10 of 15 test suites with zero or near-zero violations and identify the root causes of all remaining findings.
@@ -117,8 +124,11 @@ We did not implement this check. Centerline points define reach geometry by cons
 
 ### Test 10: Node dist_out Ordering
 
-**Test 10a — Node dist_out should increase with node_id within a reach.**
-**Result: PASS (1 accepted residual).** 1 single violation across 11.1M nodes (noise-level). (N004)
+**Test 10a — Node dist_out should increase with downstream→upstream within-reach order.**
+**Result: See current release-gate baseline.** The active implementation uses
+`node_order`, not `node_id`, as the authoritative within-reach order after
+flow-direction corrections. Current release-gate counts are tracked in
+[`pom_requests_summary.md`](./pom_requests_summary.md). (N004)
 
 **Test 10b — Node dist_out should not jump >600m between adjacent nodes.**
 **Result: PASS.** Covered by N005 (same threshold as your `length_max_node=600`). Any violations are included in the Test 6b findings above.
@@ -147,7 +157,10 @@ We did not implement these as separate checks. They are informational annotation
 ### Test 12: ID Format Validation
 
 **Test 12a — Node order coherent with node ID.**
-**Result: PASS.** Covered by N004 (node dist_out monotonicity). Note: per Elizabeth Altenau (April 2025), node memory order not matching ID order is not a bug — our `node_order` column provides the authoritative ordering.
+**Result: Informational.** After flow-direction corrections, `node_id` is not
+the authoritative within-reach order. `node_order` is the release-facing
+ordering field, and current release gating therefore evaluates N004 by
+`node_order`, not by `node_id`.
 
 **Test 12b — Reach ID = 11 digits, valid type suffix (1/3/4/5/6).**
 **Result: PASS.** Zero violations across 248,673 reaches. (T018)

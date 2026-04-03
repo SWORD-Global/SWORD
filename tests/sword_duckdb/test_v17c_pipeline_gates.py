@@ -4,16 +4,18 @@ import shutil
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 import pytest
 
 from src.sword_v17c_pipeline.gates import (
     GateFailure,
     GateResult,
+    gate_pom_release,
     gate_post_save,
     gate_source_data,
     run_gate,
 )
-from src.sword_duckdb.lint.core import Severity
+from src.sword_duckdb.lint.core import CheckResult, Severity
 
 pytestmark = [pytest.mark.pipeline, pytest.mark.db]
 
@@ -184,6 +186,97 @@ class TestRunGate:
         data = json.loads(artifact_file.read_text())
         assert len(data) == 1
         assert data[0]["check_id"] == "T005"
+
+
+def _check_result(check_id: str, severity: Severity, passed: bool, issues_found: int):
+    """Build a minimal CheckResult for gate-policy tests."""
+    return CheckResult(
+        check_id=check_id,
+        name=check_id.lower(),
+        severity=severity,
+        passed=passed,
+        total_checked=100,
+        issues_found=issues_found,
+        issue_pct=float(issues_found),
+        details=pd.DataFrame(),
+        description=check_id,
+    )
+
+
+class TestGatePomRelease:
+    """Tests for the POM-derived release gate with allowed residuals."""
+
+    def test_passes_within_allowed_budgets(self, monkeypatch):
+        class FakeRunner:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def run(self, checks=None, region=None):
+                return [
+                    _check_result("T001", Severity.ERROR, True, 0),
+                    _check_result("N004", Severity.WARNING, True, 0),
+                    _check_result("A030", Severity.WARNING, False, 669),
+                    _check_result("N013", Severity.WARNING, False, 311),
+                    _check_result("T020", Severity.INFO, False, 197),
+                ]
+
+        monkeypatch.setattr("src.sword_v17c_pipeline.gates.LintRunner", FakeRunner)
+
+        result = gate_pom_release("fake.duckdb")
+        assert result.passed is True
+        assert result.failed_checks == []
+
+    def test_fails_on_unexpected_nonzero_check(self, monkeypatch):
+        class FakeRunner:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def run(self, checks=None, region=None):
+                return [
+                    _check_result("T001", Severity.ERROR, True, 0),
+                    _check_result("N004", Severity.WARNING, False, 1),
+                ]
+
+        monkeypatch.setattr("src.sword_v17c_pipeline.gates.LintRunner", FakeRunner)
+
+        with pytest.raises(GateFailure) as exc_info:
+            gate_pom_release("fake.duckdb")
+        assert exc_info.value.check_id == "N004"
+
+    def test_fails_when_allowed_budget_is_exceeded(self, monkeypatch):
+        class FakeRunner:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def run(self, checks=None, region=None):
+                return [
+                    _check_result("T001", Severity.ERROR, True, 0),
+                    _check_result("A030", Severity.WARNING, False, 670),
+                ]
+
+        monkeypatch.setattr("src.sword_v17c_pipeline.gates.LintRunner", FakeRunner)
+
+        with pytest.raises(GateFailure) as exc_info:
+            gate_pom_release("fake.duckdb")
+        assert exc_info.value.check_id == "A030"
 
 
 class TestGateFailureException:

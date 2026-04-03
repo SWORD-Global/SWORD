@@ -70,7 +70,13 @@ from .v17c_pipeline import (
     save_sections_to_duckdb,
     save_to_duckdb,
 )
-from .gates import GateFailure, GateResult, gate_source_data, gate_post_save
+from .gates import (
+    GateFailure,
+    GateResult,
+    gate_pom_release,
+    gate_post_save,
+    gate_source_data,
+)
 
 __all__ = [
     "GateFailure",
@@ -89,6 +95,7 @@ __all__ = [
     "compute_main_neighbors",
     "compute_path_variables",
     "create_v17c_tables",
+    "gate_pom_release",
     "gate_post_save",
     "gate_source_data",
     "get_effective_width",

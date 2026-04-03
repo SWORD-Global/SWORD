@@ -17,7 +17,7 @@ extends to nodes.
 |---|---|---|---|---|
 | `dist_out` (v17b) | v17b topology | upstream end of reach | `reach_length` | has value |
 | `hydro_dist_out` | `rch_id_dn_main` chain | upstream end of reach | `reach_length` | has value |
-| `dist_out_dijkstra` | Dijkstra shortest path | upstream end of reach | **0** | **NULL** |
+| `dist_out_dijkstra` | Dijkstra shortest path | upstream end of reach | **0** | NULL, except isolated ghost coastal outlets use `reach_length` |
 | `hydro_dist_hw` | `rch_id_up_main` chain | upstream end of reach | 0 | has value |
 
 **Anchor convention.** All four distance variables anchor at the upstream
@@ -36,7 +36,10 @@ When comparing these variables, the offset at any reach equals the
 outlet's `reach_length`.
 
 **Ghost reaches.** `dist_out_dijkstra` is NULL for ghost reaches
-(type=6). The other three variables retain values for ghost reaches.
+(type=6) except isolated ghost coastal outlets (`type=6`, `end_reach=2`,
+no downstream neighbor), which use `reach_length` at reach level and
+interpolate from that value at nodes. The other three variables retain
+values for ghost reaches.
 
 ### Node-Level Interpolation
 
@@ -58,12 +61,11 @@ For single-node reaches, the offset is `reach_length / 2` (midpoint).
 Three additional variables (`subnetwork_id`, `best_headwater`,
 `best_outlet`) are flat copies from the parent reach.
 
-**Node `dist_out` is the v17b original value, not interpolated.** It
-serves as the positional anchor for interpolation but is not itself
-recomputed. At single-node outlet reaches, `node.dist_out` equals the
-reach-level value (not the midpoint), while `node.hydro_dist_out` uses
-the midpoint convention. This difference is by design: v17b `dist_out`
-is preserved as-is for backward compatibility.
+**Node `dist_out`.** `node.dist_out` remains the stored node-level
+distance-to-outlet value and increases with `node_order`. For single-node
+reaches, `node.dist_out` uses the same midpoint anchor as the other
+node-level outlet distances, so it no longer stays pinned to the
+reach-level upstream-end value.
 
 **Boundary continuity.** At reach boundaries, the downstream-end node of
 the upstream reach and the upstream-end node of the downstream reach
@@ -231,6 +233,13 @@ across all boundaries).
 | node_length | f8 | meters | -9999.0 | Length of river represented by this node |
 | node_order | i4 | | -9999 | 1-based position within reach (1=downstream, n=upstream, by dist_out) |
 | reach_id | i8 | | -9999 | Parent reach ID (format: CBBBBBRRRRT) |
+
+`0.0.5` release note (April 2026): the corrected files supersede the prior
+`0.0.4` beta uploads. Published NetCDF, GeoPackage, and Parquet files were
+reissued to recompute `dn_node_id`, `up_node_id`, and `node_order` directly
+from node `dist_out`, restore ghost coastal outlet `dist_out_dijkstra`, and
+align single-node `node.dist_out` with the same midpoint anchor used by the
+other node-level outlet distances.
 | wse | f8 | meters | -9999.0 | Water surface elevation (MERIT Hydro) |
 | wse_var | f8 | meters^2 | -9999.0 | WSE variance |
 | width | f8 | meters | -9999.0 | River width (GRWL) |
@@ -240,7 +249,7 @@ across all boundaries).
 | obstr_type | i4 | | -9999 | Obstruction type |
 | grod_id | i8 | | -9999 | GRanD/GROD dam ID |
 | hfalls_id | i8 | | -9999 | High falls ID |
-| dist_out | f8 | meters | -9999.0 | Distance to network outlet (v17b original, not interpolated; serves as positional anchor for v17c node interpolation). At single-node reaches, equals the reach-level value (not midpoint) |
+| dist_out | f8 | meters | -9999.0 | Distance to network outlet. Multi-node reaches preserve v17b node values; single-node reaches use the midpoint anchor `reach.dist_out - reach_length/2`, matching the other node-level outlet distances |
 | wth_coef | f8 | | -9999.0 | Width coefficient |
 | ext_dist_coef | f8 | | -9999.0 | Extraction distance coefficient |
 | facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |

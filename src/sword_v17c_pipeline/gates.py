@@ -46,6 +46,101 @@ class GateResult:
     failed_checks: List[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class GateAllowance:
+    """Allowed nonzero finding budget for a release gate check."""
+
+    disposition: str
+    max_issues: int
+    rationale: str
+
+
+POM_RELEASE_CHECKS = [
+    "T001",
+    "T004",
+    "T005",
+    "T007",
+    "T012",
+    "T013",
+    "T014",
+    "T015",
+    "T017",
+    "T018",
+    "T019",
+    "T020",
+    "T022",
+    "G002",
+    "G012",
+    "N003",
+    "N004",
+    "N005",
+    "N006",
+    "N007",
+    "N008",
+    "N010",
+    "N012",
+    "N013",
+    "C003",
+    "C004",
+    "FL001",
+    "A030",
+]
+
+
+POM_RELEASE_ALLOWANCES = {
+    "A030": GateAllowance(
+        "defended_nonblocking",
+        669,
+        "MERIT DEM WSE inversions are source-noise limited and not a release blocker.",
+    ),
+    "G012": GateAllowance(
+        "deferred_v18",
+        22,
+        "Endpoint geometry gaps are the same inherited geometry family tracked with N007.",
+    ),
+    "N003": GateAllowance(
+        "deferred_v18",
+        3456,
+        "Sparse node spacing is inherited from v17b node placement and deferred to v18.",
+    ),
+    "N005": GateAllowance(
+        "deferred_v18",
+        152,
+        "Large within-reach node dist_out jumps track the same sparse-node source-data cases as N003.",
+    ),
+    "N006": GateAllowance(
+        "defended_nonblocking",
+        2740,
+        "Boundary dist_out gaps are expected on braided bifurcation-rejoin structures.",
+    ),
+    "N007": GateAllowance(
+        "deferred_v18",
+        25,
+        "Remaining boundary geometry gaps are inherited geometry/topology cases deferred to v18.",
+    ),
+    "N012": GateAllowance(
+        "accepted_residual",
+        13,
+        "Remaining node-geolocation outliers are sparse ghost/Arctic residuals.",
+    ),
+    "N013": GateAllowance(
+        "accepted_residual",
+        311,
+        "Centerline-node mismatches were reduced 99.7%; the remainder are accepted sparse-node residuals.",
+    ),
+    "T017": GateAllowance(
+        "defended_nonblocking",
+        701,
+        "Large dist_out jumps are the reach-level expression of the same braided-path artifact as N006.",
+    ),
+    "T020": GateAllowance(
+        "informational",
+        197,
+        "River-name disagreements come from GRWL naming inconsistencies and are not release blockers.",
+    ),
+}
+
+
 def run_gate(
     db_path: str,
     region: str,
@@ -149,6 +244,62 @@ def gate_post_save(db_path: str, region: str, **kwargs) -> GateResult:
         ["V001", "V005", "V007", "V008", "T001", "T002"],
         "post_save",
         **kwargs,
+    )
+
+
+def gate_pom_release(
+    db_path: str,
+    region: Optional[str] = None,
+    *,
+    conn=None,
+    artifact_dir: Optional[str] = None,
+) -> GateResult:
+    """Run the POM-derived release gate with explicit nonblocking allowances.
+
+    Any failing check not listed in ``POM_RELEASE_ALLOWANCES`` fails the gate.
+    Allowed checks still fail the gate if their issue count exceeds the
+    recorded budget for the current defended/accepted/deferred state.
+    """
+    region_label = region.upper() if region else "ALL"
+    log(
+        f"Gate 'pom_release': running checks {POM_RELEASE_CHECKS} for {region_label}..."
+    )
+
+    with LintRunner(db_path, conn=conn) as runner:
+        results = runner.run(checks=POM_RELEASE_CHECKS, region=region_label if region else None)
+
+    if artifact_dir:
+        try:
+            _write_artifact(artifact_dir, "pom_release", results)
+        except OSError as e:
+            log(f"Gate 'pom_release': WARNING - could not write artifact: {e}")
+
+    failed = []
+    for result in results:
+        if result.passed:
+            continue
+        allowance = POM_RELEASE_ALLOWANCES.get(result.check_id)
+        if allowance is None or result.issues_found > allowance.max_issues:
+            failed.append(result.check_id)
+
+    gate_result = GateResult(
+        label="pom_release",
+        passed=len(failed) == 0,
+        results=results,
+        failed_checks=failed,
+    )
+
+    if gate_result.passed:
+        log("Gate 'pom_release': PASSED")
+        return gate_result
+
+    log(f"Gate 'pom_release': FAILED - {failed}")
+    first = next(r for r in results if r.check_id == failed[0])
+    raise GateFailure(
+        "pom_release",
+        first.check_id,
+        first.issues_found,
+        failed_checks=failed,
     )
 
 

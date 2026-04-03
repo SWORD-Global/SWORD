@@ -2008,13 +2008,14 @@ def _create_nodes_with_dist_out(conn, rows):
         CREATE TABLE IF NOT EXISTS nodes (
             node_id BIGINT, region VARCHAR, x DOUBLE, y DOUBLE,
             geom GEOMETRY, reach_id BIGINT, node_length DOUBLE,
+            node_order INTEGER DEFAULT -9999,
             dist_out DOUBLE DEFAULT -9999,
             wse DOUBLE DEFAULT -9999
         )
     """)
     for n in rows:
         conn.execute(
-            "INSERT INTO nodes VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO nodes VALUES (?,?,?,?,?,?,?,?,?,?)",
             [
                 n["node_id"],
                 n.get("region", "NA"),
@@ -2023,6 +2024,7 @@ def _create_nodes_with_dist_out(conn, rows):
                 n.get("geom"),
                 n["reach_id"],
                 n.get("node_length", 200.0),
+                n.get("node_order", -9999),
                 n.get("dist_out", -9999),
                 n.get("wse", -9999),
             ],
@@ -2045,6 +2047,7 @@ class TestN003NodeSpacingGap:
 
         result = check_node_spacing_gap(conn)
         assert result.passed is True
+        assert result.check_id == "N003"
         conn.close()
 
     def test_fail_far_nodes(self, tmp_path):
@@ -2060,6 +2063,7 @@ class TestN003NodeSpacingGap:
 
         result = check_node_spacing_gap(conn)
         assert result.passed is False
+        assert result.check_id == "N003"
         assert result.issues_found >= 1
         conn.close()
 
@@ -2067,11 +2071,12 @@ class TestN003NodeSpacingGap:
 class TestN004NodeDistOutMonotonicity:
     """Tests for N004 node_dist_out_monotonicity.
 
-    SWORD convention: node_id increases upstream, so dist_out INCREASES with node_id.
+    SWORD convention: node_order is authoritative for within-reach position,
+    and dist_out must increase from node_order=1 downstream to node_order=n upstream.
     """
 
     def test_pass_increasing(self, tmp_path):
-        """dist_out increases with node_id -- correct SWORD convention."""
+        """dist_out increases with node_order."""
         conn = _spatial_conn(tmp_path)
         _create_nodes_with_dist_out(
             conn,
@@ -2081,6 +2086,7 @@ class TestN004NodeDistOutMonotonicity:
                     "reach_id": 1,
                     "x": 0.0,
                     "y": 0.0,
+                    "node_order": 1,
                     "dist_out": 4600.0,
                 },
                 {
@@ -2088,6 +2094,7 @@ class TestN004NodeDistOutMonotonicity:
                     "reach_id": 1,
                     "x": 0.001,
                     "y": 0.0,
+                    "node_order": 2,
                     "dist_out": 4800.0,
                 },
                 {
@@ -2095,6 +2102,7 @@ class TestN004NodeDistOutMonotonicity:
                     "reach_id": 1,
                     "x": 0.002,
                     "y": 0.0,
+                    "node_order": 3,
                     "dist_out": 5000.0,
                 },
             ],
@@ -2107,8 +2115,8 @@ class TestN004NodeDistOutMonotonicity:
         assert result.passed is True
         conn.close()
 
-    def test_fail_decreasing(self, tmp_path):
-        """dist_out decreases with node_id -- violates SWORD convention."""
+    def test_fail_decreasing_by_node_order(self, tmp_path):
+        """dist_out decreasing along node_order is a violation."""
         conn = _spatial_conn(tmp_path)
         _create_nodes_with_dist_out(
             conn,
@@ -2118,6 +2126,7 @@ class TestN004NodeDistOutMonotonicity:
                     "reach_id": 1,
                     "x": 0.0,
                     "y": 0.0,
+                    "node_order": 1,
                     "dist_out": 5500.0,
                 },
                 {
@@ -2125,6 +2134,7 @@ class TestN004NodeDistOutMonotonicity:
                     "reach_id": 1,
                     "x": 0.001,
                     "y": 0.0,
+                    "node_order": 2,
                     "dist_out": 5000.0,
                 },
             ],
@@ -2136,6 +2146,46 @@ class TestN004NodeDistOutMonotonicity:
         result = check_node_dist_out_monotonicity(conn)
         assert result.passed is False
         assert result.issues_found >= 1
+        conn.close()
+
+    def test_pass_when_node_ids_reverse_but_node_order_is_correct(self, tmp_path):
+        """Flow-corrected reaches may reverse node_id order without violating N004."""
+        conn = _spatial_conn(tmp_path)
+        _create_nodes_with_dist_out(
+            conn,
+            [
+                {
+                    "node_id": 1003,
+                    "reach_id": 1,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "node_order": 1,
+                    "dist_out": 4600.0,
+                },
+                {
+                    "node_id": 1002,
+                    "reach_id": 1,
+                    "x": 0.001,
+                    "y": 0.0,
+                    "node_order": 2,
+                    "dist_out": 4800.0,
+                },
+                {
+                    "node_id": 1001,
+                    "reach_id": 1,
+                    "x": 0.002,
+                    "y": 0.0,
+                    "node_order": 3,
+                    "dist_out": 5000.0,
+                },
+            ],
+        )
+        from src.sword_duckdb.lint.checks.node import (
+            check_node_dist_out_monotonicity,
+        )
+
+        result = check_node_dist_out_monotonicity(conn)
+        assert result.passed is True
         conn.close()
 
 

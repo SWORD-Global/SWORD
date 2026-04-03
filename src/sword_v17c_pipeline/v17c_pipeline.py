@@ -32,7 +32,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from .gates import GateFailure, gate_post_save, gate_source_data
+from .gates import GateFailure, gate_pom_release, gate_post_save, gate_source_data
 
 # ---------------------------------------------------------------------------
 # Re-exports from stage modules (backwards compatibility for tests/callers)
@@ -564,6 +564,22 @@ def _process_region_inner(
         conn.execute("CHECKPOINT")
         try:
             gate_post_save(db_path, region, conn=conn)
+        except GateFailure as e:
+            return RegionResult(
+                region=region,
+                ok=False,
+                reaches_processed=len(reaches_df),
+                reaches_updated=n_updated,
+                failed_gate=e.label,
+                failed_checks=e.failed_checks,
+                stats={
+                    "facc_corrections": n_facc_corrections,
+                    "facc_flow_corrected": n_facc_flow_corrected,
+                    "sections": len(sections_df),
+                },
+            )
+        try:
+            gate_pom_release(db_path, region, conn=conn)
         except GateFailure as e:
             return RegionResult(
                 region=region,

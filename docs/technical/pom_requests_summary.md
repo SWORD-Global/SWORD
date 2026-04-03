@@ -63,7 +63,7 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 | 9b | Node indexes contiguous within reach | **N010** (new) | Implemented |
 | 9c | Centerline points allocated to correct reach | Not implemented | Unnecessary — CL points define reach geometry (distance always 0) |
 | 9d | Centerline points allocated to correct node | **N013** (new, 500m threshold) | Implemented ([#186](https://github.com/SWORD-Global/SWORD/issues/186)) |
-| 10a | Node dist_out increasing with node_id | **N004** (new) | Implemented |
+| 10a | Node dist_out increasing with within-reach downstream→upstream order | **N004** (new; by `node_order`) | Implemented |
 | 10b | Node dist_out jump >600m | **N005** (new) | Implemented |
 | 10c | Boundary node dist_out continuity across reaches | **N006** (new, 1000m threshold) | Implemented |
 | 10d | Boundary node geolocation across reaches | **N007** (new, 400m threshold) | Implemented |
@@ -79,7 +79,7 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 
 | POM Test | What it checks | Our Lint | Status |
 |----------|---------------|----------|--------|
-| 12a | Node order coherent with node ID | **N004** (new) | Implemented |
+| 12a | Node order coherent with node ID | Superseded by `node_order` column | Informational only after flow corrections |
 | 12b | Reach ID = 11 digits, valid type suffix | **T018** (new) | Implemented |
 | 12c | Node ID = 14 digits, matches parent reach | **T018** (new) | Implemented |
 
@@ -146,7 +146,7 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 | Check | Severity | Description | POM Test |
 |-------|----------|-------------|----------|
 | N003 | WARNING | Adjacent node spacing >400m within reach | 6b |
-| N004 | WARNING | Node dist_out not increasing with node_id | 10a/12a |
+| N004 | WARNING | Node dist_out not increasing with node_order | 10a |
 | N005 | WARNING | Node dist_out jump >600m between adjacent nodes | 10b |
 | N006 | WARNING | Boundary node dist_out mismatch >1000m across reaches | 10c |
 | N007 | WARNING | Boundary node geolocation >400m across reaches | 10d/11a-d |
@@ -161,41 +161,54 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 |-------|----------|-------------|----------|
 | A030 | WARNING | WSE increases downstream (should decrease) | line 433 |
 
-## Production Results (v17c, 2026-02-26)
+## Current Release-Gate Baseline (v17c, 2026-04-02)
 
-Checks run against `sword_v17c.duckdb` (248,673 reaches, 11.1M nodes, 66.9M centerlines).
+Checks run against `sword_v17c.duckdb` after resyncing `node_order`,
+`dn_node_id`, and `up_node_id` from node `dist_out`:
+248,673 reaches, 11.1M nodes, 66.9M centerlines.
 
-### Passing (zero violations)
+### Must Pass (all currently passing)
 
 | Check | Total checked | Notes |
 |-------|--------------|-------|
-| T013 | 495,652 edges | No self-referencing topology |
-| T014 | 248,673 reaches | No bidirectional paradoxes |
-| T015 | 244,902 reaches | No shortcut edges |
-| T018 | 11,361,127 IDs | All reach/node IDs well-formed |
-| N008 | 248,673 reaches | Node counts match n_nodes |
-| N010 | 248,673 reaches | Node indexes contiguous |
-| N004 | 11,112,454 nodes | 1 single violation (noise) |
-| T022 | 247,810 edges | No cross-basin false merges (all connected reaches <50km apart). Validates N006 "Type A" findings — those 76 pairs with >100km dist_out gaps are legitimate junctions (<20km spatial). |
+| T001 | 103,864 | Reach-level `dist_out_dijkstra` monotonicity clean |
+| T004 | 248,673 | No orphan reaches |
+| T005 | 248,673 | Neighbor counts match topology |
+| T007 | 495,620 | Full topology reciprocity |
+| T012 | 495,620 | No dangling topology references |
+| T013 | 248,673 | No self-referencing topology |
+| T014 | 248,673 | No bidirectional paradoxes |
+| T015 | 244,902 | No shortcut edges |
+| T018 | 11,361,127 | All reach/node IDs well-formed |
+| T022 | 247,810 | No cross-basin false merges |
+| G002 | 248,673 | Node-length sums consistent with reach length |
+| N004 | 11,112,454 | `dist_out` now increases with `node_order` after metadata resync |
+| N008 | 248,673 | Node counts match `n_nodes` |
+| N010 | 248,673 | Node indexes contiguous |
 
-### Failing (investigation needed)
+### Nonblocking Findings with Recorded Disposition
 
-| Check | Violations | Sev | Investigation issue | Root cause summary |
-|-------|-----------|-----|--------------------|--------------------|
-| N013 | ~~89,364~~ → **311** | WARN | [#194](https://github.com/SWORD-Global/SWORD/issues/194) | **99.7% resolved.** Root cause: UNC's sequential cl_id-range grouping mismatches spatial order on sinuous reaches. Fixed by [`sync_centerline_node_ids()`](../../src/sword_duckdb/workflow.py) (commit 7b0ca71) which reassigns CLs via cl_id_min/max boundaries. Remaining 311 are structurally far (node sparsity), not misassigned — spatial-nearest reassignment only helps 89 of them and would break cl_id_min/max contiguity on 26 reaches. Accepted as residual. |
-| A030 | 4,816 | WARN | [#195](https://github.com/SWORD-Global/SWORD/issues/195) | **Closed.** Uses MERIT DEM `wse`, not SWOT — inversions are DEM noise. Not actionable. |
-| N003 | 3,456 | WARN | [#193](https://github.com/SWORD-Global/SWORD/issues/193) | **Closed.** v17b source data — UNC node placement, 0.03% of nodes. Defer to v18. |
-| N006 | 2,596 | WARN | [#192](https://github.com/SWORD-Global/SWORD/issues/192) | **Closed.** All violations are dist_out path-length artifacts at junctions, not bad topology. Spatial verification: all 76 "Type A" pairs are <20km apart. Inherent to single-scalar dist_out representation. |
-| T017 | 553 | WARN | [#191](https://github.com/SWORD-Global/SWORD/issues/191) | **Closed.** Duplicate of #192 — same edges at higher threshold. |
-| N007 | 467 | WARN | [#188](https://github.com/SWORD-Global/SWORD/issues/188), [#189](https://github.com/SWORD-Global/SWORD/issues/189), [#190](https://github.com/SWORD-Global/SWORD/issues/190) | **#188 closed** (code fix). **#190 closed** (58 v17b-inherited, deferred to v18 — needs geometry fixes). #189 closed (31 extreme). ~263 true positives remain. |
-| T020 | 197 | INFO | [#196](https://github.com/SWORD-Global/SWORD/issues/196) | **Closed.** GRWL source data — semicolon names, tributary spillover. Informational only. |
-| N012 | 12 | WARN | [#185](https://github.com/SWORD-Global/SWORD/issues/185) | **Closed.** 12 ghost/Arctic nodes, accepted as residual. |
+| Check | Violations | Sev | Disposition | Status summary |
+|-------|-----------|-----|-------------|----------------|
+| A030 | 669 | WARN | Defended nonblocking | MERIT DEM `wse`, not SWOT; remaining inversions are source-noise limited and not a release blocker ([#195](https://github.com/SWORD-Global/SWORD/issues/195)). |
+| G012 | 22 | INFO | Deferred to v18 | Same inherited endpoint-gap family as N007; geometry fixes remain a v18 task. |
+| N003 | 3,456 | WARN | Deferred to v18 | v17b source node spacing, 0.03% of nodes ([#193](https://github.com/SWORD-Global/SWORD/issues/193)). |
+| N005 | 152 | WARN | Deferred to v18 | Large within-reach `dist_out` jumps are sparse-node source-data cases in the same family as N003. |
+| N006 | 2,740 | WARN | Defended nonblocking | Boundary `dist_out` gaps are expected on bifurcation-rejoin structures; single-scalar `dist_out` cannot stay continuous on all edges ([#192](https://github.com/SWORD-Global/SWORD/issues/192)). |
+| N007 | 25 | WARN | Deferred to v18 | Remaining boundary geometry gaps are inherited geometry/topology cases after the N007 measurement fixes ([#188](https://github.com/SWORD-Global/SWORD/issues/188), [#190](https://github.com/SWORD-Global/SWORD/issues/190)). |
+| N012 | 13 | WARN | Accepted residual | Sparse ghost/Arctic node-geolocation outliers accepted as residual ([#185](https://github.com/SWORD-Global/SWORD/issues/185)). |
+| N013 | 311 | WARN | Accepted residual | 99.7% of centerline-node mismatches were fixed; the remainder are sparse-node residuals ([#194](https://github.com/SWORD-Global/SWORD/issues/194)). |
+| T017 | 701 | WARN | Defended nonblocking | Same braided-network path-length artifact as N006, at the reach scale ([#191](https://github.com/SWORD-Global/SWORD/issues/191)). |
+| T020 | 197 | INFO | Informational | GRWL river-name inconsistencies only; not a release blocker ([#196](https://github.com/SWORD-Global/SWORD/issues/196)). |
 
-### Informational (no action)
+### Informational (tracked, not gate failures)
 
 | Check | Value | Notes |
 |-------|-------|-------|
-| T019 | 127,401 (51.2%) | Reaches with river_name='NODATA'. Source data limitation. |
+| C003 | 23,012 | Unreliable reaches in type distribution summary |
+| C004 | 6,166 | Lakeflag/type mismatches flagged for contextual review |
+| FL001 | 8,457 | Reaches without SWOT observations |
+| T019 | 127,406 (51.2%) | Reaches with `river_name='NODATA'`; source-data limitation |
 
 ## Not Implemented (with rationale)
 
