@@ -153,54 +153,38 @@ def save_to_duckdb(
 def propagate_reach_to_nodes(
     conn: duckdb.DuckDBPyConnection,
     region: str,
-    flipped_reach_ids: Optional[set[int]] = None,
+    flipped_reach_ids: Optional[set[int]] = None,  # kept for API compat, no longer used
 ) -> int:
     """Propagate v17c columns from reaches to child nodes.
 
     Returns the number of nodes updated.
 
     Flat-copy columns: best_headwater, best_outlet, subnetwork_id.
-    Interpolated by node position using an offset within the reach:
-      - Normal multi-node: offset = reach.dist_out - node.dist_out
-      - Flipped multi-node: offset = reach_length - (reach.dist_out - node.dist_out)
-        (node dist_out is stale v17b; v17c downstream has HIGH v17b dist_out)
-      - Single-node: offset = reach_length / 2 (centroid)
 
-    Node dist_out keeps the stored per-node distance values for multi-node
-    reaches, but single-node reaches use the same midpoint anchor as the
-    interpolated v17c node distances.
+    Interpolated using node_length midpoint offsets within the reach:
+        midpoint_offset = cumsum(node_length by node_order) - 0.5 * node_length
+
+    This places each node at the geometric midpoint of its node_length
+    segment, independent of v17b dist_out values.  No special handling
+    is needed for flow-corrected reaches because the offset is derived
+    from node_order (corrected) not from node dist_out (stale v17b).
+
+    Node dist_out itself is preserved as the v17b original for backward
+    compatibility (POM safety).  Only single-node reaches get a
+    recomputed dist_out (reach midpoint).
 
     Then (NULL reach values pass through as NULL):
-      - dist_out (single-node only): GREATEST(0, reach.dist_out - offset)
-      - hydro_dist_out, dist_out_dijkstra: GREATEST(0, reach_value - offset)
-      - hydro_dist_hw: GREATEST(0, reach_value + offset)
-      - pathlen_hw: GREATEST(0, reach_value - reach_length + offset)
-      - pathlen_out: GREATEST(0, reach_value + reach_length - offset)
+      - dist_out (single-node only): reach.dist_out - reach_length/2
+      - hydro_dist_out, dist_out_dijkstra: reach_value - reach_length + midpoint
+      - hydro_dist_hw: reach_value + reach_length - midpoint
+      - pathlen_hw: reach_value - reach_length + midpoint
+      - pathlen_out: reach_value + reach_length - midpoint
     """
     reg = region.upper()
-    flipped = flipped_reach_ids or set()
 
-    # Build the offset expression as a CASE:
-    #   single-node → reach_length / 2
-    #   flipped     → reach_length - (dist_out - node.dist_out)
-    #   normal      → dist_out - node.dist_out
-    if flipped:
-        ids_csv = ",".join(str(r) for r in flipped)
-        offset_expr = f"""
-            GREATEST(0, LEAST(r.reach_length,
-            CASE
-                WHEN r.n_nodes = 1 THEN r.reach_length / 2.0
-                WHEN r.reach_id IN ({ids_csv})
-                    THEN r.reach_length - (r.dist_out - nodes.dist_out)
-                ELSE r.dist_out - nodes.dist_out
-            END))"""
-    else:
-        offset_expr = """
-            GREATEST(0, LEAST(r.reach_length,
-            CASE
-                WHEN r.n_nodes = 1 THEN r.reach_length / 2.0
-                ELSE r.dist_out - nodes.dist_out
-            END))"""
+    # Determine ordering column: node_order if available, else node_id
+    cols = {r[0] for r in conn.execute("DESCRIBE nodes").fetchall()}
+    order_col = "nodes.node_order" if "node_order" in cols else "nodes.node_id"
 
     result = conn.execute(
         f"""
@@ -210,7 +194,15 @@ def propagate_reach_to_nodes(
                    r.dist_out, r.hydro_dist_out, r.dist_out_dijkstra,
                    r.hydro_dist_hw, r.pathlen_hw, r.pathlen_out,
                    r.reach_length, r.n_nodes,
-                   {offset_expr} AS o
+                   -- Node-length midpoint offset: cumsum up to current node
+                   -- minus half the current node's length.
+                   GREATEST(0, LEAST(r.reach_length,
+                       SUM(nodes.node_length) OVER (
+                           PARTITION BY nodes.reach_id, nodes.region
+                           ORDER BY {order_col}
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                       ) - 0.5 * nodes.node_length
+                   )) AS o
             FROM nodes
             JOIN reaches r
               ON nodes.reach_id = r.reach_id
@@ -227,11 +219,11 @@ def propagate_reach_to_nodes(
                 ELSE nodes.dist_out
             END,
             hydro_dist_out = CASE WHEN ofs.hydro_dist_out IS NULL THEN NULL
-                ELSE GREATEST(0, ofs.hydro_dist_out - ofs.o) END,
+                ELSE GREATEST(0, ofs.hydro_dist_out - ofs.reach_length + ofs.o) END,
             dist_out_dijkstra = CASE WHEN ofs.dist_out_dijkstra IS NULL THEN NULL
-                ELSE GREATEST(0, ofs.dist_out_dijkstra - ofs.o) END,
+                ELSE GREATEST(0, ofs.dist_out_dijkstra - ofs.reach_length + ofs.o) END,
             hydro_dist_hw = CASE WHEN ofs.hydro_dist_hw IS NULL THEN NULL
-                ELSE GREATEST(0, ofs.hydro_dist_hw + ofs.o) END,
+                ELSE GREATEST(0, ofs.hydro_dist_hw + ofs.reach_length - ofs.o) END,
             pathlen_hw = CASE WHEN ofs.pathlen_hw IS NULL THEN NULL
                 ELSE GREATEST(0, ofs.pathlen_hw - ofs.reach_length + ofs.o) END,
             pathlen_out = CASE WHEN ofs.pathlen_out IS NULL THEN NULL
@@ -243,9 +235,8 @@ def propagate_reach_to_nodes(
         [reg],
     )
     count = result.fetchone()[0]
-    n_flipped = len(flipped)
     log(
-        f"Propagated 9 columns to {count:,} nodes (6 interpolated, 3 flat, {n_flipped} flipped reaches)"
+        f"Propagated 9 columns to {count:,} nodes (6 interpolated via node_length midpoint, 3 flat)"
     )
     return count
 

@@ -635,39 +635,40 @@ class TestPropagateReachToNodes:
         conn.execute("""
             CREATE TABLE nodes (
                 node_id BIGINT, region VARCHAR, reach_id BIGINT, dist_out DOUBLE,
+                node_order INTEGER, node_length DOUBLE,
                 hydro_dist_out DOUBLE, hydro_dist_hw DOUBLE,
                 dist_out_dijkstra DOUBLE, pathlen_hw DOUBLE, pathlen_out DOUBLE,
                 best_headwater BIGINT, best_outlet BIGINT, subnetwork_id INTEGER
             )
         """)
 
-        # Reach 100: normal, 5 nodes spaced 250m apart
+        # Reach 100: normal, 5 nodes, each 200m long (total=1000m)
         conn.execute(
             "INSERT INTO reaches VALUES (100,'NA',10000,1000,5, 5000,3000,4500,2000,4000, 99,1,10)"
         )
-        for i, ndo in enumerate([9000, 9250, 9500, 9750, 10000]):
+        for i in range(5):
             conn.execute(
-                "INSERT INTO nodes (node_id,region,reach_id,dist_out) "
-                f"VALUES ({1000 + i},'NA',100,{ndo})"
+                "INSERT INTO nodes (node_id,region,reach_id,dist_out,node_order,node_length) "
+                f"VALUES ({1000 + i},'NA',100,{9000 + 250 * i},{i + 1},200)"
             )
 
-        # Reach 200: flipped, 5 nodes spaced 200m apart (stale v17b dist_out)
+        # Reach 200: 5 nodes, each 160m long (total=800m)
         conn.execute(
             "INSERT INTO reaches VALUES (200,'NA',8000,800,5, 6000,3000,5500,2500,3500, 98,2,20)"
         )
-        for i, ndo in enumerate([7200, 7400, 7600, 7800, 8000]):
+        for i in range(5):
             conn.execute(
-                "INSERT INTO nodes (node_id,region,reach_id,dist_out) "
-                f"VALUES ({2000 + i},'NA',200,{ndo})"
+                "INSERT INTO nodes (node_id,region,reach_id,dist_out,node_order,node_length) "
+                f"VALUES ({2000 + i},'NA',200,{7200 + 160 * i},{i + 1},160)"
             )
 
-        # Reach 300: single-node
+        # Reach 300: single-node, node_length=400 (=reach_length)
         conn.execute(
             "INSERT INTO reaches VALUES (300,'NA',5000,400,1, 2000,1500,1800,1200,800, 97,3,30)"
         )
         conn.execute(
-            "INSERT INTO nodes (node_id,region,reach_id,dist_out) "
-            "VALUES (3000,'NA',300,5000)"
+            "INSERT INTO nodes (node_id,region,reach_id,dist_out,node_order,node_length) "
+            "VALUES (3000,'NA',300,5000,1,400)"
         )
 
         yield conn
@@ -683,96 +684,84 @@ class TestPropagateReachToNodes:
         ).fetchone()
 
     def test_normal_reach_interpolation(self, interpolation_db):
-        """Normal multi-node reach: offset = reach.dist_out - node.dist_out."""
+        """Node-length midpoint offset: cumsum(node_length) - 0.5*node_length."""
         from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
         propagate_reach_to_nodes(interpolation_db, "NA")
 
-        # Upstream node (dist_out=10000, offset=0)
-        up = self._get_node(interpolation_db, 1004)
-        assert up[0] == pytest.approx(10000.0)  # dist_out unchanged for multi-node
-        assert up[1] == pytest.approx(5000.0)  # hydro_dist_out = 5000 - 0
-        assert up[2] == pytest.approx(3000.0)  # hydro_dist_hw = 3000 + 0
-        assert up[3] == pytest.approx(4500.0)  # dist_out_dijkstra = 4500 - 0
-        assert up[4] == pytest.approx(1000.0)  # pathlen_hw = 2000 - 1000 + 0
-        assert up[5] == pytest.approx(5000.0)  # pathlen_out = 4000 + 1000 - 0
+        # Reach 100: 5 nodes, each 200m. Midpoints: 100, 300, 500, 700, 900
+        # Downstream boundary = reach_value - reach_length
 
-        # Downstream node (dist_out=9000, offset=1000)
+        # Upstream node (order=5, midpoint=900)
+        up = self._get_node(interpolation_db, 1004)
+        assert up[0] == pytest.approx(10000.0)  # dist_out unchanged (v17b)
+        assert up[1] == pytest.approx(4900.0)  # hdo = 5000 - 1000 + 900
+        assert up[2] == pytest.approx(3100.0)  # hdw = 3000 + 1000 - 900
+        assert up[3] == pytest.approx(4400.0)  # dij = 4500 - 1000 + 900
+        assert up[4] == pytest.approx(1900.0)  # plhw = 2000 - 1000 + 900
+        assert up[5] == pytest.approx(4100.0)  # plout = 4000 + 1000 - 900
+
+        # Downstream node (order=1, midpoint=100)
         dn = self._get_node(interpolation_db, 1000)
-        assert dn[0] == pytest.approx(9000.0)  # dist_out unchanged for multi-node
-        assert dn[1] == pytest.approx(4000.0)  # 5000 - 1000
-        assert dn[2] == pytest.approx(4000.0)  # 3000 + 1000
-        assert dn[3] == pytest.approx(3500.0)  # 4500 - 1000
-        assert dn[4] == pytest.approx(2000.0)  # 2000 - 1000 + 1000
-        assert dn[5] == pytest.approx(4000.0)  # 4000 + 1000 - 1000
+        assert dn[0] == pytest.approx(9000.0)  # dist_out unchanged (v17b)
+        assert dn[1] == pytest.approx(4100.0)  # hdo = 5000 - 1000 + 100
+        assert dn[2] == pytest.approx(3900.0)  # hdw = 3000 + 1000 - 100
+        assert dn[3] == pytest.approx(3600.0)  # dij = 4500 - 1000 + 100
+        assert dn[4] == pytest.approx(1100.0)  # plhw = 2000 - 1000 + 100
+        assert dn[5] == pytest.approx(4900.0)  # plout = 4000 + 1000 - 100
 
         # Flat-copy columns
         assert up[6] == 99  # best_headwater
         assert up[7] == 1  # best_outlet
         assert up[8] == 10  # subnetwork_id
 
-    def test_flipped_reach_interpolation(self, interpolation_db):
-        """Flipped reach: offset = reach_length - (reach.dist_out - node.dist_out)."""
-        from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
-
-        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
-
-        # v17c upstream node (LOW v17b dist_out=7200, flipped offset=0)
-        up = self._get_node(interpolation_db, 2000)
-        assert up[0] == pytest.approx(7200.0)  # dist_out unchanged for multi-node
-        assert up[1] == pytest.approx(6000.0)  # 6000 - 0
-        assert up[2] == pytest.approx(3000.0)  # 3000 + 0
-        assert up[3] == pytest.approx(5500.0)  # 5500 - 0
-        assert up[4] == pytest.approx(1700.0)  # 2500 - 800 + 0
-        assert up[5] == pytest.approx(4300.0)  # 3500 + 800 - 0
-
-        # v17c downstream node (HIGH v17b dist_out=8000, flipped offset=800)
-        dn = self._get_node(interpolation_db, 2004)
-        assert dn[0] == pytest.approx(8000.0)  # dist_out unchanged for multi-node
-        assert dn[1] == pytest.approx(5200.0)  # 6000 - 800
-        assert dn[2] == pytest.approx(3800.0)  # 3000 + 800
-        assert dn[3] == pytest.approx(4700.0)  # 5500 - 800
-        assert dn[4] == pytest.approx(2500.0)  # 2500 - 800 + 800
-        assert dn[5] == pytest.approx(3500.0)  # 3500 + 800 - 800
-
-        # Middle node (v17b dist_out=7600, flipped offset=400)
-        mid = self._get_node(interpolation_db, 2002)
-        assert mid[0] == pytest.approx(7600.0)  # dist_out unchanged for multi-node
-        assert mid[1] == pytest.approx(5600.0)  # 6000 - 400
-        assert mid[2] == pytest.approx(3400.0)  # 3000 + 400
-
-    def test_single_node_centroid(self, interpolation_db):
-        """Single-node reach: offset = reach_length / 2 (centroid)."""
+    def test_midpoint_same_for_all_reaches(self, interpolation_db):
+        """Midpoint offsets use node_order — no special flipped handling needed."""
         from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
         propagate_reach_to_nodes(interpolation_db, "NA")
 
-        # offset = 400/2 = 200
-        node = self._get_node(interpolation_db, 3000)
-        assert node[0] == pytest.approx(4800.0)  # dist_out = 5000 - 200
-        assert node[1] == pytest.approx(1800.0)  # 2000 - 200
-        assert node[2] == pytest.approx(1700.0)  # 1500 + 200
-        assert node[3] == pytest.approx(1600.0)  # 1800 - 200
-        assert node[4] == pytest.approx(1000.0)  # 1200 - 400 + 200
-        assert node[5] == pytest.approx(1000.0)  # 800 + 400 - 200
+        # Reach 200: 5 nodes, each 160m. Midpoints: 80, 240, 400, 560, 720
+        # dist_out values: 7200, 7360, 7520, 7680, 7840 (from fixture: 7200+160*i)
 
-    def test_flipped_does_not_affect_normal(self, interpolation_db):
-        """Passing flipped_reach_ids must not change normal reach results."""
+        # Upstream node (order=5, midpoint=720)
+        up = self._get_node(interpolation_db, 2004)
+        assert up[0] == pytest.approx(7840.0)  # dist_out unchanged (v17b: 7200+160*4)
+        assert up[1] == pytest.approx(5920.0)  # hdo = 6000 - 800 + 720
+        assert up[2] == pytest.approx(3080.0)  # hdw = 3000 + 800 - 720
+
+        # Downstream node (order=1, midpoint=80)
+        dn = self._get_node(interpolation_db, 2000)
+        assert dn[0] == pytest.approx(7200.0)  # dist_out unchanged (v17b)
+        assert dn[1] == pytest.approx(5280.0)  # hdo = 6000 - 800 + 80
+        assert dn[2] == pytest.approx(3720.0)  # hdw = 3000 + 800 - 80
+
+        # Middle node (order=3, midpoint=400)
+        mid = self._get_node(interpolation_db, 2002)
+        assert mid[0] == pytest.approx(7520.0)  # dist_out unchanged (v17b: 7200+160*2)
+        assert mid[1] == pytest.approx(5600.0)  # hdo = 6000 - 800 + 400
+        assert mid[2] == pytest.approx(3400.0)  # hdw = 3000 + 800 - 400
+
+    def test_single_node_centroid(self, interpolation_db):
+        """Single-node: midpoint = 0.5 * node_length = 0.5 * reach_length."""
         from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
-        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
+        propagate_reach_to_nodes(interpolation_db, "NA")
 
-        # Normal reach upstream node should be unaffected by flipped set
-        up = self._get_node(interpolation_db, 1004)
-        assert up[0] == pytest.approx(10000.0)
-        assert up[1] == pytest.approx(5000.0)
-        assert up[2] == pytest.approx(3000.0)
+        # midpoint = 0.5 * 400 = 200
+        node = self._get_node(interpolation_db, 3000)
+        assert node[0] == pytest.approx(4800.0)  # dist_out = 5000 - 200 (single-node)
+        assert node[1] == pytest.approx(1800.0)  # hdo = 2000 - 400 + 200
+        assert node[2] == pytest.approx(1700.0)  # hdw = 1500 + 400 - 200
+        assert node[3] == pytest.approx(1600.0)  # dij = 1800 - 400 + 200
+        assert node[4] == pytest.approx(1000.0)  # plhw = 1200 - 400 + 200
+        assert node[5] == pytest.approx(1000.0)  # plout = 800 + 400 - 200
 
     def test_no_negative_values(self, interpolation_db):
         """GREATEST(0, ...) clamp prevents negative node distances."""
         from src.sword_v17c_pipeline.stages.output import propagate_reach_to_nodes
 
-        propagate_reach_to_nodes(interpolation_db, "NA", flipped_reach_ids={200})
+        propagate_reach_to_nodes(interpolation_db, "NA")
 
         rows = interpolation_db.execute(
             "SELECT MIN(hydro_dist_out), MIN(hydro_dist_hw), "
