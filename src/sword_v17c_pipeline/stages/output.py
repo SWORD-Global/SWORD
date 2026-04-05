@@ -354,8 +354,41 @@ def _update_node_columns_inner(
             """,
             [region.upper()],
         )
+
+        # Recompute node dist_out for flipped reaches so it is monotonic with
+        # the corrected node_order. v17b node dist_out was computed from the
+        # wrong flow direction; keeping it would leave dist_out decreasing with
+        # node_order. Formula: downstream_boundary + cumsum(node_length) -
+        # 0.5*node_length (midpoint, matches the v17c node interpolation used
+        # in propagate_reach_to_nodes).
+        conn.execute(
+            f"""
+            WITH recomputed AS (
+                SELECT n.node_id, n.region,
+                    GREATEST(0,
+                        (r.dist_out - r.reach_length) +
+                        SUM(n.node_length) OVER (
+                            PARTITION BY n.reach_id, n.region
+                            ORDER BY n.node_order
+                            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                        ) - 0.5 * n.node_length
+                    ) AS new_do
+                FROM nodes n
+                JOIN reaches r ON n.reach_id = r.reach_id AND n.region = r.region
+                WHERE n.reach_id IN ({ids_sql})
+                  AND n.region = ?
+            )
+            UPDATE nodes
+            SET dist_out = recomputed.new_do
+            FROM recomputed
+            WHERE nodes.node_id = recomputed.node_id
+              AND nodes.region = recomputed.region
+            """,
+            [region.upper()],
+        )
         log(
-            f"Reversed node ordering for {len(flipped_reach_ids)} flow-corrected reaches"
+            f"Reversed node ordering + recomputed dist_out for "
+            f"{len(flipped_reach_ids)} flow-corrected reaches"
         )
 
     return count
