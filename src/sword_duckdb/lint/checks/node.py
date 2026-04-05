@@ -726,3 +726,92 @@ def check_centerline_node_distance(
         description=f"Centerline points >{max_dist:.0f}m from assigned node",
         threshold=max_dist,
     )
+
+
+@register_check(
+    "N018",
+    Category.NETWORK,
+    Severity.ERROR,
+    "Flow-corrected reach has node_order matching v17b node_id order (should be reversed)",
+)
+def check_flipped_node_order_reversed(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """For flow-corrected reaches, verify node_order is REVERSED from node_id order.
+
+    When a reach's flow direction is corrected in v17c, the node that used to be
+    upstream (highest node_id) is now downstream and should have node_order=1.
+    This check catches regressions where node_order is not reversed, leaving
+    flow-corrected reaches with the wrong downstream endpoint.
+
+    Depends on the ``v17c_flow_corrections`` table.
+    """
+    where_clause = f"AND n.region = '{region}'" if region else ""
+
+    # Check if flow corrections table exists
+    try:
+        conn.execute("SELECT 1 FROM v17c_flow_corrections LIMIT 1")
+    except duckdb.CatalogException:
+        return CheckResult(
+            check_id="N018",
+            name="flipped_node_order_reversed",
+            severity=Severity.ERROR,
+            passed=True,
+            total_checked=0,
+            issues_found=0,
+            issue_pct=0.0,
+            details=None,
+            description="SKIPPED - v17c_flow_corrections table not found",
+        )
+
+    # Parse reach_ids_flipped (JSON array) into a flat set of reach_ids
+    query = f"""
+    WITH flipped AS (
+        SELECT DISTINCT
+            CAST(unnest(from_json(reach_ids_flipped, '["BIGINT"]')) AS BIGINT) AS reach_id,
+            region
+        FROM v17c_flow_corrections
+        WHERE reach_ids_flipped IS NOT NULL
+    ),
+    checked AS (
+        SELECT
+            n.reach_id, n.region, n.node_id, n.node_order,
+            ROW_NUMBER() OVER (
+                PARTITION BY n.reach_id, n.region ORDER BY n.node_id DESC
+            ) AS expected_order
+        FROM nodes n
+        JOIN flipped f ON n.reach_id = f.reach_id AND n.region = f.region
+        WHERE n.node_order IS NOT NULL AND n.node_order != -9999
+            {where_clause}
+    )
+    SELECT DISTINCT reach_id, region
+    FROM checked
+    WHERE node_order != expected_order
+    LIMIT 10000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = """
+    SELECT COUNT(DISTINCT reach_id) FROM (
+        SELECT DISTINCT
+            CAST(unnest(from_json(reach_ids_flipped, '["BIGINT"]')) AS BIGINT) AS reach_id
+        FROM v17c_flow_corrections
+        WHERE reach_ids_flipped IS NOT NULL
+    )
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="N014",
+        name="flipped_node_order_reversed",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Flow-corrected reaches where node_order is not reversed from node_id order",
+    )
