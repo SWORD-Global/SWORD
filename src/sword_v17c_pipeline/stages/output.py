@@ -281,21 +281,33 @@ def _update_node_columns_inner(
     region: str,
     flipped_reach_ids: set[int] | None = None,
 ) -> int:
-    # node_order is derived from v17b node_id ordering (deterministic, idempotent).
-    # For non-flipped reaches: node_order=1 at MIN(node_id) = v17b downstream.
-    # For flipped reaches: node_order gets reversed below so node_order=1
-    # points to MAX(node_id) = v17b upstream = v17c downstream after flip.
-    #
-    # Using node_id (NOT dist_out) as the base ordering makes this function
-    # idempotent: running it twice produces identical results, regardless of
-    # the current node.dist_out state.
+    # IDEMPOTENT design:
+    #   - Non-flipped reaches: node_order derived from v17b dist_out (stable,
+    #     matches POM convention). Handles anomalous reaches like AS
+    #     35301100891 where node_id does not follow dist_out order.
+    #   - Flipped reaches: node_order derived from node_id DESC, since their
+    #     v17b dist_out is wrong and will be recomputed below.
+    # Both use v17b-invariant inputs, so running twice produces identical
+    # results regardless of current dist_out state for non-flipped reaches.
+    flipped_sql_list = (
+        ",".join(str(r) for r in flipped_reach_ids) if flipped_reach_ids else "NULL"
+    )
+
     result = conn.execute(
-        """
+        f"""
         WITH ordered AS (
             SELECT node_id, region,
-                ROW_NUMBER() OVER (
-                    PARTITION BY reach_id, region ORDER BY node_id ASC
-                ) AS rn
+                CASE
+                    WHEN reach_id IN ({flipped_sql_list}) THEN
+                        ROW_NUMBER() OVER (
+                            PARTITION BY reach_id, region ORDER BY node_id DESC
+                        )
+                    ELSE
+                        ROW_NUMBER() OVER (
+                            PARTITION BY reach_id, region
+                            ORDER BY dist_out ASC, node_id ASC
+                        )
+                END AS rn
             FROM nodes
             WHERE region = ?
         )
@@ -310,58 +322,32 @@ def _update_node_columns_inner(
     count = result.fetchone()[0]
     log(f"Updated {count:,} nodes with node_order")
 
-    # dn_node_id = MIN(node_id), up_node_id = MAX(node_id) (v17b convention).
-    # Will be swapped below for flipped reaches.
+    # dn_node_id = node with node_order=1, up_node_id = node with max node_order.
+    # For non-flipped reaches this is MIN/MAX(dist_out). For flipped reaches
+    # this is MAX/MIN(node_id) because we just assigned node_order by node_id DESC.
     conn.execute(
         """
-        WITH boundary AS (
+        WITH boundaries AS (
             SELECT reach_id, region,
-                MIN(node_id) AS dn_nid,
-                MAX(node_id) AS up_nid
+                FIRST(node_id ORDER BY node_order ASC) AS dn_nid,
+                FIRST(node_id ORDER BY node_order DESC) AS up_nid
             FROM nodes
             WHERE region = ?
             GROUP BY reach_id, region
         )
         UPDATE reaches
-        SET dn_node_id = boundary.dn_nid,
-            up_node_id = boundary.up_nid
-        FROM boundary
-        WHERE reaches.reach_id = boundary.reach_id
-          AND reaches.region = boundary.region
+        SET dn_node_id = boundaries.dn_nid,
+            up_node_id = boundaries.up_nid
+        FROM boundaries
+        WHERE reaches.reach_id = boundaries.reach_id
+          AND reaches.region = boundaries.region
         """,
         [region.upper()],
     )
 
-    # For flow-corrected reaches, node dist_out is stale (v17b values).
-    # The downstream end is now the HIGH dist_out end, so reverse ordering.
+    # For flow-corrected reaches, v17b node dist_out is stale — recompute below.
     if flipped_reach_ids:
         ids_sql = ",".join(str(r) for r in flipped_reach_ids)
-
-        # Swap dn_node_id <-> up_node_id
-        conn.execute(
-            f"""
-            UPDATE reaches
-            SET dn_node_id = up_node_id,
-                up_node_id = dn_node_id
-            WHERE reach_id IN ({ids_sql})
-              AND region = ?
-            """,
-            [region.upper()],
-        )
-
-        # Reverse node_order: node_order = n_nodes + 1 - node_order
-        conn.execute(
-            f"""
-            UPDATE nodes
-            SET node_order = r.n_nodes + 1 - nodes.node_order
-            FROM reaches r
-            WHERE nodes.reach_id = r.reach_id
-              AND nodes.region = r.region
-              AND nodes.reach_id IN ({ids_sql})
-              AND nodes.region = ?
-            """,
-            [region.upper()],
-        )
 
         # Recompute node dist_out for flipped reaches so it is monotonic with
         # the corrected node_order. v17b node dist_out was computed from the
