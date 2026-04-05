@@ -281,34 +281,20 @@ def _update_node_columns_inner(
     region: str,
     flipped_reach_ids: set[int] | None = None,
 ) -> int:
-    # dn_node_id = lowest dist_out node, up_node_id = highest
-    conn.execute(
-        """
-        WITH boundary AS (
-            SELECT reach_id, region,
-                FIRST(node_id ORDER BY dist_out ASC, node_id ASC) AS dn_nid,
-                FIRST(node_id ORDER BY dist_out DESC, node_id DESC) AS up_nid
-            FROM nodes
-            WHERE region = ?
-            GROUP BY reach_id, region
-        )
-        UPDATE reaches
-        SET dn_node_id = boundary.dn_nid,
-            up_node_id = boundary.up_nid
-        FROM boundary
-        WHERE reaches.reach_id = boundary.reach_id
-          AND reaches.region = boundary.region
-        """,
-        [region.upper()],
-    )
-
-    # node_order = 1..n per reach, ordered by dist_out ascending (1=downstream)
+    # node_order is derived from v17b node_id ordering (deterministic, idempotent).
+    # For non-flipped reaches: node_order=1 at MIN(node_id) = v17b downstream.
+    # For flipped reaches: node_order gets reversed below so node_order=1
+    # points to MAX(node_id) = v17b upstream = v17c downstream after flip.
+    #
+    # Using node_id (NOT dist_out) as the base ordering makes this function
+    # idempotent: running it twice produces identical results, regardless of
+    # the current node.dist_out state.
     result = conn.execute(
         """
         WITH ordered AS (
             SELECT node_id, region,
                 ROW_NUMBER() OVER (
-                    PARTITION BY reach_id, region ORDER BY dist_out ASC, node_id ASC
+                    PARTITION BY reach_id, region ORDER BY node_id ASC
                 ) AS rn
             FROM nodes
             WHERE region = ?
@@ -323,6 +309,28 @@ def _update_node_columns_inner(
     )
     count = result.fetchone()[0]
     log(f"Updated {count:,} nodes with node_order")
+
+    # dn_node_id = MIN(node_id), up_node_id = MAX(node_id) (v17b convention).
+    # Will be swapped below for flipped reaches.
+    conn.execute(
+        """
+        WITH boundary AS (
+            SELECT reach_id, region,
+                MIN(node_id) AS dn_nid,
+                MAX(node_id) AS up_nid
+            FROM nodes
+            WHERE region = ?
+            GROUP BY reach_id, region
+        )
+        UPDATE reaches
+        SET dn_node_id = boundary.dn_nid,
+            up_node_id = boundary.up_nid
+        FROM boundary
+        WHERE reaches.reach_id = boundary.reach_id
+          AND reaches.region = boundary.region
+        """,
+        [region.upper()],
+    )
 
     # For flow-corrected reaches, node dist_out is stale (v17b values).
     # The downstream end is now the HIGH dist_out end, so reverse ordering.

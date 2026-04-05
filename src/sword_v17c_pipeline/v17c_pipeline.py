@@ -327,28 +327,39 @@ def process_region(
         )
     else:
         # skip_facc still needs flipped_reach_ids for update_node_columns
-        # (node_order reversal). Load from v17c_flow_corrections table.
-        import json
+        # (node_order reversal). Compute canonical set by comparing v17c vs
+        # v17b reach_topology: reaches where direction differs are flipped.
+        # This is authoritative (no reliance on append-only history tables).
         conn_ro = duckdb.connect(db_path, read_only=True)
         try:
+            safe_v17b = v17b_path.replace("'", "''")
             try:
-                rows = conn_ro.execute(
-                    "SELECT reach_ids_flipped FROM v17c_flow_corrections "
-                    "WHERE region = ? AND reach_ids_flipped IS NOT NULL",
-                    [region.upper()],
-                ).fetchall()
-                for (ids_json,) in rows:
-                    try:
-                        flipped_reach_ids.update(int(x) for x in json.loads(ids_json))
-                    except (json.JSONDecodeError, TypeError, ValueError):
-                        continue
-                if flipped_reach_ids:
-                    log(
-                        f"Loaded {len(flipped_reach_ids):,} flipped reach IDs from "
-                        f"v17c_flow_corrections for node_order reversal"
-                    )
-            except duckdb.CatalogException:
-                pass  # table doesn't exist
+                conn_ro.execute(f"ATTACH '{safe_v17b}' AS v17b_fc (READ_ONLY)")
+            except Exception as e:
+                if "already attached" not in str(e).lower():
+                    raise
+            rows = conn_ro.execute(
+                f"""
+                SELECT DISTINCT c.reach_id
+                FROM reach_topology c
+                JOIN v17b_fc.reach_topology b
+                    ON c.reach_id = b.reach_id
+                    AND c.region = b.region
+                    AND c.neighbor_reach_id = b.neighbor_reach_id
+                WHERE c.direction != b.direction
+                  AND c.region = '{region.upper()}'
+                """
+            ).fetchall()
+            flipped_reach_ids.update(int(r[0]) for r in rows)
+            try:
+                conn_ro.execute("DETACH v17b_fc")
+            except Exception:
+                pass
+            if flipped_reach_ids:
+                log(
+                    f"Loaded {len(flipped_reach_ids):,} canonical flipped reach IDs "
+                    f"(v17c vs v17b topology diff) for node_order reversal"
+                )
         finally:
             conn_ro.close()
 

@@ -794,18 +794,19 @@ def check_flipped_node_order_reversed(
 
     issues = conn.execute(query).fetchdf()
 
-    total_query = """
+    region_filter = f" AND region = '{region}'" if region else ""
+    total_query = f"""
     SELECT COUNT(DISTINCT reach_id) FROM (
         SELECT DISTINCT
             CAST(unnest(from_json(reach_ids_flipped, '["BIGINT"]')) AS BIGINT) AS reach_id
         FROM v17c_flow_corrections
-        WHERE reach_ids_flipped IS NOT NULL
+        WHERE reach_ids_flipped IS NOT NULL{region_filter}
     )
     """
     total = conn.execute(total_query).fetchone()[0]
 
     return CheckResult(
-        check_id="N014",
+        check_id="N018",
         name="flipped_node_order_reversed",
         severity=Severity.ERROR,
         passed=len(issues) == 0,
