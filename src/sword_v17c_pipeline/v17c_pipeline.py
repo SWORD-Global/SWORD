@@ -325,6 +325,32 @@ def process_region(
         n_facc_flow_corrected, flipped_reach_ids = recompute_facc_flow_corrected(
             db_path, v17b_path, region
         )
+    else:
+        # skip_facc still needs flipped_reach_ids for update_node_columns
+        # (node_order reversal). Load from v17c_flow_corrections table.
+        import json
+        conn_ro = duckdb.connect(db_path, read_only=True)
+        try:
+            try:
+                rows = conn_ro.execute(
+                    "SELECT reach_ids_flipped FROM v17c_flow_corrections "
+                    "WHERE region = ? AND reach_ids_flipped IS NOT NULL",
+                    [region.upper()],
+                ).fetchall()
+                for (ids_json,) in rows:
+                    try:
+                        flipped_reach_ids.update(int(x) for x in json.loads(ids_json))
+                    except (json.JSONDecodeError, TypeError, ValueError):
+                        continue
+                if flipped_reach_ids:
+                    log(
+                        f"Loaded {len(flipped_reach_ids):,} flipped reach IDs from "
+                        f"v17c_flow_corrections for node_order reversal"
+                    )
+            except duckdb.CatalogException:
+                pass  # table doesn't exist
+        finally:
+            conn_ro.close()
 
     # Initialize workflow (after facc, so no write-lock conflict)
     workflow = SWORDWorkflow(user_id=user_id)
