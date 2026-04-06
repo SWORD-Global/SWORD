@@ -1363,3 +1363,54 @@ def check_topology_spatial_plausibility(
         description=f"Connected reach centroids >{max_dist / 1000:.0f}km apart",
         threshold=max_dist,
     )
+
+
+@register_check(
+    "T023",
+    Category.TOPOLOGY,
+    Severity.ERROR,
+    "Reaches with n_rch_down=0 must have end_reach=2 (outlet)",
+)
+def check_end_reach_outlet_consistency(
+    conn: duckdb.DuckDBPyConnection,
+    region: Optional[str] = None,
+    threshold: Optional[float] = None,
+) -> CheckResult:
+    """Flag reaches that are topological dead-ends but not marked as outlets.
+
+    A reach with n_rch_down=0 has no downstream neighbor, making it a
+    network terminal point (outlet).  end_reach must be 2 for these
+    reaches regardless of n_rch_up.  A prior bug in flow_verification.py
+    checked junction (n_up>1) before outlet (n_down=0), misclassifying
+    33 junction-outlets as end_reach=3.
+    """
+    where_clause = f"AND r.region = '{region}'" if region else ""
+
+    query = f"""
+    SELECT r.reach_id, r.region, r.river_name, r.end_reach,
+           r.n_rch_up, r.n_rch_down, r.type, r.best_outlet
+    FROM reaches r
+    WHERE r.n_rch_down = 0 AND r.end_reach != 2
+        {where_clause}
+    ORDER BY r.reach_id
+    LIMIT 10000
+    """
+
+    issues = conn.execute(query).fetchdf()
+
+    total_query = f"""
+    SELECT COUNT(*) FROM reaches r WHERE r.n_rch_down = 0 {where_clause}
+    """
+    total = conn.execute(total_query).fetchone()[0]
+
+    return CheckResult(
+        check_id="T023",
+        name="end_reach_outlet_consistency",
+        severity=Severity.ERROR,
+        passed=len(issues) == 0,
+        total_checked=total,
+        issues_found=len(issues),
+        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        details=issues,
+        description="Reaches with no downstream neighbor but end_reach != 2 (outlet)",
+    )

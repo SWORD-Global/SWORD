@@ -671,9 +671,9 @@ def _update_topology_counts(conn: duckdb.DuckDBPyConnection, region: str) -> Non
                 n_rch_up = tc.new_n_rch_up,
                 n_rch_down = tc.new_n_rch_down,
                 end_reach = CASE
-                    WHEN tc.new_n_rch_up > 1 OR tc.new_n_rch_down > 1 THEN 3
                     WHEN tc.new_n_rch_up = 0 THEN 1
                     WHEN tc.new_n_rch_down = 0 THEN 2
+                    WHEN tc.new_n_rch_up > 1 OR tc.new_n_rch_down > 1 THEN 3
                     ELSE 0
                 END
             FROM _topo_counts tc
