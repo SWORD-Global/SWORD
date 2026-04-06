@@ -19,7 +19,7 @@
   change from v17b convention; all POM release gate checks pass.
 - **Node geolocation fixed on 41 reaches.** `rederive_nodes` recomputes
   node x/y from centerline spatial partitioning for 41 reaches (SA:5,
-  EU:5, AF:8, AS:19, OC:3) where source NetCDF had contradictory
+  EU:5, AF:8, AS:20, OC:3) where source NetCDF had contradictory
   CL-to-node mappings causing >2 km geographic jumps between consecutive
   nodes. Node lengths now use boundary-to-boundary distances (sum equals
   `reach_length` exactly). POM example reach 13341000591: max consecutive
@@ -304,9 +304,9 @@ measurement.
 | `slope_obs_slopeF` | float64 | — | Slope F-statistic |
 | `slope_obs_reliable` | int32 | — | 0 = unreliable, 1 = reliable |
 | `slope_obs_quality` | int32 | — | Integer quality category (0–8; see Section 3) |
-| `slope_obs_n` | int32 | — | Number of slope observations |
-| `slope_obs_n_passes` | int32 | — | Number of SWOT passes used |
-| `slope_obs_q` | int32 | — | Bitfield quality flag (see Section 3) |
+| `slope_obs_n` | int64 | — | Number of slope observations |
+| `slope_obs_n_passes` | int64 | — | Number of SWOT passes used |
+| `slope_obs_q` | int64 | — | Bitfield quality flag (see Section 3) |
 
 ### 2.3 Flow Accumulation Corrections
 
@@ -468,11 +468,11 @@ Validation checks performed on the v17c data:
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
 | **path_freq gaps** | v17b had 4,952 connected non-ghost reaches with invalid path_freq (0 or -9999). Resolved in v17c; remaining nodata values are correctly attributed to ghost reaches (type=6). |
 | **subnetwork_id** | 3,027 components across 248,673 reaches verified. Pfafstetter banding correct. Zero cross-region collisions. 19 subnetworks (0.6%) span multiple v17b networks (expected). |
-| **Topology integrity** | T001 (dist_out_dijkstra monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: zero non-reciprocal edges (151 from incomplete flow correction revert resolved in beta 0.0.1). Note: v17b `dist_out` is stale at 807 flow-corrected reaches where topology direction was updated but `dist_out` retains its v17b value — use `dist_out_dijkstra` or `hydro_dist_out` for distance routing. |
+| **Topology integrity** | T001 (dist_out_dijkstra monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: zero non-reciprocal edges (151 from incomplete flow correction revert resolved in beta 0.0.1). Note: reach-level v17b `dist_out` is stale at 807 flow-corrected reaches where topology direction was updated but reach `dist_out` retains its v17b value — use `dist_out_dijkstra` or `hydro_dist_out` for distance routing. Node-level `dist_out` is recomputed for all reaches (midpoint interpolation). |
 | **n_rch_up/n_rch_down** | 148 scalar count mismatches corrected (flow corrections flipped reach_topology but did not recalculate counts). Zero mismatches across all 248,673 reaches. |
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
-| **Flow direction** | 1,112 experimental topology flips reverted after causing 30K disconnected reaches. 807 reaches across all regions retain corrected topology that differs from v17b (175 sections, median 5 reaches/section). OC has 119 of these (26 SWOT-validated sections). Non-OC corrections were retained from the flow correction pipeline; `dist_out` is stale at these reaches — use `dist_out_dijkstra`. |
+| **Flow direction** | 1,112 experimental topology flips reverted after causing 30K disconnected reaches. 807 reaches across all regions retain corrected topology that differs from v17b (175 sections, median 5 reaches/section). OC has 119 of these (26 SWOT-validated sections). Non-OC corrections were retained from the flow correction pipeline; reach-level `dist_out` is stale at these reaches — use `dist_out_dijkstra`. Node-level `dist_out` is recomputed via midpoint interpolation. |
 | **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data. 200,201 nodes propagated. Tagged `edit_flag = "harp_lake"`. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
