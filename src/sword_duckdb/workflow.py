@@ -4825,6 +4825,13 @@ class SWORDWorkflow:
             # Boundaries sit at the midpoint between the last CL of one
             # group and the first CL of the next, so inter-group gaps are
             # fully accounted for and sum(node_length) == total_dist.
+            # The residual (reach_length - total_dist, typically <0.03%)
+            # is added to the last node so sum(node_length) == reach_length.
+            reach_length = conn.execute(
+                "SELECT reach_length FROM reaches WHERE reach_id = ? AND region = ?",
+                [reach_id, region],
+            ).fetchone()[0]
+
             n_groups = len(groups)
             boundaries = [0.0]
             for i in range(1, n_groups):
@@ -4854,6 +4861,11 @@ class SWORDWorkflow:
                         "cl_id_max": cl_max,
                     }
                 )
+
+            # Assign residual to last node so sum(node_length) == reach_length
+            if new_nodes and reach_length > 0:
+                residual = reach_length - sum(nd["node_length"] for nd in new_nodes)
+                new_nodes[-1]["node_length"] += residual
 
             # Get existing node IDs
             existing = conn.execute(
