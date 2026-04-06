@@ -573,6 +573,13 @@ def _process_region_inner(
 
     # Save to DuckDB with provenance
     with workflow.transaction(f"v17c attributes for {region}"):
+        # update_node_columns MUST run before save_to_duckdb because
+        # save_to_duckdb calls propagate_reach_to_nodes which uses a
+        # window function ORDER BY node_order. If node_order is stale
+        # (from a prior run with different ordering logic), the midpoint
+        # offsets will be wrong for anomalous reaches where node_id order
+        # disagrees with dist_out order (e.g. AS 35301100891).
+        update_node_columns(conn, region, flipped_reach_ids=flipped_reach_ids)
         n_updated = save_to_duckdb(
             conn,
             region,
@@ -588,7 +595,6 @@ def _process_region_inner(
             flipped_reach_ids=flipped_reach_ids,
         )
         save_sections_to_duckdb(conn, region, sections_df, validation_df)
-        update_node_columns(conn, region, flipped_reach_ids=flipped_reach_ids)
 
     # Apply SWOT slopes if requested
     n_swot_updated = 0
