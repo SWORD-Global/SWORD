@@ -4821,18 +4821,33 @@ class SWORDWorkflow:
                 last = groups.pop()
                 groups[-1].extend(last)
 
-            # Compute per-group stats
+            # Compute boundary-to-boundary node_lengths.
+            # Boundaries sit at the midpoint between the last CL of one
+            # group and the first CL of the next, so inter-group gaps are
+            # fully accounted for and sum(node_length) == total_dist.
+            # The residual (reach_length - total_dist, typically <0.03%)
+            # is added to the last node so sum(node_length) == reach_length.
+            reach_length = conn.execute(
+                "SELECT reach_length FROM reaches WHERE reach_id = ? AND region = ?",
+                [reach_id, region],
+            ).fetchone()[0]
+
+            n_groups = len(groups)
+            boundaries = [0.0]
+            for i in range(1, n_groups):
+                last_of_prev = groups[i - 1][-1]
+                first_of_curr = groups[i][0]
+                boundaries.append((dists[last_of_prev] + dists[first_of_curr]) / 2.0)
+            boundaries.append(total_dist)
+
             new_nodes = []
-            for g_points in groups:
+            for i, g_points in enumerate(groups):
                 g_xs = [xs[p] for p in g_points]
                 g_ys = [ys[p] for p in g_points]
                 g_x = float(np.median(g_xs))
                 g_y = float(np.median(g_ys))
 
-                if len(g_points) > 1:
-                    g_len = dists[g_points[-1]] - dists[g_points[0]]
-                else:
-                    g_len = interval
+                g_len = boundaries[i + 1] - boundaries[i]
 
                 cl_min = int(cl_df.iloc[g_points[0]]["cl_id"])
                 cl_max = int(cl_df.iloc[g_points[-1]]["cl_id"])
@@ -4846,6 +4861,11 @@ class SWORDWorkflow:
                         "cl_id_max": cl_max,
                     }
                 )
+
+            # Assign residual to last node so sum(node_length) == reach_length
+            if new_nodes and reach_length > 0:
+                residual = reach_length - sum(nd["node_length"] for nd in new_nodes)
+                new_nodes[-1]["node_length"] += residual
 
             # Get existing node IDs
             existing = conn.execute(
@@ -4887,10 +4907,15 @@ class SWORDWorkflow:
 
             try:
                 for plan in reach_plans:
-                    node_ids = plan["node_ids"]
-                    new_nodes = plan["new_nodes"]
+                    p_node_ids = plan["node_ids"]
+                    p_new_nodes = plan["new_nodes"]
+                    p_reach_id = plan["reach_id"]
 
-                    def _do_updates():
+                    def _do_updates(
+                        node_ids=p_node_ids,
+                        new_nodes=p_new_nodes,
+                        reach_id=p_reach_id,
+                    ):
                         for nid, nd in zip(node_ids, new_nodes):
                             conn.execute(
                                 """
@@ -4929,13 +4954,13 @@ class SWORDWorkflow:
                         with self._provenance.operation(
                             "UPDATE",
                             table_name="nodes",
-                            entity_ids=node_ids,
+                            entity_ids=p_node_ids,
                             region=region,
                             reason=reason
-                            or f"Re-derive nodes for reach {plan['reach_id']}",
+                            or f"Re-derive nodes for reach {p_reach_id}",
                             details={
-                                "reach_id": plan["reach_id"],
-                                "node_count": len(new_nodes),
+                                "reach_id": p_reach_id,
+                                "node_count": len(p_new_nodes),
                             },
                             affected_columns=[
                                 "x",

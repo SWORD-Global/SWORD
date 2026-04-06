@@ -169,13 +169,12 @@ def propagate_reach_to_nodes(
     is needed for flow-corrected reaches because the offset is derived
     from node_order (corrected) not from node dist_out (stale v17b).
 
-    Node dist_out itself is preserved as the v17b original for backward
-    compatibility (POM safety).  Only single-node reaches get a
-    recomputed dist_out (reach midpoint).
+    All distance columns (including dist_out) use midpoint interpolation
+    so they are mutually consistent.  On a single-path network, node-level
+    dist_out == hydro_dist_out == dist_out_dijkstra.
 
     Then (NULL reach values pass through as NULL):
-      - dist_out (single-node only): reach.dist_out - reach_length/2
-      - hydro_dist_out, dist_out_dijkstra: reach_value - reach_length + midpoint
+      - dist_out, hydro_dist_out, dist_out_dijkstra: reach_value - reach_length + midpoint
       - hydro_dist_hw: reach_value + reach_length - midpoint
       - pathlen_hw: reach_value - reach_length + midpoint
       - pathlen_out: reach_value + reach_length - midpoint
@@ -213,11 +212,8 @@ def propagate_reach_to_nodes(
         SET best_headwater = ofs.best_headwater,
             best_outlet = ofs.best_outlet,
             subnetwork_id = ofs.subnetwork_id,
-            dist_out = CASE
-                WHEN ofs.n_nodes = 1 AND ofs.dist_out IS NULL THEN NULL
-                WHEN ofs.n_nodes = 1 THEN GREATEST(0, ofs.dist_out - ofs.o)
-                ELSE nodes.dist_out
-            END,
+            dist_out = CASE WHEN ofs.dist_out IS NULL THEN NULL
+                ELSE GREATEST(0, ofs.dist_out - ofs.reach_length + ofs.o) END,
             hydro_dist_out = CASE WHEN ofs.hydro_dist_out IS NULL THEN NULL
                 ELSE GREATEST(0, ofs.hydro_dist_out - ofs.reach_length + ofs.o) END,
             dist_out_dijkstra = CASE WHEN ofs.dist_out_dijkstra IS NULL THEN NULL
