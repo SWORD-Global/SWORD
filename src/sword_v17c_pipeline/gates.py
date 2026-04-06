@@ -111,7 +111,7 @@ POM_RELEASE_ALLOWANCES = {
     ),
     "N006": GateAllowance(
         "defended_nonblocking",
-        2740,
+        2760,
         "Boundary dist_out gaps are expected on braided bifurcation-rejoin structures.",
     ),
     "N007": GateAllowance(

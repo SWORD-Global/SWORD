@@ -4907,10 +4907,15 @@ class SWORDWorkflow:
 
             try:
                 for plan in reach_plans:
-                    node_ids = plan["node_ids"]
-                    new_nodes = plan["new_nodes"]
+                    p_node_ids = plan["node_ids"]
+                    p_new_nodes = plan["new_nodes"]
+                    p_reach_id = plan["reach_id"]
 
-                    def _do_updates():
+                    def _do_updates(
+                        node_ids=p_node_ids,
+                        new_nodes=p_new_nodes,
+                        reach_id=p_reach_id,
+                    ):
                         for nid, nd in zip(node_ids, new_nodes):
                             conn.execute(
                                 """
@@ -4942,20 +4947,20 @@ class SWORDWorkflow:
                               AND centerlines.node_id != n.node_id
                               AND n.reach_id = ?
                             """,
-                            [plan["reach_id"]],
+                            [reach_id],
                         )
 
                     if self._provenance and self._enable_provenance:
                         with self._provenance.operation(
                             "UPDATE",
                             table_name="nodes",
-                            entity_ids=node_ids,
+                            entity_ids=p_node_ids,
                             region=region,
                             reason=reason
-                            or f"Re-derive nodes for reach {plan['reach_id']}",
+                            or f"Re-derive nodes for reach {p_reach_id}",
                             details={
-                                "reach_id": plan["reach_id"],
-                                "node_count": len(new_nodes),
+                                "reach_id": p_reach_id,
+                                "node_count": len(p_new_nodes),
                             },
                             affected_columns=[
                                 "x",
