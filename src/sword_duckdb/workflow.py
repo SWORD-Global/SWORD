@@ -4821,18 +4821,26 @@ class SWORDWorkflow:
                 last = groups.pop()
                 groups[-1].extend(last)
 
-            # Compute per-group stats
+            # Compute boundary-to-boundary node_lengths.
+            # Boundaries sit at the midpoint between the last CL of one
+            # group and the first CL of the next, so inter-group gaps are
+            # fully accounted for and sum(node_length) == total_dist.
+            n_groups = len(groups)
+            boundaries = [0.0]
+            for i in range(1, n_groups):
+                last_of_prev = groups[i - 1][-1]
+                first_of_curr = groups[i][0]
+                boundaries.append((dists[last_of_prev] + dists[first_of_curr]) / 2.0)
+            boundaries.append(total_dist)
+
             new_nodes = []
-            for g_points in groups:
+            for i, g_points in enumerate(groups):
                 g_xs = [xs[p] for p in g_points]
                 g_ys = [ys[p] for p in g_points]
                 g_x = float(np.median(g_xs))
                 g_y = float(np.median(g_ys))
 
-                if len(g_points) > 1:
-                    g_len = dists[g_points[-1]] - dists[g_points[0]]
-                else:
-                    g_len = interval
+                g_len = boundaries[i + 1] - boundaries[i]
 
                 cl_min = int(cl_df.iloc[g_points[0]]["cl_id"])
                 cl_max = int(cl_df.iloc[g_points[-1]]["cl_id"])
