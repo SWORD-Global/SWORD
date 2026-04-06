@@ -4942,7 +4942,7 @@ class SWORDWorkflow:
                               AND centerlines.node_id != n.node_id
                               AND n.reach_id = ?
                             """,
-                            [reach_id],
+                            [plan["reach_id"]],
                         )
 
                     if self._provenance and self._enable_provenance:
