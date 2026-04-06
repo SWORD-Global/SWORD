@@ -43,29 +43,24 @@ values for ghost reaches.
 
 ### Node-Level Interpolation
 
-Five v17c variables are interpolated per node using the node's position
-within its parent reach. The offset from the reach's upstream end is
-`reach.dist_out - node.dist_out` (where `node.dist_out` is the v17b
-original). For flow-corrected reaches (660), the offset direction is
-reversed.
+Six distance variables are interpolated per node using a midpoint offset
+within the parent reach: `offset = cumsum(node_length) - 0.5 *
+node_length`, where the cumulative sum is ordered by `node_order`. This
+places each node at the geometric center of its `node_length` segment.
+On a single-path network (no junctions), `dist_out`, `hydro_dist_out`,
+and `dist_out_dijkstra` are exactly equal at every node.
 
 | Variable | Node formula | node_order=n (upstream) | node_order=1 (downstream) |
 |---|---|---|---|
-| `hydro_dist_out` | `reach.hdo - offset` | `reach.hdo` | `reach.hdo - reach_length` |
-| `dist_out_dijkstra` | `reach.dod - offset` | `reach.dod` | `reach.dod - reach_length` |
-| `hydro_dist_hw` | `reach.hdh + offset` | `reach.hdh` | `reach.hdh + reach_length` |
-| `pathlen_hw` | `reach.plh - reach_length + offset` | `reach.plh - reach_length` | `reach.plh` |
-| `pathlen_out` | `reach.plo + reach_length - offset` | `reach.plo + reach_length` | `reach.plo` |
+| `dist_out` | `reach.do - reach_length + offset` | `~ reach.do` | `~ reach.do - reach_length` |
+| `hydro_dist_out` | `reach.hdo - reach_length + offset` | `~ reach.hdo` | `~ reach.hdo - reach_length` |
+| `dist_out_dijkstra` | `reach.dod - reach_length + offset` | `~ reach.dod` | `~ reach.dod - reach_length` |
+| `hydro_dist_hw` | `reach.hdh + reach_length - offset` | `~ reach.hdh` | `~ reach.hdh + reach_length` |
+| `pathlen_hw` | `reach.plh - reach_length + offset` | `~ reach.plh - reach_length` | `~ reach.plh` |
+| `pathlen_out` | `reach.plo + reach_length - offset` | `~ reach.plo + reach_length` | `~ reach.plo` |
 
-For single-node reaches, the offset is `reach_length / 2` (midpoint).
 Three additional variables (`subnetwork_id`, `best_headwater`,
 `best_outlet`) are flat copies from the parent reach.
-
-**Node `dist_out`.** `node.dist_out` remains the stored node-level
-distance-to-outlet value and increases with `node_order`. For single-node
-reaches, `node.dist_out` uses the same midpoint anchor as the other
-node-level outlet distances, so it no longer stays pinned to the
-reach-level upstream-end value.
 
 **Boundary continuity.** At reach boundaries, the downstream-end node of
 the upstream reach and the upstream-end node of the downstream reach
@@ -249,7 +244,7 @@ other node-level outlet distances.
 | obstr_type | i4 | | -9999 | Obstruction type |
 | grod_id | i8 | | -9999 | GRanD/GROD dam ID |
 | hfalls_id | i8 | | -9999 | High falls ID |
-| dist_out | f8 | meters | -9999.0 | Distance to network outlet. Multi-node reaches preserve v17b node values; single-node reaches use the midpoint anchor `reach.dist_out - reach_length/2`, matching the other node-level outlet distances |
+| dist_out | f8 | meters | -9999.0 | Distance to network outlet. Interpolated from reach `dist_out` using node_length midpoint offsets (same formula as `hydro_dist_out` and `dist_out_dijkstra`). On single-path networks all three are exactly equal |
 | wth_coef | f8 | | -9999.0 | Width coefficient |
 | ext_dist_coef | f8 | | -9999.0 | Extraction distance coefficient |
 | facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |
