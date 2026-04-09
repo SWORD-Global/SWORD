@@ -312,14 +312,27 @@ class TestSnapshotRollback:
 
 class TestCorrectFlowDirections:
     def _setup_correction_scenario(self, conn):
-        """Set up a scenario with one invalid section."""
+        """Set up a scenario with one invalid section.
+
+        Topology: 0 -> 1 -> 2 -> 3 -> 4  (flow left to right)
+        Section covers [1,2,3] with junctions at 1 and 3.
+        Reaches 0 and 4 are external neighbors so junctions keep
+        at least one external connection after a flip.
+        """
         _insert_topology(
             conn,
             [
-                (1, "up", 0, 2, "NA"),
+                # External upstream of junction 1
+                (0, "down", 0, 1, "NA"),
+                (1, "up", 0, 0, "NA"),
+                # Section interior
+                (1, "up", 1, 2, "NA"),
                 (2, "down", 0, 1, "NA"),
                 (2, "up", 0, 3, "NA"),
                 (3, "down", 0, 2, "NA"),
+                # External downstream of junction 3
+                (3, "down", 1, 4, "NA"),
+                (4, "up", 0, 3, "NA"),
             ],
         )
         create_flow_corrections_table(conn)

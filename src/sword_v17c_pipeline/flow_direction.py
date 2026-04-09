@@ -107,26 +107,27 @@ def _get_reach_quality(reach_ids: List[int], reaches_df: pd.DataFrame) -> Dict:
 
 
 def _get_facc_confidence(
-    G: nx.DiGraph, 
-    reach_ids: List[int], 
+    G: nx.DiGraph,
+    reach_ids: List[int],
     reaches_df: pd.DataFrame,
     upstream_junction: int,
-    downstream_junction: int
+    downstream_junction: int,
 ) -> Tuple[float, float]:
     """
     Calculate confidence based on iterative FACC re-accumulation.
     Returns (facc_delta_score, facc_snap_error).
     """
     # 1. Map reach data
-    r_map = reaches_df.set_index('reach_id').to_dict('index')
-    
+    r_map = reaches_df.set_index("reach_id").to_dict("index")
+
     # 2. Estimate local area (facc - sum(upstream_facc))
     local_areas = {}
     for rid in reach_ids + [upstream_junction, downstream_junction]:
-        if rid not in r_map: continue
+        if rid not in r_map:
+            continue
         preds = list(G.predecessors(rid))
-        up_facc = sum(r_map[p]['facc'] for p in preds if p in r_map)
-        local_areas[rid] = max(0, r_map[rid]['facc'] - up_facc)
+        up_facc = sum(r_map[p]["facc"] for p in preds if p in r_map)
+        local_areas[rid] = max(0, r_map[rid]["facc"] - up_facc)
 
     # 3. Virtual Flip
     G_test = G.copy()
@@ -135,7 +136,7 @@ def _get_facc_confidence(
     for u, v in G.edges():
         if u in ids_set and v in ids_set:
             edges_to_flip.append((u, v))
-            
+
     for u, v in edges_to_flip:
         G_test.remove_edge(u, v)
         G_test.add_edge(v, u)
@@ -148,30 +149,30 @@ def _get_facc_confidence(
                 if succ in new_facc:
                     new_facc[succ] += new_facc[node]
     except nx.NetworkXUnfeasible:
-        return 0.0, 1.0 # Cycle created
+        return 0.0, 1.0  # Cycle created
 
     # 5. Measure "Snap" at new downstream boundary
     # In the flipped graph, the original upstream headwater becomes the new outlet
     new_outlet = reach_ids[0] if reach_ids else None
     if not new_outlet or new_outlet not in G_test:
         return 0.0, 1.0
-        
+
     dn_neighbors = list(G_test.successors(new_outlet))
     if not dn_neighbors:
         return 0.0, 1.0
-        
+
     neighbor = dn_neighbors[0]
     if neighbor not in r_map:
-        return 0.5, 0.5 # Neutral
-        
+        return 0.5, 0.5  # Neutral
+
     calc_val = new_facc[new_outlet]
-    expected_val = r_map[neighbor]['facc']
-    
+    expected_val = r_map[neighbor]["facc"]
+
     snap_error = abs(calc_val - expected_val) / (expected_val + 1)
-    
+
     # Confidence: 1.0 if perfect snap, 0.0 if huge mismatch
-    facc_conf = max(0, 1.0 - (snap_error / 0.5)) 
-    
+    facc_conf = max(0, 1.0 - (snap_error / 0.5))
+
     return facc_conf, snap_error
 
 
@@ -184,12 +185,18 @@ def score_section_confidence(
 ) -> Tuple[str, Dict]:
     """
     Score a section into HIGH / MEDIUM / LOW / SKIP confidence tier.
-    Now uses both Slope (WSE) and Hydrological Snap (FACC) signals.
+
+    Uses two independent signals:
+    - Slope: SWOT-observed WSE slope (requires actual SWOT observations)
+    - FACC snap: whether re-accumulated FACC matches boundary after virtual flip
+
+    NOTE: slope_from_upstream = -slope_from_downstream (same measurement,
+    flipped sign). They are NOT independent. We use slope_from_upstream
+    as the single slope signal and require SWOT backing via n_obs.
     """
     likely_cause = validation_row.get("likely_cause")
     direction_valid = validation_row.get("direction_valid")
     slope_up = validation_row.get("slope_from_upstream")
-    slope_dn = validation_row.get("slope_from_downstream")
 
     if direction_valid is True or direction_valid is None:
         return "SKIP", {"reason": "valid_or_undetermined"}
@@ -197,39 +204,48 @@ def score_section_confidence(
     if likely_cause in ("lake_section", "extreme_slope_data_error"):
         return "SKIP", {"reason": f"likely_cause={likely_cause}"}
 
-    # 1. Slope Signals
+    # 1. Slope signal — single value, gated by SWOT quality
     metrics = _get_reach_quality(reach_ids, reaches_df)
-    upstream_wrong = pd.notna(slope_up) and slope_up > 0
-    downstream_wrong = pd.notna(slope_dn) and slope_dn < 0
-    both_wrong = upstream_wrong and downstream_wrong
+    slope_wrong = pd.notna(slope_up) and slope_up > 0 and abs(slope_up) > 1e-10
 
-    # 2. Hydrological Snap Signal (The "Methodical Solver")
+    # SWOT quality gate: need actual observations, not just DEM-derived slopes
+    subset = reaches_df[reaches_df["reach_id"].isin(reach_ids)]
+    n_obs_col = "n_obs" if "n_obs" in subset.columns else None
+    swot_reaches = 0
+    if n_obs_col:
+        swot_reaches = int((subset[n_obs_col].fillna(0) >= 5).sum())
+    has_swot = swot_reaches >= min_wse_reaches
+    slope_credible = slope_wrong and has_swot
+
+    # 2. FACC snap signal
     uj = validation_row.get("upstream_junction")
     dj = validation_row.get("downstream_junction")
     facc_conf, snap_error = _get_facc_confidence(G, reach_ids, reaches_df, uj, dj)
 
     meta = {
-        "upstream_wrong": upstream_wrong,
-        "downstream_wrong": downstream_wrong,
+        "slope_wrong": slope_wrong,
+        "slope_credible": slope_credible,
+        "swot_reaches": swot_reaches,
+        "has_swot": has_swot,
         "facc_confidence": facc_conf,
         "snap_error": snap_error,
         **metrics,
     }
 
-    # Combined Decision Logic
-    # HIGH: Both slopes wrong AND FACC snaps perfectly (<20% error)
-    if both_wrong and snap_error < 0.2:
-        return "HIGH", {**meta, "reason": "slope_and_facc_agreement"}
-    
-    # MEDIUM: FACC snaps perfectly even if slope signal is noisy
-    if snap_error < 0.1:
-        return "MEDIUM", {**meta, "reason": "strong_facc_snap"}
+    # HIGH: SWOT-backed slope evidence AND FACC snap agreement
+    if slope_credible and snap_error < 0.2:
+        return "HIGH", {**meta, "reason": "swot_slope_and_facc_agreement"}
 
-    # MEDIUM: Both slopes wrong and decent FACC snap
-    if both_wrong and snap_error < 0.4:
-        return "MEDIUM", {**meta, "reason": "both_wrong_moderate_snap"}
+    # MEDIUM: SWOT-backed slope evidence, weaker FACC snap
+    if slope_credible and snap_error < 0.4:
+        return "MEDIUM", {**meta, "reason": "swot_slope_moderate_facc"}
 
-    return "LOW", {**meta, "reason": "conflicting_or_weak_signals"}
+    # MEDIUM: strong FACC snap + slope direction is wrong (even without SWOT)
+    if slope_wrong and snap_error < 0.1:
+        return "MEDIUM", {**meta, "reason": "strong_facc_with_slope_direction"}
+
+    # Everything else: LOW — FACC snap alone is not enough
+    return "LOW", {**meta, "reason": "insufficient_independent_evidence"}
 
 
 def flip_section_topology(
@@ -340,7 +356,22 @@ def correct_flow_directions(
     create_flow_corrections_table(conn)
     snapshot_topology(conn, region, run_id)
 
+    # Cross-run oscillation guard: load flip counts from ALL previous runs
     flip_history: Dict[int, int] = {}
+    prev = conn.execute(
+        """
+        SELECT section_id, COUNT(*) AS n
+        FROM v17c_flow_corrections
+        WHERE region = ? AND action = 'flip' AND n_reaches_flipped > 0
+        GROUP BY section_id
+    """,
+        [region.upper()],
+    ).fetchall()
+    for sid, n in prev:
+        flip_history[sid] = n
+    if flip_history:
+        log(f"  Cross-run history: {len(flip_history)} sections with prior flips")
+
     total_flipped = 0
     manual_review = []
     cur_G, cur_sdf, cur_vdf = G, sections_df, validation_df
@@ -419,6 +450,17 @@ def correct_flow_directions(
         log(f"  Flipping {len(to_flip)} sections")
         for sid, tier, si in to_flip:
             n = flip_section_topology(conn, region, si["reach_ids"], si["uj"], si["dj"])
+            # False-outlet guard: check if boundary junctions lost all
+            # downstream connections. If so, auto-revert this section.
+            false_outlet = _check_false_outlets(
+                conn, region, si["reach_ids"], si["uj"], si["dj"]
+            )
+            if false_outlet:
+                log(f"    Section {sid}: false outlet at {false_outlet}, reverting")
+                # Re-flip to restore original state
+                flip_section_topology(conn, region, si["reach_ids"], si["uj"], si["dj"])
+                flip_history[sid] = flip_history.get(sid, 0) + 2
+                continue
             flip_history[sid] = flip_history.get(sid, 0) + 1
             total_flipped += 1
             log(f"    Section {sid} ({tier}): {n} rows flipped (#{flip_history[sid]})")
@@ -438,6 +480,42 @@ def correct_flow_directions(
         "manual_review": manual_review,
         "flip_history": flip_history,
     }
+
+
+def _check_false_outlets(
+    conn: duckdb.DuckDBPyConnection,
+    region: str,
+    reach_ids: List[int],
+    upstream_junction: int,
+    downstream_junction: int,
+) -> Optional[int]:
+    """Check if flipping a section created a false outlet at a boundary junction.
+
+    A false outlet is a junction that lost ALL downstream connections (n_rch_down
+    went to 0) because its only downstream neighbor was inside the flipped section.
+
+    Returns the reach_id of the false outlet, or None if no problem.
+    """
+    for jid in (upstream_junction, downstream_junction):
+        n_dn = conn.execute(
+            """
+            SELECT COUNT(*) FROM reach_topology
+            WHERE reach_id = ? AND region = ? AND direction = 'down'
+        """,
+            [jid, region.upper()],
+        ).fetchone()[0]
+        if n_dn == 0:
+            # Verify it had downstream neighbors before (not a natural headwater)
+            n_up = conn.execute(
+                """
+                SELECT COUNT(*) FROM reach_topology
+                WHERE reach_id = ? AND region = ? AND direction = 'up'
+            """,
+                [jid, region.upper()],
+            ).fetchone()[0]
+            if n_up > 0:
+                return jid
+    return None
 
 
 def _write_log(conn: duckdb.DuckDBPyConnection, rows: List[Dict]) -> None:
