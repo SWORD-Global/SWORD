@@ -132,8 +132,8 @@ POM_RELEASE_ALLOWANCES = {
     ),
     "T017": GateAllowance(
         "defended_nonblocking",
-        701,
-        "Large dist_out jumps are the reach-level expression of the same braided-path artifact as N006.",
+        557,
+        "Large dist_out jumps are the reach-level expression of the same braided-path artifact as N006. Reduced from 701 after restoring v17b dist_out on 1,976 BFS-corrupted reaches.",
     ),
     "T020": GateAllowance(
         "informational",
@@ -268,7 +268,9 @@ def gate_pom_release(
     )
 
     with LintRunner(db_path, conn=conn) as runner:
-        results = runner.run(checks=POM_RELEASE_CHECKS, region=region_label if region else None)
+        results = runner.run(
+            checks=POM_RELEASE_CHECKS, region=region_label if region else None
+        )
 
     if artifact_dir:
         try:

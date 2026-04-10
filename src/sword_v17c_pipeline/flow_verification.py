@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 from .flow_direction import (
+    _check_false_outlets,
     create_flow_corrections_table,
     flip_section_topology,
     snapshot_topology,
@@ -569,6 +570,15 @@ def apply_verified_flips(
                 tier = entry["tier"]
 
                 n = flip_section_topology(conn, region, reach_ids, uj, dj)
+
+                # False-outlet guard: auto-revert if boundary junction
+                # lost all downstream connections
+                false_outlet = _check_false_outlets(conn, region, reach_ids, uj, dj)
+                if false_outlet:
+                    log(f"  Section {sid}: false outlet at {false_outlet}, reverting")
+                    flip_section_topology(conn, region, reach_ids, uj, dj)
+                    continue
+
                 total_rows_flipped += n
                 log(f"  Flipped section {sid} ({tier}): {n} topology rows")
 
