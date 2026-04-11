@@ -219,6 +219,7 @@ models/
 HANDOVER.md
 SCRATCHPAD.md
 .worktrees/
+.playwright-mcp/
 
 # Output artifacts
 output/
