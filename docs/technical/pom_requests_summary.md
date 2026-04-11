@@ -161,7 +161,7 @@ This document maps POM's original MATLAB tests to our Python lint framework and 
 |-------|----------|-------------|----------|
 | A030 | WARNING | WSE increases downstream (should decrease) | line 433 |
 
-## Current Release-Gate Baseline (v17c, 2026-04-02)
+## Current Release-Gate Baseline (v17c, 2026-04-09)
 
 Checks run against `sword_v17c.duckdb` after resyncing `node_order`,
 `dn_node_id`, and `up_node_id` from node `dist_out`:
@@ -194,12 +194,13 @@ Checks run against `sword_v17c.duckdb` after resyncing `node_order`,
 | G012 | 22 | INFO | Deferred to v18 | Same inherited endpoint-gap family as N007; geometry fixes remain a v18 task. |
 | N003 | 3,456 | WARN | Deferred to v18 | v17b source node spacing, 0.03% of nodes ([#193](https://github.com/SWORD-Global/SWORD/issues/193)). |
 | N005 | 152 | WARN | Deferred to v18 | Large within-reach `dist_out` jumps are sparse-node source-data cases in the same family as N003. |
-| N006 | 2,740 | WARN | Defended nonblocking | Boundary `dist_out` gaps are expected on bifurcation-rejoin structures; single-scalar `dist_out` cannot stay continuous on all edges ([#192](https://github.com/SWORD-Global/SWORD/issues/192)). |
+| N006 | 2,760 | WARN | Defended nonblocking | Boundary `dist_out` gaps are expected on bifurcation-rejoin structures; single-scalar `dist_out` cannot stay continuous on all edges ([#192](https://github.com/SWORD-Global/SWORD/issues/192)). |
 | N007 | 25 | WARN | Deferred to v18 | Remaining boundary geometry gaps are inherited geometry/topology cases after the N007 measurement fixes ([#188](https://github.com/SWORD-Global/SWORD/issues/188), [#190](https://github.com/SWORD-Global/SWORD/issues/190)). |
 | N012 | 13 | WARN | Accepted residual | Sparse ghost/Arctic node-geolocation outliers accepted as residual ([#185](https://github.com/SWORD-Global/SWORD/issues/185)). |
 | N013 | 311 | WARN | Accepted residual | 99.7% of centerline-node mismatches were fixed; the remainder are sparse-node residuals ([#194](https://github.com/SWORD-Global/SWORD/issues/194)). |
-| T017 | 701 | WARN | Defended nonblocking | Same braided-network path-length artifact as N006, at the reach scale ([#191](https://github.com/SWORD-Global/SWORD/issues/191)). |
+| T017 | 553 | WARN | Defended nonblocking | Same braided-network path-length artifact as N006, at the reach scale ([#191](https://github.com/SWORD-Global/SWORD/issues/191)). Reduced from 701 after fully restoring reach dist_out to v17b. |
 | T020 | 197 | INFO | Informational | GRWL river-name inconsistencies only; not a release blocker ([#196](https://github.com/SWORD-Global/SWORD/issues/196)). |
+| T023 | 33 | ERROR | Must-pass (added 0.0.8) | end_reach outlet consistency: outlet reaches must have end_reach=2. |
 
 ### Informational (tracked, not gate failures)
 
