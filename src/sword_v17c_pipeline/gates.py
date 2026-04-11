@@ -132,7 +132,7 @@ POM_RELEASE_ALLOWANCES = {
     ),
     "T017": GateAllowance(
         "defended_nonblocking",
-        557,
+        553,
         "Large dist_out jumps are the reach-level expression of the same braided-path artifact as N006. Reduced from 701 after restoring v17b dist_out on 1,976 BFS-corrupted reaches.",
     ),
     "T020": GateAllowance(
