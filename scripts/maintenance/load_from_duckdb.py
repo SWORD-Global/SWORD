@@ -68,6 +68,19 @@ logger = logging.getLogger(__name__)
 # Valid regions
 VALID_REGIONS = ["NA", "SA", "EU", "AF", "AS", "OC"]
 
+# Tables that have a `region` column but must be loaded wholesale, not per-region.
+# These contain audit-style rows whose `region` may be NULL, may hold multi-region
+# values such as 'AF,AS,EU,NA,OC,SA' / 'AF,SA' / 'ALL', or may be mis-cased — so a
+# per-region WHERE filter silently loses rows. Routing them through the loader's
+# "no region column" path makes truncate-and-reload wholesale and deterministic.
+AUDIT_TABLES = frozenset(
+    {
+        "sword_operations",
+        "facc_fix_log",
+        "lint_fix_log",
+    }
+)
+
 # Batch sizes for different tables (tuned for memory/performance)
 BATCH_SIZES = {
     "centerlines": 50_000,  # 66.9M rows - use smaller batches
@@ -225,7 +238,11 @@ def export_table_to_postgres(
         "nodes": "node_id",
         "reaches": "reach_id",
         "reach_topology": "reach_id, direction, neighbor_rank",
-        "reach_swot_orbits": "reach_id",
+        # Must sort by the full primary key: (reach_id, region, orbit_rank).
+        # Sorting by reach_id alone is non-deterministic whenever a reach has
+        # multiple orbit_rank rows, which makes LIMIT/OFFSET batches overlap
+        # and triggers duplicate-key errors against the PK.
+        "reach_swot_orbits": "reach_id, region, orbit_rank",
         "reach_ice_flags": "reach_id",
         "sword_operations": "operation_id",
         "sword_value_snapshots": "snapshot_id",
@@ -726,11 +743,17 @@ Examples:
         if args.dry_run:
             logger.info("=== DRY RUN - showing row counts ===")
 
-        # Pre-compute which tables have a region column
+        # Pre-compute which tables have a region column.
+        # Audit tables (see AUDIT_TABLES) are treated as region-less here so they
+        # truncate and reload wholesale, avoiding silent row loss on NULL / multi-
+        # region / mis-cased values that no per-region WHERE clause would match.
         table_has_region = {}
         for table_name in tables_to_load:
             cols = [c[0] for c in get_table_columns(duck_conn, table_name)]
-            table_has_region[table_name] = "region" in cols
+            has_region_col = "region" in cols
+            table_has_region[table_name] = (
+                has_region_col and table_name not in AUDIT_TABLES
+            )
 
         for region in regions:
             logger.info(f"\n{'=' * 60}")

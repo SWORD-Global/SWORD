@@ -412,7 +412,9 @@ CREATE TABLE sword_operations (
 
     table_name VARCHAR(50),
     entity_ids BIGINT[],
-    region VARCHAR(2),
+    -- VARCHAR(50) because sword_operations logs can span multiple regions
+    -- (e.g. 'AF,AS,EU,NA,OC,SA', 'ALL') unlike per-region data tables.
+    region VARCHAR(50),
 
     user_id VARCHAR(100),
     session_id VARCHAR(50),
