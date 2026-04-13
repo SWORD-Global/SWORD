@@ -1,11 +1,36 @@
 # SWORD v17c Beta Release Notes
 
-**Version:** v17c beta 0.0.8
+**Version:** v17c beta 0.0.10
 **Date:** April 2026
 **Authors:** James H. Gearon, Tamlin M. Pavelsky, Niek Collot d'Escury
 **Base version:** SWORD v17b (March 2025, UNC)
 
 ## Changelog
+
+### 0.0.10 (April 2026)
+- **Node geolocation fixed on 293 additional reaches.** `rederive_nodes`
+  recomputes node x/y from centerline spatial partitioning for reaches where
+  consecutive node gaps exceed 3x the reach's median spacing and 0.4 km
+  absolute (POM test 6b criteria). By region: AS:183, SA:35, AF:27, EU:19,
+  OC:18, NA:6. Combined with the 41 reaches fixed in 0.0.8, total rederived:
+  334 reaches (0.13%). 10 reaches remain unfixable (centerline geometry
+  issues inherited from v17b).
+- **Reach 35301100891 node_order rotation fixed.** This AS reach had node_ids
+  rotated by one position (2, 3, ..., 75, 1 instead of 1, 2, ..., 75) since
+  v17b. `node_order` now matches `node_id` ascending, `dn_node_id` = 0011,
+  `up_node_id` = 0751. This was POM's 640th case (we previously fixed 639).
+  Node_order now matches node_id ascending for all 248,673 reaches.
+
+### 0.0.9 (April 2026)
+- **Flow correction fully reverted.** All 810 flow-corrected reaches restored
+  to v17b topology after discovering a scoring tautology in
+  `score_section_confidence` (`slope_from_upstream = -slope_from_downstream`).
+  Topology diff vs v17b: 0. `v17c_flow_corrections` table is empty.
+- **dist_out corruption fixed.** 1,976 reaches had BFS-corrupted `dist_out`
+  from a January `CALCULATE_DIST_OUT` bug (wrong outlet, 93–99% error).
+  Restored v17b values. T017 violations: 701 → 557.
+- **Pipeline re-run with `skip_flow_correction=True`.** All 6 regions pass
+  all gates.
 
 ### 0.0.8 (April 2026)
 - **Node `dist_out` unified to midpoint convention.** All six node-level
