@@ -18,8 +18,41 @@
 - **Reach 35301100891 node_order rotation fixed.** This AS reach had node_ids
   rotated by one position (2, 3, ..., 75, 1 instead of 1, 2, ..., 75) since
   v17b. `node_order` now matches `node_id` ascending, `dn_node_id` = 0011,
-  `up_node_id` = 0751. This was POM's 640th case (we previously fixed 639).
-  Node_order now matches node_id ascending for all 248,673 reaches.
+  `up_node_id` = 0751. Node dist_out and all interpolated distance columns
+  recalculated to match the corrected node_order.
+- **Reach lakeflag and type reconciled for lake classification.** About
+  6,200 reaches had inconsistent lakeflag and type fields (lakeflag=1 with
+  type=1, or lakeflag=0 with type=3). Inconsistent reaches were either
+  orphaned (skipped by both river and lake processing) or double-counted.
+  Resolution combined three methods: 1,015 manual reviews through the
+  Streamlit QA app, a gradient-boosted classifier trained on those reviews
+  (82% precision, 6% FPR, applied at high confidence only: p>0.8 for lake,
+  p<0.2 for river), and direct corrections from HarP v1.1 lake
+  classifications. After reconciliation, 99.4% of reaches have consistent
+  lakeflag and type. The remaining 1,196 (0.5%) are in the classifier's
+  uncertain zone and queued for manual review. The type column now diverges
+  from the reach ID last digit on 2,316 reaches (0.9%); the type column is
+  authoritative.
+- **Node lakeflag restored to v17b source values.** Previous scripts (HarP
+  corrections, reviewer sync) had propagated reach-level lakeflag changes to
+  nodes, overwriting the independently derived GRWL-based node
+  classifications. Node lakeflag is the mode of 30 m GRWL centerline pixels
+  within each ~200 m node segment; reach lakeflag is the mode of node
+  lakeflags. These are independent spatial scales and can legitimately
+  differ. All 11,112,454 node lakeflags restored from v17b NetCDF source.
+  Reach-level lakeflag/type reconciliation is unaffected.
+- **Five reaches fixed for N013 closure-bug damage.** Reaches 14278900061
+  (AF), 31241401301, 48294000081, 45570000125, 34100005185 (AS) had
+  corrupted x/y and cl_id_min/cl_id_max from the N013 closure bug
+  (documented in 0.0.8). Nodes rederived from their own centerlines using
+  the fixed code; node_length restored from v17b NetCDF to preserve exact
+  sum-equals-reach_length consistency.
+- **SWOT reach filters aligned with node filters.** `build_reach_filter_sql`
+  now includes cross-track distance (10-60 km) and valid time_str filters,
+  matching the node-level filters. Code change only; no DB data affected.
+- **`rederive_scrambled_nodes.py` safeguards added.** After rederiving nodes,
+  the script now automatically recalculates node dist_out (prevents N004
+  violations) and verifies node_length sums (catches G002 regressions).
 
 ### 0.0.9 (April 2026)
 - **Flow correction fully reverted.** All 810 flow-corrected reaches restored

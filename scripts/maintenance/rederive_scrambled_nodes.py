@@ -74,6 +74,107 @@ def detect_scrambled(db_path: str, region: str) -> list[int]:
         con.close()
 
 
+def propagate_dist_out_for_reaches(
+    conn, region: str, reach_ids: list[int]
+) -> int:
+    """Recalculate node-level dist_out for specified reaches.
+
+    After rederive_nodes changes node positions/order, the node dist_out
+    values must be re-interpolated from the reach using the midpoint
+    convention:  reach_dist_out - reach_length + cumsum(node_length) - 0.5*node_length
+
+    Without this step, node_order changes leave dist_out at stale positions,
+    causing N004 (dist_out monotonicity) violations.
+
+    Uses the caller's connection to stay within the same transaction.
+    """
+    updated = 0
+    for rid in reach_ids:
+        r = conn.execute(
+            "SELECT dist_out, reach_length FROM reaches "
+            "WHERE reach_id = ? AND region = ?",
+            [rid, region],
+        ).fetchone()
+        if r is None or r[1] == 0:
+            continue
+        reach_do, reach_len = r
+
+        nodes = conn.execute(
+            "SELECT node_id, node_order, node_length, dist_out "
+            "FROM nodes WHERE reach_id = ? AND region = ? "
+            "ORDER BY node_order",
+            [rid, region],
+        ).fetchall()
+
+        cumsum = 0.0
+        batch = []
+        for node_id, _order, node_length, old_do in nodes:
+            if node_length <= 0:
+                node_length = 0.01  # guard against zero-length nodes
+            cumsum += node_length
+            new_do = reach_do - reach_len + cumsum - 0.5 * node_length
+            if abs(new_do - old_do) > 0.01:
+                batch.append((new_do, node_id))
+
+        if batch:
+            conn.executemany(
+                f"UPDATE nodes SET dist_out = ? "
+                f"WHERE node_id = ? AND region = '{region}'",
+                batch,
+            )
+            updated += len(batch)
+
+    return updated
+
+
+def verify_node_lengths(conn, region: str, reach_ids: list[int]) -> list[int]:
+    """Check sum(node_length) == reach_length for processed reaches.
+
+    Returns list of reach_ids where the two diverge by more than 1%.
+    Guards against the historical N013 closure bug in rederive_nodes()
+    that could corrupt node_length on unrelated reaches.
+    """
+    bad = []
+    for rid in reach_ids:
+        r = conn.execute(
+            "SELECT r.reach_length, SUM(n.node_length) "
+            "FROM reaches r "
+            "JOIN nodes n ON r.reach_id = n.reach_id AND r.region = n.region "
+            "WHERE r.reach_id = ? AND r.region = ? "
+            "GROUP BY r.reach_length",
+            [rid, region],
+        ).fetchone()
+        if r and r[0] > 0:
+            pct = abs(r[0] - r[1]) / r[0] * 100
+            if pct > 1.0:
+                bad.append(rid)
+    return bad
+
+
+def verify_dist_out_monotonicity(
+    conn, region: str, reach_ids: list[int]
+) -> list[int]:
+    """Check dist_out increases with node_order for processed reaches.
+
+    Returns list of reach_ids with N004 violations after propagation.
+    """
+    bad = []
+    for rid in reach_ids:
+        violations = conn.execute(
+            """
+            SELECT COUNT(*) FROM (
+                SELECT node_order, dist_out,
+                    LAG(dist_out) OVER (ORDER BY node_order) AS prev_do
+                FROM nodes WHERE reach_id = ? AND region = ?
+            ) WHERE prev_do IS NOT NULL AND dist_out < prev_do
+            """,
+            [rid, region],
+        ).fetchone()[0]
+        if violations > 0:
+            bad.append(rid)
+    return bad
+
+
 def rederive_region(
     db_path: str, region: str, reach_ids: list[int], dry_run: bool
 ) -> dict:
@@ -89,6 +190,45 @@ def rederive_region(
             dry_run=dry_run,
             reason="Fix scrambled node geolocation (0.0.10)",
         )
+
+        if not dry_run:
+            ok_ids = [
+                d["reach_id"]
+                for d in result["details"]
+                if d["status"] == "ok"
+            ]
+            if not ok_ids:
+                return result
+
+            # Use the workflow's DB connection for all post-rederive
+            # operations so everything stays in one transaction.
+            conn = wf.sword.db.conn
+
+            # After rederive, recalculate node dist_out for affected
+            # reaches to prevent N004 violations from stale positions.
+            n_updated = propagate_dist_out_for_reaches(conn, region, ok_ids)
+            logger.info(
+                f"  Recalculated dist_out on {n_updated} nodes "
+                f"across {len(ok_ids)} reaches"
+            )
+
+            # Verify dist_out monotonicity (N004).
+            bad_n004 = verify_dist_out_monotonicity(conn, region, ok_ids)
+            if bad_n004:
+                logger.error(
+                    f"  N004 ALERT: {len(bad_n004)} reaches have "
+                    f"non-monotonic dist_out after propagation: {bad_n004}"
+                )
+
+            # Verify node_length integrity (G002) to catch any residual
+            # N013 closure-bug damage.
+            bad_g002 = verify_node_lengths(conn, region, ok_ids)
+            if bad_g002:
+                logger.error(
+                    f"  G002 ALERT: {len(bad_g002)} reaches have "
+                    f"node_length != reach_length after rederive: {bad_g002}"
+                )
+
         return result
     finally:
         wf.close()

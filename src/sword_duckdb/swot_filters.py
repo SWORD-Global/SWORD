@@ -123,6 +123,9 @@ def build_reach_filter_sql(colnames: set[str]) -> str:
     # Dark water fraction
     _append_dark_frac(conditions, colnames)
 
+    # Cross-track distance
+    _append_xtrack(conditions, colnames)
+
     # Crossover calibration quality
     if "xovr_cal_q" in colnames:
         conditions.append(f"(xovr_cal_q <= {QUALITY_MAX} OR xovr_cal_q IS NULL)")
@@ -130,6 +133,10 @@ def build_reach_filter_sql(colnames: set[str]) -> str:
     # Ice climatology
     if "ice_clim_f" in colnames:
         conditions.append("ice_clim_f = 0")
+
+    # Valid time
+    if "time_str" in colnames:
+        conditions.append("time_str IS NOT NULL AND time_str != ''")
 
     return " AND ".join(conditions)
 

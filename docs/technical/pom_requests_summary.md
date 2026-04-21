@@ -207,7 +207,7 @@ Checks run against `sword_v17c.duckdb` after resyncing `node_order`,
 | Check | Value | Notes |
 |-------|-------|-------|
 | C003 | 23,012 | Unreliable reaches in type distribution summary |
-| C004 | 6,166 | Lakeflag/type mismatches flagged for contextual review |
+| C004 | 1,196 | Lakeflag/type mismatches remaining after 0.0.10 reconciliation (down from 6,166). 5,043 resolved via manual review + classifier. |
 | FL001 | 8,457 | Reaches without SWOT observations |
 | T019 | 127,406 (51.2%) | Reaches with `river_name='NODATA'`; source-data limitation |
 
