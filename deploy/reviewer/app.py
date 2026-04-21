@@ -1727,7 +1727,7 @@ with tab3:
         st.markdown(
             f"### Progress: **{pct_done:.1f}%** ({total_reviewed} of {total} reviewed)"
         )
-        st.progress(total_reviewed / total if total > 0 else 0)
+        st.progress(min(total_reviewed / total, 1.0) if total > 0 else 0)
 
         col1, col2 = st.columns(2)
         col1.metric("⏳ Remaining", remaining)
@@ -1951,7 +1951,7 @@ with tab4:
         col1.metric("Remaining", remaining)
         col2.metric("Reviewed", done)
         col3.metric("Total", total)
-        st.progress(done / total if total > 0 else 0)
+        st.progress(min(done / total, 1.0) if total > 0 else 0)
 
         if remaining == 0:
             st.success("🎉 All suspect reaches reviewed!")
@@ -2126,7 +2126,7 @@ with tab6:
 
         if total > 0:
             st.progress(
-                done / total if total > 0 else 0, text=f"{done}/{total} reviewed"
+                min(done / total, 1.0) if total > 0 else 0, text=f"{done}/{total} reviewed"
             )
 
         if remaining == 0 and total > 0:
@@ -2359,7 +2359,7 @@ with tab7:
         col1.metric("Remaining", remaining)
         col2.metric("Reviewed", done)
         col3.metric("Total", total)
-        st.progress(done / total if total > 0 else 0)
+        st.progress(min(done / total, 1.0) if total > 0 else 0)
 
         if remaining == 0:
             st.success("🎉 All mismatches reviewed!")
@@ -2543,7 +2543,7 @@ with tab9:
         col1.metric("Remaining", remaining)
         col2.metric("Reviewed", done)
         col3.metric("Total Orphans", total)
-        st.progress(done / total if total > 0 else 0)
+        st.progress(min(done / total, 1.0) if total > 0 else 0)
 
         st.info(
             "💡 **Orphans** are reaches with no upstream AND no downstream neighbors. Most are valid isolated water bodies (ponds, small lakes)."
@@ -3017,7 +3017,7 @@ with tab_a002:
         st.markdown(
             f"### Progress: **{pct_done:.1f}%** ({total_reviewed} of {total} reviewed)"
         )
-        st.progress(total_reviewed / total if total > 0 else 0)
+        st.progress(min(total_reviewed / total, 1.0) if total > 0 else 0)
 
         col1, col2 = st.columns(2)
         col1.metric("Remaining", remaining)

@@ -1004,7 +1004,7 @@ with tab_c004:
         col1.metric("Remaining", remaining)
         col2.metric("Reviewed", done)
         col3.metric("Total", total)
-        st.progress(done / total if total > 0 else 0)
+        st.progress(min(done / total, 1.0) if total > 0 else 0)
         if remaining == 0:
             st.success("All mismatches reviewed!")
         else:
@@ -1150,7 +1150,7 @@ with tab_c001:
         col3.metric("Total", total)
         if total > 0:
             st.progress(
-                done / total if total > 0 else 0, text=f"{done}/{total} reviewed"
+                min(done / total, 1.0) if total > 0 else 0, text=f"{done}/{total} reviewed"
             )
         if remaining == 0 and total > 0:
             st.success("All lake sandwiches reviewed!")
