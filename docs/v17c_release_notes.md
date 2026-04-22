@@ -53,6 +53,13 @@
 - **`rederive_scrambled_nodes.py` safeguards added.** After rederiving nodes,
   the script now automatically recalculates node dist_out (prevents N004
   violations) and verifies node_length sums (catches G002 regressions).
+- **Node ordering normalized in NetCDF export.** About 8% of reaches
+  (18,552 globally) had nodes stored in descending dist_out order in v17b
+  NetCDF due to arbitrary GRWL centerline digitization direction. Nodes
+  are now exported in ascending node_order (downstream-first) for all
+  reaches. This fixes slope sign reversals in processing code that
+  assumes the first node in the array is the downstream end. The
+  underlying data is unchanged; only the file ordering is corrected.
 
 ### 0.0.9 (April 2026)
 - **Flow correction fully reverted.** All 810 flow-corrected reaches restored

@@ -679,14 +679,44 @@ def _export_region_inner(v17b, con, region, out_path, t0):
     num_nodes = len(node_data["node_id"])
     print(f"  nodes: {num_nodes}")
 
-    # Validate node count and reorder to match v17b
+    # Validate node count against v17b
     v17b_node_ids = v17b.groups["nodes"].variables["node_id"][:]
     if num_nodes != len(v17b_node_ids):
         raise ValueError(
             f"Node count mismatch for {region}: v17c={num_nodes}, v17b={len(v17b_node_ids)}"
         )
-    db_node_idx = {int(nid): i for i, nid in enumerate(node_data["node_id"])}
-    reorder_node = np.array([db_node_idx[int(nid)] for nid in v17b_node_ids])
+
+    # Reorder nodes: follow v17b REACH order, but within each reach sort by
+    # node_order (ascending dist_out, downstream-first).  v17b had ~8% of
+    # reaches with nodes in descending order due to arbitrary GRWL centerline
+    # digitization direction.  Normalizing to ascending order ensures the
+    # first node in the array is always the downstream end.
+    v17b_reach_order = v17b.groups["reaches"].variables["reach_id"][:]
+    node_reach_ids = node_data["reach_id"]
+    # Query node_order for the sort key
+    node_order_arr = con.execute(
+        "SELECT node_id, node_order FROM nodes WHERE region = ? ORDER BY node_id",
+        [region],
+    ).fetchnumpy()
+    node_order_map = dict(zip(
+        node_order_arr["node_id"].astype(int),
+        node_order_arr["node_order"].astype(int),
+    ))
+    # Build target order: for each reach in v17b order, emit its nodes by node_order
+    reach_to_db_nodes = {}
+    for i, (nid, rid) in enumerate(zip(node_data["node_id"], node_reach_ids)):
+        rid_int = int(rid)
+        if rid_int not in reach_to_db_nodes:
+            reach_to_db_nodes[rid_int] = []
+        reach_to_db_nodes[rid_int].append((node_order_map.get(int(nid), 0), i))
+    reorder_node_list = []
+    for rid in v17b_reach_order:
+        rid_int = int(rid)
+        if rid_int in reach_to_db_nodes:
+            # Sort by node_order within reach (ascending = downstream first)
+            sorted_nodes = sorted(reach_to_db_nodes[rid_int], key=lambda x: x[0])
+            reorder_node_list.extend(db_idx for _, db_idx in sorted_nodes)
+    reorder_node = np.array(reorder_node_list)
     node_data = {k: _reorder(v, reorder_node) for k, v in node_data.items()}
 
     # -- Query DuckDB centerline data --------------------------------------
