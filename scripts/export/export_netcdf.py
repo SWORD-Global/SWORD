@@ -279,6 +279,12 @@ def _v17c_reach_scalar_specs():
         ("slope_obs_n_passes", "i4", FILL_I4, "slope_obs_n_passes", {}),
         ("slope_obs_q", "i4", FILL_I4, "slope_obs_q", {}),
         ("n_obs", "i4", FILL_I4, "n_obs", {}),
+        # Metadata
+        ("river_name_local", "str", None, "river_name_local", {}),
+        ("river_name_en", "str", None, "river_name_en", {}),
+        ("version", "str", None, "version", {}),
+        ("add_flag", "str", None, "add_flag", {}),
+        ("swot_obs_source", "str", None, "swot_obs_source", {}),
     ]
 
 
@@ -358,6 +364,9 @@ def _v17c_node_scalar_specs():
         ("width_obs_mad", "f8", FILL_F8, "width_obs_mad", {"units": "meters"}),
         ("n_obs", "i4", FILL_I4, "n_obs", {}),
         ("facc_quality", "i4", FILL_I4, "facc_quality", {}),  # VARCHAR→i4
+        # Metadata
+        ("version", "str", None, "version", {}),
+        ("add_flag", "str", None, "add_flag", {}),
     ]
 
 
@@ -573,7 +582,7 @@ VARCHAR_INT_COLS = {
     "facc_quality": FACC_QUALITY_MAP,
     "slope_obs_quality": SLOPE_OBS_QUALITY_MAP,
 }
-STRING_COLS = {"river_name", "edit_flag"}
+STRING_COLS = {"river_name", "edit_flag", "river_name_local", "river_name_en", "version", "add_flag", "swot_obs_source"}
 
 
 def _write_scalar_var(grp, nc_name, nc_type, fill_value, data, attrs, dim_name):
@@ -585,7 +594,7 @@ def _write_scalar_var(grp, nc_name, nc_type, fill_value, data, attrs, dim_name):
             else None
         )
         var = grp.createVariable(nc_name, str, (dim_name,), fill_value=fv)
-        var._Encoding = "ascii"
+        var._Encoding = "utf-8"
         var[:] = _convert_string_col(data)
     else:
         var = grp.createVariable(nc_name, nc_type, (dim_name,), fill_value=fill_value)

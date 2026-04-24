@@ -1,6 +1,6 @@
 # SWORD v17c Beta Release Notes
 
-**Version:** v17c beta 0.0.10
+**Version:** v17c beta 0.0.11
 **Date:** April 2026
 **Authors:** James H. Gearon, Tamlin M. Pavelsky, Niek Collot d'Escury
 **Base version:** SWORD v17b (March 2025, UNC)
