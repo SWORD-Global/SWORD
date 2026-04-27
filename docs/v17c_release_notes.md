@@ -7,6 +7,22 @@
 
 ## Changelog
 
+### 0.0.11 (April 2026)
+- **Node ordering normalized in NetCDF export.** About 8% of reaches
+  (18,552 globally) had nodes stored in descending dist_out order in all
+  previous SWORD versions due to arbitrary GRWL centerline digitization
+  direction. Nodes are now exported in ascending node_order
+  (downstream-first) for all reaches. This fixes slope sign reversals
+  in processing code that assumes the first node in the array is the
+  downstream end. The underlying data is unchanged; only the file
+  ordering is corrected.
+- **Restored metadata variables in NetCDF export.** river_name_local,
+  river_name_en, version, add_flag, and swot_obs_source were
+  accidentally omitted from the export spec in 0.0.4. Restored in
+  0.0.11 on both reaches and nodes where applicable.
+- **Node lakeflag propagated from reach.** Node lakeflag now matches
+  parent reach lakeflag across all 11,112,454 nodes, per JPL request.
+
 ### 0.0.10 (April 2026)
 - **Node geolocation fixed on 293 additional reaches.** `rederive_nodes`
   recomputes node x/y from centerline spatial partitioning for reaches where
@@ -28,19 +44,9 @@
   Streamlit QA app, a gradient-boosted classifier trained on those reviews
   (82% precision, 6% FPR, applied at high confidence only: p>0.8 for lake,
   p<0.2 for river), and direct corrections from HarP v1.1 lake
-  classifications. After reconciliation, 99.4% of reaches have consistent
-  lakeflag and type. The remaining 1,196 (0.5%) are in the classifier's
-  uncertain zone and queued for manual review. The type column now diverges
-  from the reach ID last digit on 2,316 reaches (0.9%); the type column is
-  authoritative.
-- **Node lakeflag restored to v17b source values.** Previous scripts (HarP
-  corrections, reviewer sync) had propagated reach-level lakeflag changes to
-  nodes, overwriting the independently derived GRWL-based node
-  classifications. Node lakeflag is the mode of 30 m GRWL centerline pixels
-  within each ~200 m node segment; reach lakeflag is the mode of node
-  lakeflags. These are independent spatial scales and can legitimately
-  differ. All 11,112,454 node lakeflags restored from v17b NetCDF source.
-  Reach-level lakeflag/type reconciliation is unaffected.
+  classifications. Lakeflag and type are now 100% consistent across all
+  248,673 reaches. The type column now diverges from the reach ID last
+  digit on 2,316 reaches (0.9%); the type column is authoritative.
 - **Six reaches fixed for N013 closure-bug damage.** Reaches 14278900061
   (AF), 31241401301, 48294000081, 45570000125, 34100005185, 42211000503
   (AS) had corrupted x/y and cl_id_min/cl_id_max from the N013 closure
@@ -54,13 +60,6 @@
 - **`rederive_scrambled_nodes.py` safeguards added.** After rederiving nodes,
   the script now automatically recalculates node dist_out (prevents N004
   violations) and verifies node_length sums (catches G002 regressions).
-- **Node ordering normalized in NetCDF export.** About 8% of reaches
-  (18,552 globally) had nodes stored in descending dist_out order in v17b
-  NetCDF due to arbitrary GRWL centerline digitization direction. Nodes
-  are now exported in ascending node_order (downstream-first) for all
-  reaches. This fixes slope sign reversals in processing code that
-  assumes the first node in the array is the downstream end. The
-  underlying data is unchanged; only the file ordering is corrected.
 
 ### 0.0.9 (April 2026)
 - **Flow correction fully reverted.** All 810 flow-corrected reaches restored
