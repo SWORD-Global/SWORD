@@ -514,12 +514,11 @@ Example: 5 = negative slope (1) + high variance (4).
   Present in both v17b and v17c unchanged. The A003 lint check is downgraded
   to WARNING for this reason.
 
-- **`lakeflag`/`type` mismatch:** ~5,770 reaches have `lakeflag=1` (lake)
-  but `type=1` (river), introduced by HarP and lake-sandwich corrections
-  which updated `lakeflag` but not `type`. `type` is encoded in the last
-  digit of `reach_id`, so changing it would change reach IDs. Policy for
-  reach_id changes under discussion. Affects users filtering on both
-  `lakeflag` and `type` at river-lake boundaries. Tracked in issue #208.
+- **`lakeflag`/`type` mismatch:** Resolved in 0.0.10. All 248,673 reaches
+  now have consistent lakeflag and type. The `type` column is authoritative
+  and diverges from the reach ID last digit on 2,316 reaches (0.9%) due
+  to in-place corrections. 1,196 reaches were provisionally defaulted to
+  river and tagged `clf_provisional_river` for future review.
 
 ---
 

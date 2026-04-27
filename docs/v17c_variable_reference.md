@@ -248,7 +248,7 @@ other node-level outlet distances.
 | wth_coef | f8 | | -9999.0 | Width coefficient |
 | ext_dist_coef | f8 | | -9999.0 | Extraction distance coefficient |
 | facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |
-| lakeflag | i8 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal) |
+| lakeflag | i8 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal). In 0.0.11+, propagated from parent reach lakeflag per JPL request (was independently derived from GRWL in prior versions). |
 | max_width | f8 | meters | -9999.0 | Maximum width |
 | meander_length | f8 | | -9999.0 | Meander wavelength |
 | sinuosity | f8 | | -9999.0 | Channel sinuosity |
