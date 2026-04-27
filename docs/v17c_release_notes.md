@@ -41,12 +41,13 @@
   lakeflags. These are independent spatial scales and can legitimately
   differ. All 11,112,454 node lakeflags restored from v17b NetCDF source.
   Reach-level lakeflag/type reconciliation is unaffected.
-- **Five reaches fixed for N013 closure-bug damage.** Reaches 14278900061
-  (AF), 31241401301, 48294000081, 45570000125, 34100005185 (AS) had
-  corrupted x/y and cl_id_min/cl_id_max from the N013 closure bug
-  (documented in 0.0.8). Nodes rederived from their own centerlines using
-  the fixed code; node_length restored from v17b NetCDF to preserve exact
-  sum-equals-reach_length consistency.
+- **Six reaches fixed for N013 closure-bug damage.** Reaches 14278900061
+  (AF), 31241401301, 48294000081, 45570000125, 34100005185, 42211000503
+  (AS) had corrupted x/y and cl_id_min/cl_id_max from the N013 closure
+  bug (documented in 0.0.8). Nodes rederived from their own centerlines
+  using the fixed code; node_length restored from v17b NetCDF to preserve
+  exact sum-equals-reach_length consistency. Full sweep confirms zero
+  reaches with node_length mismatch above 0.1% globally.
 - **SWOT reach filters aligned with node filters.** `build_reach_filter_sql`
   now includes cross-track distance (10-60 km) and valid time_str filters,
   matching the node-level filters. Code change only; no DB data affected.
