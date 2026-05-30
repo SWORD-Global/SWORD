@@ -109,22 +109,22 @@ across all boundaries).
 | width_obs_p90 | f8 | meters | -9999.0 | | SWOT width 90th percentile |
 | width_obs_range | f8 | meters | -9999.0 | | SWOT width range (p90 - p10) |
 | width_obs_mad | f8 | meters | -9999.0 | | SWOT width median absolute deviation |
-| slope_obs_p10 | f8 | meters/kilometers | -9999.0 | | SWOT slope 10th percentile |
-| slope_obs_p20 | f8 | meters/kilometers | -9999.0 | | SWOT slope 20th percentile |
-| slope_obs_p30 | f8 | meters/kilometers | -9999.0 | | SWOT slope 30th percentile |
-| slope_obs_p40 | f8 | meters/kilometers | -9999.0 | | SWOT slope 40th percentile |
-| slope_obs_p50 | f8 | meters/kilometers | -9999.0 | | SWOT slope 50th percentile (median) |
-| slope_obs_p60 | f8 | meters/kilometers | -9999.0 | | SWOT slope 60th percentile |
-| slope_obs_p70 | f8 | meters/kilometers | -9999.0 | | SWOT slope 70th percentile |
-| slope_obs_p80 | f8 | meters/kilometers | -9999.0 | | SWOT slope 80th percentile |
-| slope_obs_p90 | f8 | meters/kilometers | -9999.0 | | SWOT slope 90th percentile |
-| slope_obs_range | f8 | meters/kilometers | -9999.0 | | SWOT slope range (p90 - p10) |
-| slope_obs_mad | f8 | meters/kilometers | -9999.0 | | SWOT slope median absolute deviation |
-| slope_obs_adj | f8 | meters/kilometers | -9999.0 | | Adjusted SWOT slope (bias-corrected) |
+| slope_obs_p10 | f8 | meters/meters | -9999.0 | | SWOT slope 10th percentile |
+| slope_obs_p20 | f8 | meters/meters | -9999.0 | | SWOT slope 20th percentile |
+| slope_obs_p30 | f8 | meters/meters | -9999.0 | | SWOT slope 30th percentile |
+| slope_obs_p40 | f8 | meters/meters | -9999.0 | | SWOT slope 40th percentile |
+| slope_obs_p50 | f8 | meters/meters | -9999.0 | | SWOT slope 50th percentile (median) |
+| slope_obs_p60 | f8 | meters/meters | -9999.0 | | SWOT slope 60th percentile |
+| slope_obs_p70 | f8 | meters/meters | -9999.0 | | SWOT slope 70th percentile |
+| slope_obs_p80 | f8 | meters/meters | -9999.0 | | SWOT slope 80th percentile |
+| slope_obs_p90 | f8 | meters/meters | -9999.0 | | SWOT slope 90th percentile |
+| slope_obs_range | f8 | meters/meters | -9999.0 | | SWOT slope range (p90 - p10) |
+| slope_obs_mad | f8 | meters/meters | -9999.0 | | SWOT slope median absolute deviation |
+| slope_obs_adj | f8 | meters/meters | -9999.0 | | Adjusted SWOT slope (bias-corrected) |
 | slope_obs_slopeF | f8 | | -9999.0 | | Slope quality F-statistic |
 | slope_obs_reliable | i4 | | -9999 | flag_values=[0,1], flag_meanings="unreliable reliable" | Whether SWOT slope is reliable |
 | slope_obs_quality | i4 | | -9999 | flag_values=[0..8], flag_meanings="reliable small_negative moderate_negative large_negative negative below_ref_uncertainty high_uncertainty noise_high_nobs flat_water_noise" | SWOT slope quality category |
-| slope_obs_n | i8 | | -9999 | | Number of SWOT slope observations |
+| slope_obs_n | i8 | | -9999 | | Number of RiverSP node observations used in pass-level slope fits |
 | slope_obs_n_passes | i8 | | -9999 | | Number of SWOT passes with slope |
 | slope_obs_q | i8 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |

@@ -31,11 +31,11 @@ def check_dist_out_monotonicity(
     """
     Check that dist_out_dijkstra decreases downstream.
 
-    Uses dist_out_dijkstra (v17c, computed from corrected topology) rather
-    than dist_out (v17b original). dist_out is stale at the 807 flow-corrected
-    reaches where topology direction was updated but dist_out retains its v17b
-    value, making it inconsistent with the corrected flow direction.
-    dist_out_dijkstra is topology-consistent and has zero violations globally.
+    Uses dist_out_dijkstra (v17c, graph-derived outlet distance) rather than
+    dist_out (v17b source distance). Historical flow-correction topology flips
+    were fully reverted in 0.0.9; this check does not assume any retained
+    flow-corrected reach set. dist_out_dijkstra is topology-consistent and has
+    zero violations globally.
 
     For reaches with multiple downstream neighbors (bifurcations), we check
     the MINIMUM downstream dist_out_dijkstra, which handles multi-outlet

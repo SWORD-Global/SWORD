@@ -1,15 +1,66 @@
 # SWORD v17c Beta Release Notes
 
-**Version:** v17c beta 0.0.11
-**Date:** April 2026
-**Authors:** James H. Gearon, Tamlin M. Pavelsky, Niek Collot d'Escury
+**Version:** v17c beta 0.0.12
+**Date:** May 2026
 **Base version:** SWORD v17b (March 2025, UNC)
 
 ## Changelog
 
+### 0.0.12 (May 2026)
+- **Node coordinates restored to v17b for SWOT D0-D2 continuity.** The
+  344 reaches whose nodes were rederived in 0.0.8 and 0.0.10 now use v17b
+  node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` values again.
+  A small OC split-revert residue on reach 51111300061 was included in the
+  same pass. Post-revert validation found zero node coordinate differences
+  relative to v17b NetCDF across all 11,112,454 nodes.
+- **Centerline-to-node assignments resynchronized.** `centerlines.node_id`
+  was restored from v17b on affected reaches so node geometry and
+  centerline allocation remain internally consistent.
+- **Node order repaired on restored-coordinate reaches.** Projection-based
+  ordering over the v17b-restored node coordinates updates `node_order` on
+  3,725 nodes across 221 of the 344 affected reaches, and updates 45
+  `dn_node_id`/`up_node_id` boundary pairs. The repair preserves node
+  coordinates and recomputes the six node distance fields from the current
+  midpoint convention across all 344 restored-coordinate reaches, including
+  a distance-only cleanup for 289 inherited `dist_out` rows on five
+  unchanged-order reaches. AS reach 35301100891 now encodes POM's intended
+  downstream-to-upstream sequence (`2, 3, ..., 23, 25, 26, 24, 27, ...,
+  73, 75, 74, 1`) without moving node lat/lon.
+- **SWOT slope observations recomputed from node WSE.** `slope_obs_*` on
+  reaches now comes from pass-level regressions of RiverSP node `wse_sm`
+  against the current beta12 `nodes.dist_out`, then reach-level percentiles
+  of those pass slopes. This replaces stale reach-level signed RiverSP slopes
+  whose sign could reflect older node ordering. Median `slope_obs_p50`
+  coverage is 173,732 reaches; negative medians decrease from 18,805 before
+  the correction to 9,988 after the correction. POM's canonical AS reach
+  35301100891 changes from `slope_obs_p50=-0.0136548684` to
+  `+0.0142687580` m/m while retaining `slope=15.121399` m/km.
+  Downstream users should read both `slope` and `slope_obs_*` directly from
+  0.0.12; no external sign flip is needed for reaches whose node order changed.
+- **Static MERIT/SRTM slope semantics unchanged.** The legacy `reaches/slope`
+  variable remains the nonnegative MERIT/SRTM slope magnitude in m/km; it is
+  not a signed flow-direction variable. 0.0.12 does not change
+  `reaches/slope`, `reaches/wse`, or `nodes/wse` relative to v17b. Endpoint-WSE
+  sign checks may still warn where inherited MERIT/SRTM node WSE values are
+  locally inconsistent with flow direction; those warnings are data-quality
+  diagnostics, not instructions to flip `reaches/slope` or `slope_obs_*`.
+  MERIT/SRTM WSE resampling was evaluated after POM's Test 16 feedback and
+  deferred: the legacy SWORD workflow used UPA-filtered nearest MERIT river
+  pixels and centerline aggregation, so a faithful correction is a
+  science-data reconstruction task rather than a final beta patch.
+- **v17c analytic fields preserved.** The revert does not undo the v17c
+  midpoint node-distance convention, lakeflag/type reconciliation, SWOT
+  WSE/width observation statistics, metadata restoration, or export ordering
+  changes. No RiverObs software change or coordinate-substitution mapping table
+  is required for D0-D2 coordinate continuity.
+- **Exports regenerated and verified.** NetCDF, GeoPackage, and GeoParquet
+  artifacts were regenerated for all six regions. Export row counts match
+  the DuckDB source for reaches and nodes in GeoPackage/GeoParquet, and for
+  reaches, nodes, and centerlines in NetCDF.
+
 ### 0.0.11 (April 2026)
-- **Node ordering normalized in NetCDF export.** About 8% of reaches
-  (18,552 globally) had nodes stored in descending dist_out order in all
+- **Node ordering normalized in NetCDF export.** About 7.5% of reaches
+  (18,553 globally) had nodes stored in descending dist_out order in all
   previous SWORD versions due to arbitrary GRWL centerline digitization
   direction. Nodes are now exported in ascending node_order
   (downstream-first) for all reaches. This fixes slope sign reversals
@@ -24,18 +75,22 @@
   parent reach lakeflag across all 11,112,454 nodes, per JPL request.
 
 ### 0.0.10 (April 2026)
-- **Node geolocation fixed on 293 additional reaches.** `rederive_nodes`
+- **Node geolocation fixed on 303 additional reaches.** `rederive_nodes`
   recomputes node x/y from centerline spatial partitioning for reaches where
   consecutive node gaps exceed 3x the reach's median spacing and 0.4 km
-  absolute (POM test 6b criteria). By region: AS:183, SA:35, AF:27, EU:19,
-  OC:18, NA:6. Combined with the 41 reaches fixed in 0.0.8, total rederived:
-  334 reaches (0.13%). 10 reaches remain unfixable (centerline geometry
-  issues inherited from v17b).
-- **Reach 35301100891 node_order rotation fixed.** This AS reach had node_ids
-  rotated by one position (2, 3, ..., 75, 1 instead of 1, 2, ..., 75) since
-  v17b. `node_order` now matches `node_id` ascending, `dn_node_id` = 0011,
-  `up_node_id` = 0751. Node dist_out and all interpolated distance columns
-  recalculated to match the corrected node_order.
+  absolute (POM test 6b criteria). By region: AS:189, SA:38, AF:29, EU:21,
+  OC:19, NA:7. Combined with the 41 reaches fixed in 0.0.8, total rederived:
+  344 reaches (0.14%). **10 reaches were fixed but still trigger the
+  scrambled-node detector** (centerline geometry issues inherited from v17b);
+  see Known Limitations.
+- **Reach 35301100891 node_order rotation and geolocation fixed.** This AS
+  reach had node_ids rotated by one position (2, 3, ..., 75, 1 instead of
+  1, 2, ..., 75) since v17b. Additionally, 74 of 75 nodes were rederived
+  from the centerline (max shift ~12.6 km on node 35301100890011) due to
+  scrambled geolocation detected by POM test 6b. `node_order` now matches
+  `node_id` ascending, `dn_node_id` = 0011, `up_node_id` = 0751. Node
+  dist_out and all interpolated distance columns recalculated to match the
+  corrected node_order.
 - **Reach lakeflag and type reconciled for lake classification.** About
   6,200 reaches had inconsistent lakeflag and type fields (lakeflag=1 with
   type=1, or lakeflag=0 with type=3). Inconsistent reaches were either
@@ -266,7 +321,9 @@ ordered stably by `reach_id`. Node arrays are grouped contiguously by
 upstream).
 
 Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`)
-match v17b values across all formats (NetCDF, DuckDB, PostgreSQL).
+match v17b values across all formats (NetCDF, DuckDB, PostgreSQL). Node
+coordinate columns (`x`, `y`) also match v17b after the 0.0.12 continuity
+revert.
 
 All new variables use a fill value of -9999 where no observation or
 computation produced a value.
@@ -318,10 +375,9 @@ Eight of these variables also appear at node level. Six are interpolated
 by node position within the reach: `dist_out`, `hydro_dist_out`,
 `hydro_dist_hw`, `dist_out_dijkstra`, `pathlen_hw`, and `pathlen_out`.
 Three are flat copies from the parent reach: `subnetwork_id`,
-`best_headwater`, and `best_outlet`. For flow-corrected reaches (810),
-`node_order` is derived from reversed `node_id` order (since v17b
-`dist_out` is stale), and node `dist_out` is recomputed to match the
-corrected flow direction.
+`best_headwater`, and `best_outlet`. Historical flow-correction topology
+flips were fully reverted in 0.0.9, so the current 0.0.12 database does not
+retain a flow-corrected reach set requiring reversed `node_id` order.
 
 All six interpolated distance columns use the same midpoint formula:
 `reach_value - reach_length + cumsum(node_length) - 0.5 * node_length`.
@@ -362,14 +418,14 @@ measurement.
 
 | Variable | Type | Units | Description |
 |----------|------|-------|-------------|
-| `slope_obs_p10`–`slope_obs_p90` | float64 | m/km | Slope percentiles |
-| `slope_obs_range` | float64 | m/km | Slope observation range |
-| `slope_obs_mad` | float64 | m/km | Slope median absolute deviation |
-| `slope_obs_adj` | float64 | m/km | Adjusted slope |
+| `slope_obs_p10`–`slope_obs_p90` | float64 | m/m | Slope percentiles |
+| `slope_obs_range` | float64 | m/m | Slope observation range |
+| `slope_obs_mad` | float64 | m/m | Slope median absolute deviation |
+| `slope_obs_adj` | float64 | m/m | Adjusted slope |
 | `slope_obs_slopeF` | float64 | — | Slope F-statistic |
 | `slope_obs_reliable` | int32 | — | 0 = unreliable, 1 = reliable |
 | `slope_obs_quality` | int32 | — | Integer quality category (0–8; see Section 3) |
-| `slope_obs_n` | int64 | — | Number of slope observations |
+| `slope_obs_n` | int64 | — | Number of RiverSP node observations used in pass-level slope fits |
 | `slope_obs_n_passes` | int64 | — | Number of SWOT passes used |
 | `slope_obs_q` | int64 | — | Bitfield quality flag (see Section 3) |
 
@@ -514,6 +570,12 @@ Example: 5 = negative slope (1) + high variance (4).
   Present in both v17b and v17c unchanged. The A003 lint check is downgraded
   to WARNING for this reason.
 
+- **Node geolocation corrections deferred:** The 0.0.8 and 0.0.10
+  rederived-node coordinate edits were reverted in 0.0.12 to preserve SWOT
+  D0-D2 time-series continuity. Some node sequence/geolocation anomalies
+  inherited from v17b therefore remain. Treat full geolocation repair as a
+  v18 or separately approved release-envelope change.
+
 - **`lakeflag`/`type` mismatch:** Resolved in 0.0.10. All 248,673 reaches
   now have consistent lakeflag and type. The `type` column is authoritative
   and diverges from the reach ID last digit on 2,316 reaches (0.9%) due
@@ -529,14 +591,15 @@ Validation checks performed on the v17c data:
 | Audit | Finding |
 |-------|---------|
 | **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`) copied from v17b to ensure consistency across all formats. |
+| **Node coordinate continuity** | 0.0.12 restores v17b node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` for the 344 previously rederived reaches plus OC reach 51111300061 split-revert residue. Global node coordinate diff vs v17b NetCDF: 0. |
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
 | **path_freq gaps** | v17b had 4,952 connected non-ghost reaches with invalid path_freq (0 or -9999). Resolved in v17c; remaining nodata values are correctly attributed to ghost reaches (type=6). |
 | **subnetwork_id** | 3,027 components across 248,673 reaches verified. Pfafstetter banding correct. Zero cross-region collisions. 19 subnetworks (0.6%) span multiple v17b networks (expected). |
-| **Topology integrity** | T001 (dist_out_dijkstra monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: zero non-reciprocal edges (151 from incomplete flow correction revert resolved in beta 0.0.1). Note: reach-level v17b `dist_out` is stale at 807 flow-corrected reaches where topology direction was updated but reach `dist_out` retains its v17b value — use `dist_out_dijkstra` or `hydro_dist_out` for distance routing. Node-level `dist_out` is recomputed for all reaches (midpoint interpolation). |
+| **Topology integrity** | T001 (dist_out_dijkstra monotonicity), T012 (referential integrity), T013 (self-reference), T014 (bidirectional): all pass. T005/T007: zero non-reciprocal edges (151 from incomplete flow correction revert resolved in beta 0.0.1). Historical flow-correction topology flips were fully reverted in 0.0.9; `v17c_flow_corrections` is empty in the current database. Node-level `dist_out` is recomputed for all reaches using the midpoint interpolation convention. |
 | **n_rch_up/n_rch_down** | 148 scalar count mismatches corrected (flow corrections flipped reach_topology but did not recalculate counts). Zero mismatches across all 248,673 reaches. |
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
-| **Flow direction** | 1,112 experimental topology flips reverted after causing 30K disconnected reaches. 807 reaches across all regions retain corrected topology that differs from v17b (175 sections, median 5 reaches/section). OC has 119 of these (26 SWOT-validated sections). Non-OC corrections were retained from the flow correction pipeline; reach-level `dist_out` is stale at these reaches — use `dist_out_dijkstra`. Node-level `dist_out` is recomputed via midpoint interpolation. |
+| **Flow direction** | Experimental topology flips were ultimately reverted. The 1,112-flip experiment caused ~30K disconnected reaches and was rolled back; the later retained flow-correction family was also fully reverted in 0.0.9 after the scoring tautology was found. Current v17c-0.0.12 does not retain topology that differs from v17b because of this flow-correction pipeline. |
 | **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data. 200,201 nodes propagated. Tagged `edit_flag = "harp_lake"`. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
@@ -551,7 +614,8 @@ For POM (Pierre-Olivier Malaterre) validation results, see
   `eu`, `af`, `as`, `oc`
 - **Groups:** `centerlines`, `nodes`, `reaches`
   - `reaches/area_fits` and `reaches/discharge_models` subgroups (from v17b)
-- **Ordering:** Reach, node, and centerline arrays match v17b ordering
+- **Ordering:** Reach and centerline arrays match v17b ordering. Node arrays
+  are reach-contiguous and sorted by `node_order`.
 - **Fill value:** -9999 for all numeric variables (int32, int64, float64)
 - **Checksums:** SHA256 hashes listed in `SHA256SUMS_{version}.txt`
 - **Additional formats:** GeoPackage and GeoParquet exports available
