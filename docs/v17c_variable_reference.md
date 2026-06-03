@@ -9,28 +9,29 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 ## Distance Variable Conventions
 
 SWORD contains four distance-to-outlet variables. They differ in routing
-method, zero-point, and measurement anchor within a reach. The table below
+method, zero-point, and reach endpoint reporting convention. The table below
 summarizes these conventions; see "Node-Level Interpolation" for how each
 extends to nodes.
 
-| Variable | Routing | Reach-level anchor | Outlet value | Ghost reaches |
+| Variable | Routing | Reach-level value | Outlet value | Ghost reaches |
 |---|---|---|---|---|
-| `dist_out` (v17b) | v17b topology | upstream end of reach | `reach_length` | has value |
-| `hydro_dist_out` | `rch_id_dn_main` chain | upstream end of reach | `reach_length` | has value |
-| `dist_out_dijkstra` | Dijkstra shortest path | upstream end of reach | `reach_length` | has value |
-| `hydro_dist_hw` | `rch_id_up_main` chain | upstream end of reach | 0 | has value |
+| `dist_out` (v17b) | v17b topology | reported at reach upstream endpoint | `reach_length` | has value |
+| `hydro_dist_out` | `rch_id_dn_main` chain | reported at reach upstream endpoint | `reach_length` | has value |
+| `dist_out_dijkstra` | Dijkstra shortest path | reported at reach upstream endpoint | `reach_length` | has value |
+| `hydro_dist_hw` | `rch_id_up_main` chain | reported at reach upstream endpoint | 0 | has value |
 
-**Anchor convention.** All four distance variables anchor at the upstream
-end of the reach. For `dist_out`, `hydro_dist_out`, and
-`dist_out_dijkstra`, the value equals the distance from the upstream end
-of the reach to the outlet; each reach exceeds its downstream neighbor
-by its own `reach_length`. For `hydro_dist_hw`, the value equals the
-distance from the headwater to the upstream end of the reach; each reach
-exceeds its upstream neighbor by the upstream neighbor's `reach_length`.
+**Reach scalar convention.** These reach-level values are endpoint reports,
+not traversal-origin claims. `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra` are outlet-distance scalars reported at the upstream
+endpoint of each reach; each reach exceeds its
+downstream neighbor by its own `reach_length` on 1:1 links.
+`hydro_dist_hw` is also reported at the upstream endpoint, but measures
+distance from `best_headwater`; each downstream reach exceeds its
+upstream neighbor by the upstream neighbor's `reach_length` on 1:1 links.
 
 **Reference values.** `dist_out`, `hydro_dist_out`, and
 `dist_out_dijkstra` all assign an outlet reach a value equal to its
-`reach_length` (the upstream end is one reach length from the outlet
+`reach_length` (the upstream endpoint is one reach length from the outlet
 point). `hydro_dist_hw` assigns 0 at the headwater.
 
 **Ghost reaches.** All four distance variables retain values for ghost
@@ -69,9 +70,9 @@ single-scalar `dist_out` gaps.
 
 | Variable | NetCDF Type | Units | Fill Value | Encoding | Description |
 |---|---|---|---|---|---|
-| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet; outlet reach = reach_length; values retained for ghost reaches |
-| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance from the upstream end of the reach to best_outlet via rch_id_dn_main chain; outlet reach = reach_length |
-| hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem distance from best_headwater to the upstream end of the reach via rch_id_up_main chain; headwater = 0 |
+| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path outlet distance reported at the reach upstream endpoint; outlet reach = reach_length; values retained for ghost reaches |
+| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem outlet distance reported at the reach upstream endpoint via rch_id_dn_main chain; outlet reach = reach_length |
+| hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem headwater distance reported at the reach upstream endpoint via rch_id_up_main chain; headwater = 0 |
 | rch_id_up_main | i8 | | -9999 | | Main upstream neighbor reach ID (mainstem-preferred) |
 | rch_id_dn_main | i8 | | -9999 | | Main downstream neighbor reach ID (mainstem-preferred) |
 | subnetwork_id | i4 | | -9999 | | Connected component ID (Pfafstetter-offset, globally unique; differs from v17b `network`) |
@@ -80,7 +81,7 @@ single-scalar `dist_out` gaps.
 | best_headwater | i8 | | -9999 | | Width-prioritized upstream headwater reach ID |
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
 | pathlen_hw | f8 | meters | -9999.0 | | Cumulative reach_length sum from best_headwater to the downstream end of the reach (headwater = 0, increases downstream) |
-| pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum from the upstream end of the reach to best_outlet (outlet = 0, increases upstream) |
+| pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum toward best_outlet (outlet = 0, increases upstream) |
 | facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
 | dl_grod_id | i8 | | -9999 | | Dam/lake GROD ID (downstream lookup) |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
@@ -188,7 +189,7 @@ single-scalar `dist_out` gaps.
 | grod_id | i8 | | -9999 | GRanD/GROD dam ID |
 | hfalls_id | i8 | | -9999 | High falls ID |
 | slope | f8 | meters/kilometers | -9999.0 | Water surface slope from MERIT DEM |
-| dist_out | f8 | meters | -9999.0 | Distance from upstream end of reach to network outlet (v17b original; outlet reach = reach_length, not 0). See "Distance Variable Conventions" for comparison with v17c distance variables |
+| dist_out | f8 | meters | -9999.0 | Network outlet distance reported at the reach upstream endpoint (v17b original; outlet reach = reach_length, not 0). See "Distance Variable Conventions" for comparison with v17c distance variables |
 | n_rch_up | i4 | | -9999 | Number of upstream neighbor reaches |
 | n_rch_down | i4 | | -9999 | Number of downstream neighbor reaches |
 | lakeflag | i4 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal) |

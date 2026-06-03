@@ -194,7 +194,7 @@
   stale `dn_node_id` / `up_node_id` orientation on flow-corrected reaches,
   missing `nodes` layers in some GeoPackages, NULL `dist_out_dijkstra` at
   isolated ghost coastal outlets, and inconsistent single-node node-distance
-  anchoring relative to the other node-level outlet distances.
+  convention relative to the other node-level outlet distances.
 - **Release artifacts renamed and resynced.** NetCDF, GeoPackage, Parquet,
   release notes, and SHA256 manifests now use `0.0.5` filenames consistently
   in the local beta folder and Google Drive beta folder.
@@ -225,7 +225,7 @@
   reach (using v17b `dist_out` offset). `pathlen_hw` and `pathlen_out` changed
   from flat reach copies to per-node interpolated values.
 - **`hydro_dist_hw` convention fix.** Reach-level values shifted from
-  downstream-end anchor to upstream-end anchor, matching `dist_out`,
+  downstream-end reporting to upstream-end reporting, matching `dist_out`,
   `hydro_dist_out`, and `dist_out_dijkstra`. Headwater reaches now
   report 0 (was `reach_length`). Node-level values unchanged.
 - **F006 junction conservation fix.** 2 remaining junction violations
@@ -235,7 +235,7 @@
   from 0 (main) to 1 (side) by an undetermined prior operation; 9 of 13
   are linear reaches where side-channel classification is impossible.
 - **Distance convention documented.** Variable reference now includes a
-  convention table specifying the measurement anchor, zero-point, and
+  convention table specifying endpoint reporting, zero-point, and
   ghost reach behavior for all distance variables, plus node-level
   interpolation formulas.
 - **Variable reference updated.** 7 missing variables added, 8 type mismatches
@@ -250,19 +250,19 @@
   NetCDF, GeoPackage, and Parquet bundles recompute `node_order`,
   `dn_node_id`, and `up_node_id` from node `dist_out`, restore
   `dist_out_dijkstra = reach_length` for isolated ghost coastal outlets,
-  and align single-node `node.dist_out` with the same midpoint anchor used
+  and align single-node `node.dist_out` with the same midpoint convention used
   by the other node-level outlet distances.
 - **Ghost coastal outlet dist_out_dijkstra fix.** Isolated ghost coastal
   outlets (type=6 sinks with upstream neighbors but no path to real
   hydrologic outlets) now receive `dist_out_dijkstra = reach_length`,
   matching v17b `dist_out` behavior. Previously these 703 reaches in NA
   (similar counts in other regions) had NULL, but they should report the
-  distance from their start to the ocean outlet point.
+  reach-level outlet distance to the ocean outlet point.
 - **Exports regenerated (April 1 and 2, 2026).** The initial April 1 bundle
   captured the code fixes above. The April 2 reissue refreshed NetCDF,
   GeoPackage, and Parquet artifacts plus SHA256SUMS after repairing published
   `node_order` / boundary-node orientation metadata, ghost coastal outlet
-  `dist_out_dijkstra`, and single-node node-distance anchoring.
+  `dist_out_dijkstra`, and single-node node-distance conventions.
 
 ### 0.0.3 (March 2026)
 - **Routing weights learned from human labels.** Replaced the handcrafted
@@ -356,9 +356,9 @@ this is expected by design.
 
 | Variable | Type | Units | Description |
 |----------|------|-------|-------------|
-| `dist_out_dijkstra` | float64 | meters | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet (outlet = `reach_length`; values retained for ghost reaches) |
-| `hydro_dist_out` | float64 | meters | Mainstem distance from the upstream end of the reach to `best_outlet` via `rch_id_dn_main` chain (outlet = `reach_length`) |
-| `hydro_dist_hw` | float64 | meters | Mainstem distance from `best_headwater` to the upstream end of the reach via `rch_id_up_main` chain (headwater = 0) |
+| `dist_out_dijkstra` | float64 | meters | Dijkstra shortest-path outlet distance reported at the reach upstream endpoint (outlet = `reach_length`; values retained for ghost reaches) |
+| `hydro_dist_out` | float64 | meters | Mainstem outlet distance reported at the reach upstream endpoint via `rch_id_dn_main` chain (outlet = `reach_length`) |
+| `hydro_dist_hw` | float64 | meters | Mainstem headwater distance reported at the reach upstream endpoint via `rch_id_up_main` chain (headwater = 0) |
 | `rch_id_up_main` | int64 | — | Main upstream neighbor reach_id (mainstem-preferred) |
 | `rch_id_dn_main` | int64 | — | Main downstream neighbor reach_id (mainstem-preferred) |
 | `best_headwater` | int64 | — | Routing-score-prioritized headwater reach_id for the network component |
@@ -392,10 +392,12 @@ geometric center of its `node_length` segment. On a single-path network
 position within a reach, ordered by `dist_out` ascending (1 = downstream
 end, n = upstream end).
 
-**Distance convention note.** All four distance variables anchor at the
-upstream end of the reach. `dist_out`, `hydro_dist_out`, and
-`dist_out_dijkstra` assign `reach_length` at the outlet. `hydro_dist_hw`
-assigns 0 at the headwater and increases downstream.
+**Distance convention note.** These are endpoint-reported reach scalars, not
+traversal-origin claims. `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra` are outlet-distance values reported at the reach
+upstream endpoint and assign `reach_length` at the outlet. `hydro_dist_hw`
+is also reported at the reach upstream endpoint, but measures distance from
+`best_headwater` and assigns 0 at the headwater.
 See the variable reference for the full convention table.
 
 ### 2.2 SWOT Observation Statistics
