@@ -130,10 +130,9 @@
 ### 0.0.8 (April 2026)
 - **Node `dist_out` unified to midpoint convention.** All six node-level
   distance columns (`dist_out`, `hydro_dist_out`, `dist_out_dijkstra`,
-  `hydro_dist_hw`, `pathlen_hw`, `pathlen_out`) now use the same midpoint
-  interpolation formula: `reach_value - reach_length + cumsum(node_length)
-  - 0.5 * node_length`. Previously `dist_out` preserved v17b endpoint
-  values while the other five used midpoint, causing a systematic ~100 m
+  `hydro_dist_hw`, `pathlen_hw`, `pathlen_out`) now use midpoint
+  interpolation from reach-level values. Previously `dist_out` preserved
+  v17b endpoint values while the other five used midpoint, causing a systematic ~100 m
   discrepancy on single-path networks. On such networks the three
   outlet-distance columns are now exactly equal at every node. Breaking
   change from v17b convention; all POM release gate checks pass.
@@ -206,8 +205,9 @@
   all nodes. Now propagated from parent reaches.
 - **Dijkstra ghost outlet fix.** Ghost reaches (type=6) with out_degree=0 no
   longer report `dist_out_dijkstra=0`. All sinks are used as Dijkstra sources
-  for full coverage (94–99% per region); ghost sinks receive NULL. Real outlet
-  counts: NA=7, SA=1, EU=2, AF=1, AS=11, OC=1.
+  for full coverage, with outlet values following the v17b convention
+  (`dist_out_dijkstra = reach_length`). Real outlet counts: NA=7, SA=1,
+  EU=2, AF=1, AS=11, OC=1.
 - **Bifurcation routing fix.** At multi-successor nodes, `rch_id_dn_main`
   now follows the mainstem chain unconditionally (was falling back to
   score-based ranking, which could disagree with `is_mainstem`).
@@ -356,7 +356,7 @@ this is expected by design.
 
 | Variable | Type | Units | Description |
 |----------|------|-------|-------------|
-| `dist_out_dijkstra` | float64 | meters | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet (outlet = 0; NULL for ghost reaches) |
+| `dist_out_dijkstra` | float64 | meters | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet (outlet = `reach_length`; values retained for ghost reaches) |
 | `hydro_dist_out` | float64 | meters | Mainstem distance from the upstream end of the reach to `best_outlet` via `rch_id_dn_main` chain (outlet = `reach_length`) |
 | `hydro_dist_hw` | float64 | meters | Mainstem distance from `best_headwater` to the upstream end of the reach via `rch_id_up_main` chain (headwater = 0) |
 | `rch_id_up_main` | int64 | — | Main upstream neighbor reach_id (mainstem-preferred) |
@@ -379,21 +379,23 @@ Three are flat copies from the parent reach: `subnetwork_id`,
 flips were fully reverted in 0.0.9, so the current 0.0.12 database does not
 retain a flow-corrected reach set requiring reversed `node_id` order.
 
-All six interpolated distance columns use the same midpoint formula:
-`reach_value - reach_length + cumsum(node_length) - 0.5 * node_length`.
-This places each node at the geometric center of its `node_length`
-segment. On a single-path network (no junctions), node-level `dist_out`,
-`hydro_dist_out`, and `dist_out_dijkstra` are exactly equal.
+All six interpolated distance columns use midpoint offsets:
+`offset = cumsum(node_length) - 0.5 * node_length`. `dist_out`,
+`hydro_dist_out`, `dist_out_dijkstra`, and `pathlen_hw` use
+`reach_value - reach_length + offset`; `hydro_dist_hw` and `pathlen_out`
+use `reach_value + reach_length - offset`. This places each node at the
+geometric center of its `node_length` segment. On a single-path network
+(no junctions), node-level `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra` are exactly equal.
 
 `node_order` is a node-level variable (not in the reaches table): 1-based
 position within a reach, ordered by `dist_out` ascending (1 = downstream
 end, n = upstream end).
 
 **Distance convention note.** All four distance variables anchor at the
-upstream end of the reach. `dist_out` and `hydro_dist_out` assign
-`reach_length` at the outlet. `dist_out_dijkstra` assigns 0 at the
-outlet; the offset at any reach equals the outlet's `reach_length`.
-`hydro_dist_hw` assigns 0 at the headwater and increases downstream.
+upstream end of the reach. `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra` assign `reach_length` at the outlet. `hydro_dist_hw`
+assigns 0 at the headwater and increases downstream.
 See the variable reference for the full convention table.
 
 ### 2.2 SWOT Observation Statistics
@@ -546,11 +548,6 @@ Example: 5 = negative slope (1) + high variance (4).
   connected components; 19 subnetworks span multiple v17b networks).
   `network` is retained unchanged from v17b.
 
-- **Topology reciprocity gaps (resolved):** 151 non-reciprocal pairs
-  (both reaches listing each other as upstream) were introduced during
-  flow correction revert. Fixed by completing the revert for all
-  affected reciprocal entries. Zero non-reciprocal pairs remain.
-
 - **Flow correction oscillation:** 389 reaches (0.16%) in AF/AS/EU/NA/SA
   had ambiguous WSE slope signals causing bidirectional flow correction
   scores. These were reverted to v17b topology.
@@ -576,12 +573,6 @@ Example: 5 = negative slope (1) + high variance (4).
   inherited from v17b therefore remain. Treat full geolocation repair as a
   v18 or separately approved release-envelope change.
 
-- **`lakeflag`/`type` mismatch:** Resolved in 0.0.10. All 248,673 reaches
-  now have consistent lakeflag and type. The `type` column is authoritative
-  and diverges from the reach ID last digit on 2,316 reaches (0.9%) due
-  to in-place corrections. 1,196 reaches were provisionally defaulted to
-  river and tagged `clf_provisional_river` for future review.
-
 ---
 
 ## 5. Quality Audits
@@ -601,6 +592,7 @@ Validation checks performed on the v17c data:
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
 | **Flow direction** | Experimental topology flips were ultimately reverted. The 1,112-flip experiment caused ~30K disconnected reaches and was rolled back; the later retained flow-correction family was also fully reverted in 0.0.9 after the scoring tautology was found. Current v17c-0.0.12 does not retain topology that differs from v17b because of this flow-correction pipeline. |
 | **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data. 200,201 nodes propagated. Tagged `edit_flag = "harp_lake"`. |
+| **lakeflag/type consistency** | Resolved in 0.0.10. All 248,673 reaches now have consistent `lakeflag` and `type`; `type` is authoritative and diverges from the reach ID last digit on 2,316 reaches (0.9%) due to in-place corrections. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
 [pom_validation_report.md](technical/pom_validation_report.md).
@@ -617,7 +609,7 @@ For POM (Pierre-Olivier Malaterre) validation results, see
 - **Ordering:** Reach and centerline arrays match v17b ordering. Node arrays
   are reach-contiguous and sorted by `node_order`.
 - **Fill value:** -9999 for all numeric variables (int32, int64, float64)
-- **Checksums:** SHA256 hashes listed in `SHA256SUMS_{version}.txt`
+- **Checksums:** SHA256 hashes listed in `SHA256SUMS_0.0.12.txt`
 - **Additional formats:** GeoPackage and GeoParquet exports available
   (reaches and nodes per region, with geometry)
 

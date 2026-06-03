@@ -17,7 +17,7 @@ extends to nodes.
 |---|---|---|---|---|
 | `dist_out` (v17b) | v17b topology | upstream end of reach | `reach_length` | has value |
 | `hydro_dist_out` | `rch_id_dn_main` chain | upstream end of reach | `reach_length` | has value |
-| `dist_out_dijkstra` | Dijkstra shortest path | upstream end of reach | **0** | NULL, except isolated ghost coastal outlets use `reach_length` |
+| `dist_out_dijkstra` | Dijkstra shortest path | upstream end of reach | `reach_length` | has value |
 | `hydro_dist_hw` | `rch_id_up_main` chain | upstream end of reach | 0 | has value |
 
 **Anchor convention.** All four distance variables anchor at the upstream
@@ -28,18 +28,13 @@ by its own `reach_length`. For `hydro_dist_hw`, the value equals the
 distance from the headwater to the upstream end of the reach; each reach
 exceeds its upstream neighbor by the upstream neighbor's `reach_length`.
 
-**Zero-point difference.** `dist_out` and `hydro_dist_out` assign the
-outlet reach a value equal to its `reach_length` (the upstream end is
-one reach_length from the outlet point). `dist_out_dijkstra` assigns the
-outlet reach a value of 0 (the outlet point itself is the reference).
-When comparing these variables, the offset at any reach equals the
-outlet's `reach_length`.
+**Reference values.** `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra` all assign an outlet reach a value equal to its
+`reach_length` (the upstream end is one reach length from the outlet
+point). `hydro_dist_hw` assigns 0 at the headwater.
 
-**Ghost reaches.** `dist_out_dijkstra` is NULL for ghost reaches
-(type=6) except isolated ghost coastal outlets (`type=6`, `end_reach=2`,
-no downstream neighbor), which use `reach_length` at reach level and
-interpolate from that value at nodes. The other three variables retain
-values for ghost reaches.
+**Ghost reaches.** All four distance variables retain values for ghost
+reaches in 0.0.12, including `dist_out_dijkstra`.
 
 ### Node-Level Interpolation
 
@@ -62,10 +57,11 @@ and `dist_out_dijkstra` are exactly equal at every node.
 Three additional variables (`subnetwork_id`, `best_headwater`,
 `best_outlet`) are flat copies from the parent reach.
 
-**Boundary continuity.** At reach boundaries, the downstream-end node of
-the upstream reach and the upstream-end node of the downstream reach
-share identical interpolated distance values (verified gap = 0.00 m
-across all boundaries).
+**Boundary behavior.** The reach-level formulas imply continuous
+endpoint values on 1:1 links, but node values are midpoint samples within
+their `node_length` segments. Adjacent boundary nodes therefore need not
+be identical, and bifurcation-rejoin structures can retain larger
+single-scalar `dist_out` gaps.
 
 ---
 
@@ -73,7 +69,7 @@ across all boundaries).
 
 | Variable | NetCDF Type | Units | Fill Value | Encoding | Description |
 |---|---|---|---|---|---|
-| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet; outlet reach = 0; NULL for ghost reaches (type=6) |
+| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet; outlet reach = reach_length; values retained for ghost reaches |
 | hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance from the upstream end of the reach to best_outlet via rch_id_dn_main chain; outlet reach = reach_length |
 | hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem distance from best_headwater to the upstream end of the reach via rch_id_up_main chain; headwater = 0 |
 | rch_id_up_main | i8 | | -9999 | | Main upstream neighbor reach ID (mainstem-preferred) |
@@ -140,7 +136,7 @@ across all boundaries).
 | pathlen_out | f8 | meters | -9999.0 | | Cumulative path length to outlet, interpolated by node position within reach; single-node reaches use midpoint |
 | hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance to best_outlet, interpolated by node position within reach; single-node reaches use midpoint |
 | hydro_dist_hw | f8 | meters | -9999.0 | | Distance from best_headwater, interpolated by node position within reach; single-node reaches use midpoint |
-| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to outlet, interpolated by node position within reach; single-node reaches use midpoint; NULL for ghost reaches |
+| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to outlet, interpolated by node position within reach; single-node reaches use midpoint; values retained for ghost reaches |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
 | wse_obs_p30 | f8 | meters | -9999.0 | | SWOT WSE 30th percentile |
@@ -219,13 +215,6 @@ across all boundaries).
 | version | string | | | Data version identifier |
 
 ### Nodes
-
-`0.0.5` release note (April 2026): the corrected files supersede the prior
-`0.0.4` beta uploads. Published NetCDF, GeoPackage, and Parquet files were
-reissued to recompute `dn_node_id`, `up_node_id`, and `node_order` directly
-from node `dist_out`, restore ghost coastal outlet `dist_out_dijkstra`, and
-align single-node `node.dist_out` with the same midpoint anchor used by the
-other node-level outlet distances.
 
 | Variable | NetCDF Type | Units | Fill Value | Description |
 |---|---|---|---|---|

@@ -2,10 +2,10 @@
 
 Prepared for Pierre-Olivier Malaterre (INRAE), February 2026.
 
-> Status note (April 2, 2026): this document is the February baseline report.
+> Status note (June 2026): this document is the February baseline report.
 > Current release-gate counts and dispositions now live in
 > [`pom_requests_summary.md`](./pom_requests_summary.md), which records the
-> active `0.0.5` gate status as passing all blocking checks and classifies the
+> active `0.0.12` gate status as passing all blocking checks and classifies the
 > remaining nonzero findings as defended nonblocking, accepted residual,
 > deferred to v18, or informational.
 
