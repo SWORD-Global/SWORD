@@ -80,12 +80,12 @@ across all boundaries).
 | rch_id_dn_main | i8 | | -9999 | | Main downstream neighbor reach ID (mainstem-preferred) |
 | subnetwork_id | i4 | | -9999 | | Connected component ID (Pfafstetter-offset, globally unique; differs from v17b `network`) |
 | main_path_id | i8 | | -9999 | | ID of the mainstem path this reach belongs to |
-| is_mainstem | i4 | | -9999 | flag_values=[0,1], flag_meanings="not_mainstem mainstem" | Whether reach is on a mainstem path |
+| is_mainstem | i4 | | -9999 | 0=not_mainstem; 1=mainstem | Whether reach is on a mainstem path |
 | best_headwater | i8 | | -9999 | | Width-prioritized upstream headwater reach ID |
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
 | pathlen_hw | f8 | meters | -9999.0 | | Cumulative reach_length sum from best_headwater to the downstream end of the reach (headwater = 0, increases downstream) |
 | pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum from the upstream end of the reach to best_outlet (outlet = 0, increases upstream) |
-| facc_quality | i4 | | -9999 | flag_values=[1], flag_meanings="denoise_v3" | Flow accumulation correction flag |
+| facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
 | dl_grod_id | i8 | | -9999 | | Dam/lake GROD ID (downstream lookup) |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
@@ -122,8 +122,8 @@ across all boundaries).
 | slope_obs_mad | f8 | meters/meters | -9999.0 | | SWOT slope median absolute deviation |
 | slope_obs_adj | f8 | meters/meters | -9999.0 | | Adjusted SWOT slope (bias-corrected) |
 | slope_obs_slopeF | f8 | | -9999.0 | | Slope quality F-statistic |
-| slope_obs_reliable | i4 | | -9999 | flag_values=[0,1], flag_meanings="unreliable reliable" | Whether SWOT slope is reliable |
-| slope_obs_quality | i4 | | -9999 | flag_values=[0..8], flag_meanings="reliable small_negative moderate_negative large_negative negative below_ref_uncertainty high_uncertainty noise_high_nobs flat_water_noise" | SWOT slope quality category |
+| slope_obs_reliable | i4 | | -9999 | 0=unreliable; 1=reliable | Whether SWOT slope is reliable |
+| slope_obs_quality | i4 | | -9999 | 0..8; see flag reference | SWOT slope quality category |
 | slope_obs_n | i8 | | -9999 | | Number of RiverSP node observations used in pass-level slope fits |
 | slope_obs_n_passes | i8 | | -9999 | | Number of SWOT passes with slope |
 | slope_obs_q | i8 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
@@ -164,7 +164,7 @@ across all boundaries).
 | width_obs_range | f8 | meters | -9999.0 | | SWOT width range (p90 - p10) |
 | width_obs_mad | f8 | meters | -9999.0 | | SWOT width median absolute deviation |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
-| facc_quality | i4 | | -9999 | flag_values=[1], flag_meanings="denoise_v3" | Flow accumulation correction flag |
+| facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
 
 ## v17b Variables (unchanged)
 
@@ -220,6 +220,13 @@ across all boundaries).
 
 ### Nodes
 
+`0.0.5` release note (April 2026): the corrected files supersede the prior
+`0.0.4` beta uploads. Published NetCDF, GeoPackage, and Parquet files were
+reissued to recompute `dn_node_id`, `up_node_id`, and `node_order` directly
+from node `dist_out`, restore ghost coastal outlet `dist_out_dijkstra`, and
+align single-node `node.dist_out` with the same midpoint anchor used by the
+other node-level outlet distances.
+
 | Variable | NetCDF Type | Units | Fill Value | Description |
 |---|---|---|---|---|
 | node_id | i8 | | -9999 | Node identifier (format: CBBBBBRRRRNNNT) |
@@ -228,13 +235,6 @@ across all boundaries).
 | node_length | f8 | meters | -9999.0 | Length of river represented by this node |
 | node_order | i4 | | -9999 | 1-based position within reach (1=downstream, n=upstream, by dist_out) |
 | reach_id | i8 | | -9999 | Parent reach ID (format: CBBBBBRRRRT) |
-
-`0.0.5` release note (April 2026): the corrected files supersede the prior
-`0.0.4` beta uploads. Published NetCDF, GeoPackage, and Parquet files were
-reissued to recompute `dn_node_id`, `up_node_id`, and `node_order` directly
-from node `dist_out`, restore ghost coastal outlet `dist_out_dijkstra`, and
-align single-node `node.dist_out` with the same midpoint anchor used by the
-other node-level outlet distances.
 | wse | f8 | meters | -9999.0 | Water surface elevation (MERIT Hydro) |
 | wse_var | f8 | meters^2 | -9999.0 | WSE variance |
 | width | f8 | meters | -9999.0 | River width (GRWL) |
