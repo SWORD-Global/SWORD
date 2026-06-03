@@ -9,37 +9,33 @@ Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_
 ## Distance Variable Conventions
 
 SWORD contains four distance-to-outlet variables. They differ in routing
-method, zero-point, and measurement anchor within a reach. The table below
+method, zero-point, and reach endpoint reporting convention. The table below
 summarizes these conventions; see "Node-Level Interpolation" for how each
 extends to nodes.
 
-| Variable | Routing | Reach-level anchor | Outlet value | Ghost reaches |
+| Variable | Routing | Reach-level value | Outlet value | Ghost reaches |
 |---|---|---|---|---|
-| `dist_out` (v17b) | v17b topology | upstream end of reach | `reach_length` | has value |
-| `hydro_dist_out` | `rch_id_dn_main` chain | upstream end of reach | `reach_length` | has value |
-| `dist_out_dijkstra` | Dijkstra shortest path | upstream end of reach | **0** | NULL, except isolated ghost coastal outlets use `reach_length` |
-| `hydro_dist_hw` | `rch_id_up_main` chain | upstream end of reach | 0 | has value |
+| `dist_out` (v17b) | v17b topology | reported at reach upstream endpoint | `reach_length` | has value |
+| `hydro_dist_out` | `rch_id_dn_main` chain | reported at reach upstream endpoint | `reach_length` | has value |
+| `dist_out_dijkstra` | Dijkstra shortest path | reported at reach upstream endpoint | `reach_length` | has value |
+| `hydro_dist_hw` | `rch_id_up_main` chain | reported at reach upstream endpoint | 0 | has value |
 
-**Anchor convention.** All four distance variables anchor at the upstream
-end of the reach. For `dist_out`, `hydro_dist_out`, and
-`dist_out_dijkstra`, the value equals the distance from the upstream end
-of the reach to the outlet; each reach exceeds its downstream neighbor
-by its own `reach_length`. For `hydro_dist_hw`, the value equals the
-distance from the headwater to the upstream end of the reach; each reach
-exceeds its upstream neighbor by the upstream neighbor's `reach_length`.
+**Reach scalar convention.** These reach-level values are endpoint reports,
+not traversal-origin claims. `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra` are outlet-distance scalars reported at the upstream
+endpoint of each reach; each reach exceeds its
+downstream neighbor by its own `reach_length` on 1:1 links.
+`hydro_dist_hw` is also reported at the upstream endpoint, but measures
+distance from `best_headwater`; each downstream reach exceeds its
+upstream neighbor by the upstream neighbor's `reach_length` on 1:1 links.
 
-**Zero-point difference.** `dist_out` and `hydro_dist_out` assign the
-outlet reach a value equal to its `reach_length` (the upstream end is
-one reach_length from the outlet point). `dist_out_dijkstra` assigns the
-outlet reach a value of 0 (the outlet point itself is the reference).
-When comparing these variables, the offset at any reach equals the
-outlet's `reach_length`.
+**Reference values.** `dist_out`, `hydro_dist_out`, and
+`dist_out_dijkstra` all assign an outlet reach a value equal to its
+`reach_length` (the upstream endpoint is one reach length from the outlet
+point). `hydro_dist_hw` assigns 0 at the headwater.
 
-**Ghost reaches.** `dist_out_dijkstra` is NULL for ghost reaches
-(type=6) except isolated ghost coastal outlets (`type=6`, `end_reach=2`,
-no downstream neighbor), which use `reach_length` at reach level and
-interpolate from that value at nodes. The other three variables retain
-values for ghost reaches.
+**Ghost reaches.** All four distance variables retain values for ghost
+reaches in 0.0.12, including `dist_out_dijkstra`.
 
 ### Node-Level Interpolation
 
@@ -62,10 +58,11 @@ and `dist_out_dijkstra` are exactly equal at every node.
 Three additional variables (`subnetwork_id`, `best_headwater`,
 `best_outlet`) are flat copies from the parent reach.
 
-**Boundary continuity.** At reach boundaries, the downstream-end node of
-the upstream reach and the upstream-end node of the downstream reach
-share identical interpolated distance values (verified gap = 0.00 m
-across all boundaries).
+**Boundary behavior.** The reach-level formulas imply continuous
+endpoint values on 1:1 links, but node values are midpoint samples within
+their `node_length` segments. Adjacent boundary nodes therefore need not
+be identical, and bifurcation-rejoin structures can retain larger
+single-scalar `dist_out` gaps.
 
 ---
 
@@ -73,19 +70,19 @@ across all boundaries).
 
 | Variable | NetCDF Type | Units | Fill Value | Encoding | Description |
 |---|---|---|---|---|---|
-| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance from the upstream end of the reach to any network outlet; outlet reach = 0; NULL for ghost reaches (type=6) |
-| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance from the upstream end of the reach to best_outlet via rch_id_dn_main chain; outlet reach = reach_length |
-| hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem distance from best_headwater to the upstream end of the reach via rch_id_up_main chain; headwater = 0 |
+| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path outlet distance reported at the reach upstream endpoint; outlet reach = reach_length; values retained for ghost reaches |
+| hydro_dist_out | f8 | meters | -9999.0 | | Mainstem outlet distance reported at the reach upstream endpoint via rch_id_dn_main chain; outlet reach = reach_length |
+| hydro_dist_hw | f8 | meters | -9999.0 | | Mainstem headwater distance reported at the reach upstream endpoint via rch_id_up_main chain; headwater = 0 |
 | rch_id_up_main | i8 | | -9999 | | Main upstream neighbor reach ID (mainstem-preferred) |
 | rch_id_dn_main | i8 | | -9999 | | Main downstream neighbor reach ID (mainstem-preferred) |
 | subnetwork_id | i4 | | -9999 | | Connected component ID (Pfafstetter-offset, globally unique; differs from v17b `network`) |
 | main_path_id | i8 | | -9999 | | ID of the mainstem path this reach belongs to |
-| is_mainstem | i4 | | -9999 | flag_values=[0,1], flag_meanings="not_mainstem mainstem" | Whether reach is on a mainstem path |
+| is_mainstem | i4 | | -9999 | 0=not_mainstem; 1=mainstem | Whether reach is on a mainstem path |
 | best_headwater | i8 | | -9999 | | Width-prioritized upstream headwater reach ID |
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
 | pathlen_hw | f8 | meters | -9999.0 | | Cumulative reach_length sum from best_headwater to the downstream end of the reach (headwater = 0, increases downstream) |
-| pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum from the upstream end of the reach to best_outlet (outlet = 0, increases upstream) |
-| facc_quality | i4 | | -9999 | flag_values=[1], flag_meanings="denoise_v3" | Flow accumulation correction flag |
+| pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum toward best_outlet (outlet = 0, increases upstream) |
+| facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
 | dl_grod_id | i8 | | -9999 | | Dam/lake GROD ID (downstream lookup) |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
@@ -109,22 +106,22 @@ across all boundaries).
 | width_obs_p90 | f8 | meters | -9999.0 | | SWOT width 90th percentile |
 | width_obs_range | f8 | meters | -9999.0 | | SWOT width range (p90 - p10) |
 | width_obs_mad | f8 | meters | -9999.0 | | SWOT width median absolute deviation |
-| slope_obs_p10 | f8 | meters/kilometers | -9999.0 | | SWOT slope 10th percentile |
-| slope_obs_p20 | f8 | meters/kilometers | -9999.0 | | SWOT slope 20th percentile |
-| slope_obs_p30 | f8 | meters/kilometers | -9999.0 | | SWOT slope 30th percentile |
-| slope_obs_p40 | f8 | meters/kilometers | -9999.0 | | SWOT slope 40th percentile |
-| slope_obs_p50 | f8 | meters/kilometers | -9999.0 | | SWOT slope 50th percentile (median) |
-| slope_obs_p60 | f8 | meters/kilometers | -9999.0 | | SWOT slope 60th percentile |
-| slope_obs_p70 | f8 | meters/kilometers | -9999.0 | | SWOT slope 70th percentile |
-| slope_obs_p80 | f8 | meters/kilometers | -9999.0 | | SWOT slope 80th percentile |
-| slope_obs_p90 | f8 | meters/kilometers | -9999.0 | | SWOT slope 90th percentile |
-| slope_obs_range | f8 | meters/kilometers | -9999.0 | | SWOT slope range (p90 - p10) |
-| slope_obs_mad | f8 | meters/kilometers | -9999.0 | | SWOT slope median absolute deviation |
-| slope_obs_adj | f8 | meters/kilometers | -9999.0 | | Adjusted SWOT slope (bias-corrected) |
+| slope_obs_p10 | f8 | meters/meters | -9999.0 | | SWOT slope 10th percentile |
+| slope_obs_p20 | f8 | meters/meters | -9999.0 | | SWOT slope 20th percentile |
+| slope_obs_p30 | f8 | meters/meters | -9999.0 | | SWOT slope 30th percentile |
+| slope_obs_p40 | f8 | meters/meters | -9999.0 | | SWOT slope 40th percentile |
+| slope_obs_p50 | f8 | meters/meters | -9999.0 | | SWOT slope 50th percentile (median) |
+| slope_obs_p60 | f8 | meters/meters | -9999.0 | | SWOT slope 60th percentile |
+| slope_obs_p70 | f8 | meters/meters | -9999.0 | | SWOT slope 70th percentile |
+| slope_obs_p80 | f8 | meters/meters | -9999.0 | | SWOT slope 80th percentile |
+| slope_obs_p90 | f8 | meters/meters | -9999.0 | | SWOT slope 90th percentile |
+| slope_obs_range | f8 | meters/meters | -9999.0 | | SWOT slope range (p90 - p10) |
+| slope_obs_mad | f8 | meters/meters | -9999.0 | | SWOT slope median absolute deviation |
+| slope_obs_adj | f8 | meters/meters | -9999.0 | | Adjusted SWOT slope (bias-corrected) |
 | slope_obs_slopeF | f8 | | -9999.0 | | Slope quality F-statistic |
-| slope_obs_reliable | i4 | | -9999 | flag_values=[0,1], flag_meanings="unreliable reliable" | Whether SWOT slope is reliable |
-| slope_obs_quality | i4 | | -9999 | flag_values=[0..8], flag_meanings="reliable small_negative moderate_negative large_negative negative below_ref_uncertainty high_uncertainty noise_high_nobs flat_water_noise" | SWOT slope quality category |
-| slope_obs_n | i8 | | -9999 | | Number of SWOT slope observations |
+| slope_obs_reliable | i4 | | -9999 | 0=unreliable; 1=reliable | Whether SWOT slope is reliable |
+| slope_obs_quality | i4 | | -9999 | 0..8; see flag reference | SWOT slope quality category |
+| slope_obs_n | i8 | | -9999 | | Number of RiverSP node observations used in pass-level slope fits |
 | slope_obs_n_passes | i8 | | -9999 | | Number of SWOT passes with slope |
 | slope_obs_q | i8 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
@@ -140,7 +137,7 @@ across all boundaries).
 | pathlen_out | f8 | meters | -9999.0 | | Cumulative path length to outlet, interpolated by node position within reach; single-node reaches use midpoint |
 | hydro_dist_out | f8 | meters | -9999.0 | | Mainstem distance to best_outlet, interpolated by node position within reach; single-node reaches use midpoint |
 | hydro_dist_hw | f8 | meters | -9999.0 | | Distance from best_headwater, interpolated by node position within reach; single-node reaches use midpoint |
-| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to outlet, interpolated by node position within reach; single-node reaches use midpoint; NULL for ghost reaches |
+| dist_out_dijkstra | f8 | meters | -9999.0 | | Dijkstra shortest-path distance to outlet, interpolated by node position within reach; single-node reaches use midpoint; values retained for ghost reaches |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
 | wse_obs_p30 | f8 | meters | -9999.0 | | SWOT WSE 30th percentile |
@@ -164,7 +161,7 @@ across all boundaries).
 | width_obs_range | f8 | meters | -9999.0 | | SWOT width range (p90 - p10) |
 | width_obs_mad | f8 | meters | -9999.0 | | SWOT width median absolute deviation |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
-| facc_quality | i4 | | -9999 | flag_values=[1], flag_meanings="denoise_v3" | Flow accumulation correction flag |
+| facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
 
 ## v17b Variables (unchanged)
 
@@ -192,7 +189,7 @@ across all boundaries).
 | grod_id | i8 | | -9999 | GRanD/GROD dam ID |
 | hfalls_id | i8 | | -9999 | High falls ID |
 | slope | f8 | meters/kilometers | -9999.0 | Water surface slope from MERIT DEM |
-| dist_out | f8 | meters | -9999.0 | Distance from upstream end of reach to network outlet (v17b original; outlet reach = reach_length, not 0). See "Distance Variable Conventions" for comparison with v17c distance variables |
+| dist_out | f8 | meters | -9999.0 | Network outlet distance reported at the reach upstream endpoint (v17b original; outlet reach = reach_length, not 0). See "Distance Variable Conventions" for comparison with v17c distance variables |
 | n_rch_up | i4 | | -9999 | Number of upstream neighbor reaches |
 | n_rch_down | i4 | | -9999 | Number of downstream neighbor reaches |
 | lakeflag | i4 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal) |
@@ -228,13 +225,6 @@ across all boundaries).
 | node_length | f8 | meters | -9999.0 | Length of river represented by this node |
 | node_order | i4 | | -9999 | 1-based position within reach (1=downstream, n=upstream, by dist_out) |
 | reach_id | i8 | | -9999 | Parent reach ID (format: CBBBBBRRRRT) |
-
-`0.0.5` release note (April 2026): the corrected files supersede the prior
-`0.0.4` beta uploads. Published NetCDF, GeoPackage, and Parquet files were
-reissued to recompute `dn_node_id`, `up_node_id`, and `node_order` directly
-from node `dist_out`, restore ghost coastal outlet `dist_out_dijkstra`, and
-align single-node `node.dist_out` with the same midpoint anchor used by the
-other node-level outlet distances.
 | wse | f8 | meters | -9999.0 | Water surface elevation (MERIT Hydro) |
 | wse_var | f8 | meters^2 | -9999.0 | WSE variance |
 | width | f8 | meters | -9999.0 | River width (GRWL) |
@@ -248,7 +238,7 @@ other node-level outlet distances.
 | wth_coef | f8 | | -9999.0 | Width coefficient |
 | ext_dist_coef | f8 | | -9999.0 | Extraction distance coefficient |
 | facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |
-| lakeflag | i8 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal). In 0.0.11+, propagated from parent reach lakeflag per JPL request (was independently derived from GRWL in prior versions). |
+| lakeflag | i8 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal). Propagated from parent reach lakeflag per JPL request. |
 | max_width | f8 | meters | -9999.0 | Maximum width |
 | meander_length | f8 | | -9999.0 | Meander wavelength |
 | sinuosity | f8 | | -9999.0 | Channel sinuosity |

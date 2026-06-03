@@ -8,13 +8,13 @@ The **SWO**T **R**iver **D**atabase (**SWORD**) is a global hydrological river n
 
 This repository contains the tooling for SWORD development, validation, and maintenance. The current production database is managed in [DuckDB](https://duckdb.org/) (~11 GB) for fast analytical performance, with support for [PostgreSQL/PostGIS](https://postgis.net/) backends.
 
-## Current Version: v17c
+## Current Version: v17c beta 0.0.12
 
-SWORD v17c is the current stable version, merged to `main`. It maintains the topology of v17b while adding 56 new variables covering SWOT observation statistics, mainstem routing, Dijkstra-based distances, and corrected flow accumulation.
+SWORD v17c beta 0.0.12 is the current release, merged to `main`. It maintains the topology of v17b while adding 56 new variables covering SWOT observation statistics, mainstem routing, Dijkstra-based distances, and corrected flow accumulation.
 
 **Key Documentation:**
-- [**v17c Release Notes**](docs/v17c_release_notes.md) - Summary of changes and new variables
-- [**v17c Variable Reference**](docs/v17c_variable_reference.md) - Detailed variable descriptions and encodings
+- [**v17c beta 0.0.12 Release Notes**](docs/v17c_release_notes.md) ([PDF](docs/v17c_release_notes.pdf)) - Summary of changes and new variables
+- [**v17c beta 0.0.12 Variable Reference**](docs/v17c_variable_reference.md) ([PDF](docs/v17c_variable_reference.pdf)) - Detailed variable descriptions and encodings
 - [**SWORD Explorer**](https://www.swordexplorer.com/) - Web-based data access and visualization
 
 ## Project Structure

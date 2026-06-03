@@ -193,84 +193,84 @@ def _v17c_reach_scalar_specs():
             "f8",
             FILL_F8,
             "slope_obs_p10",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_p20",
             "f8",
             FILL_F8,
             "slope_obs_p20",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_p30",
             "f8",
             FILL_F8,
             "slope_obs_p30",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_p40",
             "f8",
             FILL_F8,
             "slope_obs_p40",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_p50",
             "f8",
             FILL_F8,
             "slope_obs_p50",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_p60",
             "f8",
             FILL_F8,
             "slope_obs_p60",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_p70",
             "f8",
             FILL_F8,
             "slope_obs_p70",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_p80",
             "f8",
             FILL_F8,
             "slope_obs_p80",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_p90",
             "f8",
             FILL_F8,
             "slope_obs_p90",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_range",
             "f8",
             FILL_F8,
             "slope_obs_range",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_mad",
             "f8",
             FILL_F8,
             "slope_obs_mad",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         (
             "slope_obs_adj",
             "f8",
             FILL_F8,
             "slope_obs_adj",
-            {"units": "meters/kilometers"},
+            {"units": "meters/meters"},
         ),
         ("slope_obs_slopeF", "f8", FILL_F8, "slope_obs_slopeF", {}),
         ("slope_obs_reliable", "i4", FILL_I4, "slope_obs_reliable", {}),  # BOOL→i4
@@ -582,7 +582,15 @@ VARCHAR_INT_COLS = {
     "facc_quality": FACC_QUALITY_MAP,
     "slope_obs_quality": SLOPE_OBS_QUALITY_MAP,
 }
-STRING_COLS = {"river_name", "edit_flag", "river_name_local", "river_name_en", "version", "add_flag", "swot_obs_source"}
+STRING_COLS = {
+    "river_name",
+    "edit_flag",
+    "river_name_local",
+    "river_name_en",
+    "version",
+    "add_flag",
+    "swot_obs_source",
+}
 
 
 def _write_scalar_var(grp, nc_name, nc_type, fill_value, data, attrs, dim_name):
@@ -707,10 +715,12 @@ def _export_region_inner(v17b, con, region, out_path, t0):
         "SELECT node_id, node_order FROM nodes WHERE region = ? ORDER BY node_id",
         [region],
     ).fetchnumpy()
-    node_order_map = dict(zip(
-        node_order_arr["node_id"].astype(int),
-        node_order_arr["node_order"].astype(int),
-    ))
+    node_order_map = dict(
+        zip(
+            node_order_arr["node_id"].astype(int),
+            node_order_arr["node_order"].astype(int),
+        )
+    )
     # Build target order: for each reach in v17b order, emit its nodes by node_order
     reach_to_db_nodes = {}
     for i, (nid, rid) in enumerate(zip(node_data["node_id"], node_reach_ids)):

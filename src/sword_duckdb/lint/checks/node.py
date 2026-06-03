@@ -687,27 +687,38 @@ def check_centerline_node_distance(
     max_dist = threshold if threshold is not None else 500.0
     where_clause = f"AND c.region = '{region}'" if region else ""
 
+    distance_expr = """
+        111000.0 * SQRT(
+            POWER(LEAST(ABS(c.x - n.x), 360.0 - ABS(c.x - n.x))
+                * COS(RADIANS((c.y + n.y) / 2.0)), 2)
+            + POWER(c.y - n.y, 2)
+        )
+    """
+
     query = f"""
     SELECT
         c.cl_id, c.node_id, c.reach_id, c.region,
         c.x as cl_x, c.y as cl_y,
         n.x as node_x, n.y as node_y,
-        ROUND(111000.0 * SQRT(
-            POWER(LEAST(ABS(c.x - n.x), 360.0 - ABS(c.x - n.x)) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
-            + POWER(c.y - n.y, 2)
-        ), 1) as dist_m
+        ROUND({distance_expr}, 1) as dist_m
     FROM centerlines c
     JOIN nodes n ON c.node_id = n.node_id AND c.region = n.region
-    WHERE 111000.0 * SQRT(
-            POWER(LEAST(ABS(c.x - n.x), 360.0 - ABS(c.x - n.x)) * COS(RADIANS((c.y + n.y) / 2.0)), 2)
-            + POWER(c.y - n.y, 2)
-        ) > {max_dist}
+    WHERE {distance_expr} > {max_dist}
         {where_clause}
     ORDER BY dist_m DESC
     LIMIT 10000
     """
 
     issues = conn.execute(query).fetchdf()
+
+    issue_count_query = f"""
+    SELECT COUNT(*)
+    FROM centerlines c
+    JOIN nodes n ON c.node_id = n.node_id AND c.region = n.region
+    WHERE {distance_expr} > {max_dist}
+        {where_clause}
+    """
+    issues_found = conn.execute(issue_count_query).fetchone()[0]
 
     total_query = f"""
     SELECT COUNT(*) FROM centerlines c WHERE 1=1 {where_clause}
@@ -718,10 +729,10 @@ def check_centerline_node_distance(
         check_id="N013",
         name="centerline_node_distance",
         severity=Severity.WARNING,
-        passed=len(issues) == 0,
+        passed=issues_found == 0,
         total_checked=total,
-        issues_found=len(issues),
-        issue_pct=100 * len(issues) / total if total > 0 else 0,
+        issues_found=issues_found,
+        issue_pct=100 * issues_found / total if total > 0 else 0,
         details=issues,
         description=f"Centerline points >{max_dist:.0f}m from assigned node",
         threshold=max_dist,

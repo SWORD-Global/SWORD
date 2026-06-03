@@ -27,6 +27,7 @@ Standalone scripts organized by purpose.
 | Script | Description |
 |--------|-------------|
 | compare_v17b_v17c.py | Compare SWORD v17b vs v17c topology and attribute differences |
+| find_descending_node_order_reaches.py | Diagnostic script identifying reaches whose node rows were historically stored upstream-first / descending dist_out |
 
 ## maintenance/
 
@@ -37,6 +38,10 @@ Standalone scripts organized by purpose.
 | check_reviewer_setup.py | Verify all dependencies and data are ready for the SWORD QA Reviewer |
 | load_from_duckdb.py | Export SWORD DuckDB data into PostgreSQL with PostGIS geometry support |
 | check_roadmap_sync.sh | Validate roadmap milestone counts/due date against live GitHub issue + milestone data |
+| revert_v17c_node_geometry_to_v17b.py | Restore v17b node geometry for D0-D2 continuity |
+| repair_node_order_projection.py | Repair node_order on restored-coordinate reaches without moving nodes |
+| recompute_swot_slopes_from_nodes.py | Recompute slope_obs_* from RiverSP node WSE after node_order repairs |
+| build_node_correspondence_table.py | Build v17b-to-v17c node correspondence artifacts for coordinate-change tracking |
 
 ## sql/
 
