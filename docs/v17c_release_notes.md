@@ -646,6 +646,10 @@ v17b subgroups); the other formats carry reaches and nodes with geometry.
 - **DuckDB:** `sword_{REGION}_v17c_0.0.12.duckdb` per region, with
   `reaches` and `nodes` tables (geometry stored as GEOMETRY type; written
   with DuckDB 1.3 — open with DuckDB >= 1.3 and the spatial extension)
+- **Global files:** in addition to the per-region files, whole-planet
+  merged tables are provided as `sword_global_v17c_0.0.12_{reaches,nodes}.parquet`
+  and `sword_global_v17c_0.0.12_{reaches,nodes}.duckdb` (all six regions
+  combined; each table carries a `region` column).
 - **Checksums:** SHA256 hashes for all distributed files listed in
   `SHA256SUMS_0.0.12.txt`
 
