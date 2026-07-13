@@ -232,11 +232,20 @@ The key interpretation is:
   restored-coordinate reaches whose node sequence was intentionally repaired.
   This is expected because `reaches.slope` is a nonnegative SRTM/MERIT slope
   magnitude in m/km, not a signed value to flip.
+- Those 221 repaired reaches are not a retained topology-flip set. Historical
+  flow-correction topology flips were fully reverted before 0.0.12 and
+  `v17c_flow_corrections` is empty in the current database. The 221 are the
+  `node_order` repair subset from operation 999: 3,725 nodes across first-digit
+  POM regions 1-6 only (36, 19, 56, 52, 20, 38 reaches respectively). The
+  related boundary-node IDs changed on 45 reaches.
 - Test 16b is the row directly affected by operation 1001. Negative
   `slope_obs_p50` medians decrease from 18,805 to 9,988.
 - Test 16c/16d endpoint-WSE diagnostics remain warning-level checks. Endpoint
   WSE differences are noisy/static and are not equivalent to the pass-level
   RiverSP node-WSE slope fit now stored in `slope_obs_*`.
+- POM-region diagnostics in first-digit regions 7-9 belong to the broader
+  slope observation or endpoint-WSE warning populations, not to the 221
+  operation-999 `node_order` repair reaches.
 
 After this correction, external checkers and downstream software should not
 flip either `reaches.slope` or `reaches.slope_obs_*` based on a reversed-node
