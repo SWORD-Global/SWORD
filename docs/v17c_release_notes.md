@@ -644,8 +644,8 @@ v17b subgroups); the other formats carry reaches and nodes with geometry.
 - **GeoParquet:** `sword_{REGION}_v17c_0.0.12_{reaches,nodes}.parquet`
   per region
 - **DuckDB:** `sword_{REGION}_v17c_0.0.12.duckdb` per region, with
-  `reaches` and `nodes` tables (geometry stored as GEOMETRY type; open
-  with DuckDB >= 1.5 and the spatial extension)
+  `reaches` and `nodes` tables (geometry stored as GEOMETRY type; written
+  with DuckDB 1.3 — open with DuckDB >= 1.3 and the spatial extension)
 - **Checksums:** SHA256 hashes for all distributed files listed in
   `SHA256SUMS_0.0.12.txt`
 
