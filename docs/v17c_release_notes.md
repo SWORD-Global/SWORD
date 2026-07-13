@@ -634,13 +634,18 @@ v17b subgroups); the other formats carry reaches and nodes with geometry.
   - Fill value: -9999 for all numeric variables (int32, int64, float64)
 - **GeoPackage:** `sword_{REGION}_v17c_0.0.12.gpkg` per region
   (reaches and nodes layers)
-- **Shapefile:** per-region reaches and nodes. Shapefile DBF format
-  truncates attribute names to 10 characters; a field-name mapping table
-  ships alongside the shapefiles. The NetCDF/GeoPackage/GeoParquet names
-  are authoritative.
+- **Shapefile:** `{region}_sword_{reaches,nodes}_hb{XX}_v17c_0.0.12.shp`,
+  split by HydroBASINS Pfafstetter level-2 basin within each region (v17b
+  convention; required by the shapefile 2 GB size limit). Shapefile DBF
+  format truncates attribute names to 10 characters, so fields use
+  abbreviated names; the mapping table
+  `shapefile_field_name_mapping.csv` ships alongside the shapefiles. The
+  NetCDF/GeoPackage/GeoParquet names are authoritative.
 - **GeoParquet:** `sword_{REGION}_v17c_0.0.12_{reaches,nodes}.parquet`
   per region
-- **DuckDB:** per-region database files with reaches and nodes tables
+- **DuckDB:** `sword_{REGION}_v17c_0.0.12.duckdb` per region, with
+  `reaches` and `nodes` tables (geometry stored as GEOMETRY type; open
+  with DuckDB >= 1.5 and the spatial extension)
 - **Checksums:** SHA256 hashes for all distributed files listed in
   `SHA256SUMS_0.0.12.txt`
 
