@@ -1,8 +1,10 @@
 # SWORD v17c Variable Reference
 
-Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c_beta.nc`).
+Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c_0.0.12.nc`).
 
-**Fill values:** i4 = `-9999`, i8 = `-9999`, f8 = `-9999.0`
+**Fill values:** i4 = `-9999`, i8 = `-9999`, f8 = `-9999.0`. The reaches
+`edit_flag` variable uses the string fill value `"-9999.0"`; other string
+variables have no fill value.
 
 ---
 
@@ -83,7 +85,7 @@ single-scalar `dist_out` gaps.
 | pathlen_hw | f8 | meters | -9999.0 | | Cumulative reach_length sum from best_headwater to the downstream end of the reach (headwater = 0, increases downstream) |
 | pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum toward best_outlet (outlet = 0, increases upstream) |
 | facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
-| dl_grod_id | i8 | | -9999 | | Dam/lake GROD ID (downstream lookup) |
+| dl_grod_id | i8 | | -9999 | | DL-GROD (Deep Learning Global River Obstruction Database; He et al. 2025) dam/obstruction ID |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
 | wse_obs_p30 | f8 | meters | -9999.0 | | SWOT WSE 30th percentile |
@@ -121,9 +123,9 @@ single-scalar `dist_out` gaps.
 | slope_obs_slopeF | f8 | | -9999.0 | | Slope quality F-statistic |
 | slope_obs_reliable | i4 | | -9999 | 0=unreliable; 1=reliable | Whether SWOT slope is reliable |
 | slope_obs_quality | i4 | | -9999 | 0..8; see flag reference | SWOT slope quality category |
-| slope_obs_n | i8 | | -9999 | | Number of RiverSP node observations used in pass-level slope fits |
-| slope_obs_n_passes | i8 | | -9999 | | Number of SWOT passes with slope |
-| slope_obs_q | i8 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
+| slope_obs_n | i4 | | -9999 | | Number of RiverSP node observations used in pass-level slope fits |
+| slope_obs_n_passes | i4 | | -9999 | | Number of SWOT passes with slope |
+| slope_obs_q | i4 | | -9999 | Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme, 16=clipped) | SWOT slope quality bitfield |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
 
 ## New v17c Node Variables
@@ -163,7 +165,22 @@ single-scalar `dist_out` gaps.
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
 | facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
 
-## v17b Variables (unchanged)
+## v17b Variables
+
+Values are unchanged from v17b unless noted elsewhere in the release notes.
+Rows marked "Not in v17b NetCDF; added in v17c" are database attributes that
+v17c now includes in the NetCDF export; they were not variables in the v17b
+NetCDF files.
+
+**`edit_flag` note.** `edit_flag` is a comma-delimited tag list recording
+edit provenance. Values include v17b numeric edit codes (e.g. `1`, `7`),
+the literal string `NaN` (v17b's no-edit placeholder — present on ~126K
+reaches; parsers must treat it as a string, not a float), and v17c tags:
+`facc_denoise_v3`, `harp_lake`, `lake_sandwich`, `clf_reconcile`,
+`clf_provisional_river`, `ghost_reclass`, `facc_suspect`, `facc_traced`.
+Multiple tags combine comma-delimited (e.g. `harp_lake,clf_reconcile`).
+In the NetCDF export, the reaches `edit_flag` variable carries the string
+fill value `"-9999.0"` where empty.
 
 ### Reaches
 
@@ -193,10 +210,10 @@ single-scalar `dist_out` gaps.
 | n_rch_up | i4 | | -9999 | Number of upstream neighbor reaches |
 | n_rch_down | i4 | | -9999 | Number of downstream neighbor reaches |
 | lakeflag | i4 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal) |
-| type | i8 | | -9999 | Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not in v17b NetCDF; added in v17c. Values from v17b database. |
-| add_flag | i8 | | -9999 | Manually added reach flag |
+| type | i4 | | -9999 | Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not in v17b NetCDF; added in v17c. Values from v17b database. |
+| add_flag | string | | | Manually added reach flag. Not in v17b NetCDF; added in v17c. |
 | swot_obs | i4 | | -9999 | Number of expected SWOT observations per cycle |
-| swot_obs_source | string | | | Source of SWOT observation data |
+| swot_obs_source | string | | | Source of SWOT observation data. Not in v17b NetCDF; added in v17c. |
 | max_width | f8 | meters | -9999.0 | Maximum width at any node |
 | low_slope_flag | i4 | | -9999 | Low slope flag |
 | trib_flag | i4 | | -9999 | MHV tributary enters (0=no, 1=yes, spatial proximity) |
@@ -207,13 +224,13 @@ single-scalar `dist_out` gaps.
 | main_side | i4 | | -9999 | Channel role (0=main, 1=side, 2=secondary outlet) |
 | end_reach | i4 | | -9999 | Endpoint type (0=middle, 1=headwater, 2=outlet, 3=junction) |
 | network | i4 | | -9999 | Connected component ID |
-| dn_node_id | i8 | | -9999 | Downstream boundary node ID |
-| up_node_id | i8 | | -9999 | Upstream boundary node ID |
+| dn_node_id | i8 | | -9999 | Downstream boundary node ID. Not in v17b NetCDF; added in v17c. |
+| up_node_id | i8 | | -9999 | Upstream boundary node ID. Not in v17b NetCDF; added in v17c. |
 | river_name | string | | | River name from GRWL |
-| river_name_en | string | | | River name (English) |
-| river_name_local | string | | | River name (local language) |
-| edit_flag | string | | | Edit provenance tag (e.g. lake_sandwich, harp_lake) |
-| version | string | | | Data version identifier |
+| river_name_en | string | | | River name (English). Not in v17b NetCDF; added in v17c. |
+| river_name_local | string | | | River name (local language). Not in v17b NetCDF; added in v17c. |
+| edit_flag | string | | | Comma-delimited edit provenance tags; see the `edit_flag` note below |
+| version | string | | | Data version identifier. Not in v17b NetCDF; added in v17c. |
 
 ### Nodes
 
@@ -223,7 +240,7 @@ single-scalar `dist_out` gaps.
 | x | f8 | degrees east | -9999.0 | Node longitude |
 | y | f8 | degrees north | -9999.0 | Node latitude |
 | node_length | f8 | meters | -9999.0 | Length of river represented by this node |
-| node_order | i4 | | -9999 | 1-based position within reach (1=downstream, n=upstream, by dist_out) |
+| node_order | i4 | | -9999 | 1-based position within reach (1=downstream, n=upstream, by dist_out). Not in v17b NetCDF; added in v17c. |
 | reach_id | i8 | | -9999 | Parent reach ID (format: CBBBBBRRRRT) |
 | wse | f8 | meters | -9999.0 | Water surface elevation (MERIT Hydro) |
 | wse_var | f8 | meters^2 | -9999.0 | WSE variance |
@@ -251,29 +268,26 @@ single-scalar `dist_out` gaps.
 | main_side | i4 | | -9999 | Channel role (0=main, 1=side, 2=secondary outlet) |
 | end_reach | i4 | | -9999 | Endpoint type (0=middle, 1=headwater, 2=outlet, 3=junction) |
 | network | i4 | | -9999 | Connected component ID |
-| add_flag | i8 | | -9999 | Manually added node flag |
+| add_flag | string | | | Manually added node flag. Not in v17b NetCDF; added in v17c. |
 | river_name | string | | | River name |
-| edit_flag | string | | | Edit provenance tag (e.g. lake_sandwich, harp_lake) |
-| version | string | | | Data version identifier |
+| edit_flag | string | | | Comma-delimited edit provenance tags; see the `edit_flag` note below |
+| version | string | | | Data version identifier. Not in v17b NetCDF; added in v17c. |
 
 ### Multi-dimensional Arrays
 
 | Variable | Group | Shape | Type | Description |
 |---|---|---|---|---|
-| cl_id_min | reaches | [num_reaches] | i8 | Minimum centerline ID bounding this reach |
-| cl_id_max | reaches | [num_reaches] | i8 | Maximum centerline ID bounding this reach |
+| cl_ids | reaches | [2, num_reaches] | i8 | Min (row 0) and max (row 1) centerline point IDs bounding each reach (v17b format) |
 | rch_id_up | reaches | [4, num_reaches] | i8 | Up to 4 upstream neighbor reach IDs |
 | rch_id_dn | reaches | [4, num_reaches] | i8 | Up to 4 downstream neighbor reach IDs |
 | iceflag | reaches | [366, num_reaches] | i4 | Daily ice presence flag (Julian day 1-366) |
 | swot_orbits | reaches | [75, num_reaches] | i8 | SWOT orbit IDs that observe this reach |
-| cl_id_min | nodes | [num_nodes] | i8 | Minimum centerline ID bounding this node |
-| cl_id_max | nodes | [num_nodes] | i8 | Maximum centerline ID bounding this node |
+| cl_ids | nodes | [2, num_nodes] | i8 | Min (row 0) and max (row 1) centerline point IDs bounding each node (v17b format) |
 | cl_id | centerlines | [num_points] | i8 | Centerline point ID |
 | x | centerlines | [num_points] | f8 | Centerline point longitude (degrees east) |
 | y | centerlines | [num_points] | f8 | Centerline point latitude (degrees north) |
-| reach_id | centerlines | [num_points] | i8 | Parent reach ID for this centerline point |
-| node_id | centerlines | [num_points] | i8 | Parent node ID for this centerline point |
-| version | centerlines | [num_points] | string | Data version identifier |
+| reach_id | centerlines | [4, num_points] | i8 | Reach ID at each centerline point (row 0); rows 1-3 hold neighboring reach IDs at reach boundaries. Copied from v17b |
+| node_id | centerlines | [4, num_points] | i8 | Node ID at each centerline point (row 0); rows 1-3 hold neighboring node IDs. Copied from v17b |
 
 ### Subgroups (copied from v17b)
 

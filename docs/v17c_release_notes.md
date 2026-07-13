@@ -1,7 +1,7 @@
 # SWORD v17c Beta Release Notes
 
 **Version:** v17c beta 0.0.12
-**Date:** May 2026
+**Date:** July 2026 (data exported May 2026)
 **Base version:** SWORD v17b (March 2025, UNC)
 
 ## Changelog
@@ -37,6 +37,10 @@
   `+0.0142687580` m/m while retaining `slope=15.121399` m/km.
   Downstream users should read both `slope` and `slope_obs_*` directly from
   0.0.12; no external sign flip is needed for reaches whose node order changed.
+  The 221 operation-999 `node_order` repair reaches are all in first-digit POM
+  regions 1-6. Test 16 slope-observation and endpoint-WSE diagnostics in
+  first-digit regions 7-9 are separate warning populations, not additional
+  0.0.12 node-order repairs.
 - **Static MERIT/SRTM slope semantics unchanged.** The legacy `reaches/slope`
   variable remains the nonnegative MERIT/SRTM slope magnitude in m/km; it is
   not a signed flow-direction variable. 0.0.12 does not change
@@ -66,7 +70,9 @@
   (downstream-first) for all reaches. This fixes slope sign reversals
   in processing code that assumes the first node in the array is the
   downstream end. The underlying data is unchanged; only the file
-  ordering is corrected.
+  ordering is corrected. This is an export storage-order fix, not a retained
+  topology reversal and not the smaller 0.0.12 operation-999 `node_order`
+  repair set.
 - **Restored metadata variables in NetCDF export.** river_name_local,
   river_name_en, version, add_flag, and swot_obs_source were
   accidentally omitted from the export spec in 0.0.4. Restored in
@@ -101,7 +107,8 @@
   p<0.2 for river), and direct corrections from HarP v1.1 lake
   classifications. Lakeflag and type are now 100% consistent across all
   248,673 reaches. The type column now diverges from the reach ID last
-  digit on 2,316 reaches (0.9%); the type column is authoritative.
+  digit on 2,316 reaches (0.9%) as of 0.0.10 (2,648 by 0.0.12 after
+  subsequent type corrections); the type column is authoritative.
 - **Six reaches fixed for N013 closure-bug damage.** Reaches 14278900061
   (AF), 31241401301, 48294000081, 45570000125, 34100005185, 42211000503
   (AS) had corrupted x/y and cl_id_min/cl_id_max from the N013 closure
@@ -239,7 +246,8 @@
   ghost reach behavior for all distance variables, plus node-level
   interpolation formulas.
 - **Variable reference updated.** 7 missing variables added, 8 type mismatches
-  fixed, `cl_ids` shape corrected to `cl_id_min`/`cl_id_max`.
+  fixed, multi-dimensional array documentation corrected. (The NetCDF export
+  itself uses the v17b `cl_ids [2, N]` format.)
 - **Node dist_out reactive recalc fix.** `CALCULATE_DIST_OUT` operations now
   correctly recalculate node-level `dist_out` by sorting nodes via `node_order`
   (geometric position) instead of `node_id`. This fixes an issue where
@@ -313,12 +321,12 @@ nodes, or centerlines were added or removed. v17c contains the same
 all six regions (NA, SA, EU, AF, AS, OC).
 
 Each region is distributed as a single NetCDF4 file
-(`{region}_sword_v17c_beta.nc`). The group structure matches v17b
+(`{region}_sword_v17c_0.0.12.nc`). The group structure matches v17b
 (centerlines, nodes, reaches), and the `area_fits` and `discharge_models`
-subgroups under reaches pass through from v17b unchanged. Reach arrays are
-ordered stably by `reach_id`. Node arrays are grouped contiguously by
-`reach_id` and ordered within each reach by `node_order` (downstream to
-upstream).
+subgroups under reaches pass through from v17b unchanged. Reach and
+centerline arrays match v17b canonical row ordering. Node arrays are
+grouped contiguously by `reach_id` and ordered within each reach by
+`node_order` (downstream to upstream).
 
 Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`)
 match v17b values across all formats (NetCDF, DuckDB, PostgreSQL). Node
@@ -429,17 +437,18 @@ measurement.
 | `slope_obs_slopeF` | float64 | — | Slope F-statistic |
 | `slope_obs_reliable` | int32 | — | 0 = unreliable, 1 = reliable |
 | `slope_obs_quality` | int32 | — | Integer quality category (0–8; see Section 3) |
-| `slope_obs_n` | int64 | — | Number of RiverSP node observations used in pass-level slope fits |
-| `slope_obs_n_passes` | int64 | — | Number of SWOT passes used |
-| `slope_obs_q` | int64 | — | Bitfield quality flag (see Section 3) |
+| `slope_obs_n` | int32 | — | Number of RiverSP node observations used in pass-level slope fits |
+| `slope_obs_n_passes` | int32 | — | Number of SWOT passes used |
+| `slope_obs_q` | int32 | — | Bitfield quality flag (see Section 3) |
 
 ### 2.3 Flow Accumulation Corrections
 
 A two-stage denoise pipeline corrected flow accumulation (`facc`) values
 to address three systematic error modes in MERIT Hydro's D8
 (eight-direction flow routing) upstream area: bifurcation cloning,
-junction inflation, and raster-vector misalignment. The pipeline corrected
-96,589 of 248,673 reaches (38.8%). Uncorrected reaches retain v17b values.
+junction inflation, and raster-vector misalignment. In the 0.0.12 database,
+95,880 of 248,673 reaches (38.6%) carry corrected values
+(`facc_quality = denoise_v3`). Uncorrected reaches retain v17b values.
 See [facc_correction_methodology.md](technical/facc_correction_methodology.md)
 for the full algorithm description.
 
@@ -449,9 +458,10 @@ for the full algorithm description.
 | `facc_quality` | int32 | reaches, nodes | 1 = corrected by denoise_v3; fill_value = not flagged |
 
 After correction, junction conservation violations (downstream facc < sum
-of upstream facc) are resolved in all regions. In 0.0.2, facc was
-additionally recomputed at 807 flow-corrected reaches via topological
-propagation, resolving remaining monotonicity violations at those reaches.
+of upstream facc) are resolved in all regions. (In 0.0.2, facc was
+additionally recomputed at 807 then-flow-corrected reaches via topological
+propagation; the flow-correction topology itself was fully reverted to
+v17b in 0.0.9.)
 
 ### 2.4 Other New or Updated Variables
 
@@ -459,7 +469,7 @@ propagation, resolving remaining monotonicity violations at those reaches.
 |----------|------|-------|-------------|
 | `type` | int32 | reaches | Reach classification (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not present in v17b NetCDF; added in v17c so NetCDF users can filter by reach type without needing the database. |
 | `dl_grod_id` | int64 | reaches | DL-GROD (Deep Learning Global River Obstruction Database; He et al. 2025) dam/obstruction ID |
-| `edit_flag` | string | reaches | Tag for manually edited reaches (e.g., `lake_sandwich`, `harp_lake`) |
+| `edit_flag` | string | reaches | Comma-delimited edit provenance tags (e.g., `harp_lake,clf_reconcile`). Also contains v17b numeric codes and the literal string `NaN` (v17b's no-edit placeholder); see the variable reference for the full value list |
 
 ---
 
@@ -526,20 +536,26 @@ Example: 5 = negative slope (1) + high variance (4).
 - **SWOT observation coverage:** SWOT statistics are fill_value (-9999) for
   reaches and nodes lacking SWOT data.
 
-- **facc correction scope:** 96,589 reaches corrected (38.8%); the
-  remaining 152,084 retain v17b values. Node-level facc propagates from
+- **facc correction scope:** 95,880 reaches corrected (38.6%); the
+  remaining 152,793 retain v17b values. Node-level facc propagates from
   the parent reach.
 
-- **Lake sandwich corrections:** 1,252 reaches reclassified to
+- **Lake sandwich corrections:** 1,252 reaches were reclassified to
   `lakeflag = 1` where a narrow, shorter-than-neighbor reach sat between
-  lake reaches (tagged `edit_flag = "lake_sandwich"`). ~1,755 similar
-  cases remain (narrow connecting channels, chains).
+  lake reaches. The later lakeflag/type reconciliation (0.0.10) rewrote
+  many `edit_flag` tags, so 483 reaches carry a `lake_sandwich` tag in
+  the 0.0.12 database. ~1,755 similar cases remain (narrow connecting
+  channels, chains).
 
-- **HarP lake corrections:** 7,425 reaches reclassified from
+- **HarP lake corrections:** 7,425 reaches were reclassified from
   `lakeflag = 0` (river) to `lakeflag = 1` (lake) based on HarP v1.1
-  (Hydrography and River Planform) lake classification data. 200,201
-  child nodes updated to match. Tagged `edit_flag = "harp_lake"`.
-  Existing tags preserved (comma-delimited when multiple apply).
+  (Hydrography and River Planform) lake classification data, with child
+  node lakeflag updated to match (node lakeflag matches the parent reach
+  on all 11,112,454 nodes as of 0.0.11). The later lakeflag/type
+  reconciliation (0.0.10) folded many of these into combined tags, so
+  3,981 reaches carry a `harp_lake` tag in the 0.0.12 database; node
+  `edit_flag` is not tagged. Tags are comma-delimited when multiple
+  apply.
 
 - **area_fits and discharge_models:** Direct copies from v17b. Not
   recomputed against v17c facc or SWOT values.
@@ -550,9 +566,11 @@ Example: 5 = negative slope (1) + high variance (4).
   connected components; 19 subnetworks span multiple v17b networks).
   `network` is retained unchanged from v17b.
 
-- **Flow correction oscillation:** 389 reaches (0.16%) in AF/AS/EU/NA/SA
-  had ambiguous WSE slope signals causing bidirectional flow correction
-  scores. These were reverted to v17b topology.
+- **Flow correction fully reverted:** experimental flow-direction
+  corrections (810 reaches at peak, including 389 with ambiguous
+  oscillating WSE slope signals) were fully reverted to v17b topology in
+  0.0.9 after a scoring tautology was found. v17c-0.0.12 topology is
+  identical to v17b; `v17c_flow_corrections` is empty.
 
 - **main_path_id consistency:** 3,134 reaches have `main_path_id` values
   inconsistent with current `(best_headwater, best_outlet)` tuples (V013-
@@ -593,27 +611,38 @@ Validation checks performed on the v17c data:
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
 | **Flow direction** | Experimental topology flips were ultimately reverted. The 1,112-flip experiment caused ~30K disconnected reaches and was rolled back; the later retained flow-correction family was also fully reverted in 0.0.9 after the scoring tautology was found. Current v17c-0.0.12 does not retain topology that differs from v17b because of this flow-correction pipeline. |
-| **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data. 200,201 nodes propagated. Tagged `edit_flag = "harp_lake"`. |
-| **lakeflag/type consistency** | Resolved in 0.0.10. All 248,673 reaches now have consistent `lakeflag` and `type`; `type` is authoritative and diverges from the reach ID last digit on 2,316 reaches (0.9%) due to in-place corrections. |
+| **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data, with node lakeflag propagated from parent reaches. After the 0.0.10 lakeflag/type reconciliation rewrote tags, 3,981 reaches carry a `harp_lake` tag in 0.0.12. |
+| **lakeflag/type consistency** | Resolved in 0.0.10. All 248,673 reaches now have consistent `lakeflag` and `type`; `type` is authoritative and diverges from the reach ID last digit on 2,648 reaches (1.1%) in 0.0.12 due to in-place corrections. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
 [pom_validation_report.md](technical/pom_validation_report.md).
 
 ---
 
-## 6. File Format
+## 6. File Formats
 
-- **Format:** NetCDF4 (one file per region)
-- **Naming:** `{region}_sword_v17c_beta.nc` where region is `na`, `sa`,
-  `eu`, `af`, `as`, `oc`
-- **Groups:** `centerlines`, `nodes`, `reaches`
-  - `reaches/area_fits` and `reaches/discharge_models` subgroups (from v17b)
-- **Ordering:** Reach and centerline arrays match v17b ordering. Node arrays
-  are reach-contiguous and sorted by `node_order`.
-- **Fill value:** -9999 for all numeric variables (int32, int64, float64)
-- **Checksums:** SHA256 hashes listed in `SHA256SUMS_0.0.12.txt`
-- **Additional formats:** GeoPackage and GeoParquet exports available
-  (reaches and nodes per region, with geometry)
+v17c beta 0.0.12 is distributed in five formats. The NetCDF files are the
+canonical release artifact (full group structure including centerlines and
+v17b subgroups); the other formats carry reaches and nodes with geometry.
+
+- **NetCDF4:** `{region}_sword_v17c_0.0.12.nc`, one file per region, where
+  region is `na`, `sa`, `eu`, `af`, `as`, `oc`
+  - Groups: `centerlines`, `nodes`, `reaches` (plus `reaches/area_fits`
+    and `reaches/discharge_models` subgroups from v17b)
+  - Ordering: reach and centerline arrays match v17b canonical ordering;
+    node arrays are reach-contiguous and sorted by `node_order`
+  - Fill value: -9999 for all numeric variables (int32, int64, float64)
+- **GeoPackage:** `sword_{REGION}_v17c_0.0.12.gpkg` per region
+  (reaches and nodes layers)
+- **Shapefile:** per-region reaches and nodes. Shapefile DBF format
+  truncates attribute names to 10 characters; a field-name mapping table
+  ships alongside the shapefiles. The NetCDF/GeoPackage/GeoParquet names
+  are authoritative.
+- **GeoParquet:** `sword_{REGION}_v17c_0.0.12_{reaches,nodes}.parquet`
+  per region
+- **DuckDB:** per-region database files with reaches and nodes tables
+- **Checksums:** SHA256 hashes for all distributed files listed in
+  `SHA256SUMS_0.0.12.txt`
 
 ---
 
