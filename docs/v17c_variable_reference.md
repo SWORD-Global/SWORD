@@ -1,6 +1,6 @@
 # SWORD v17c Variable Reference
 
-Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c_0.0.12.nc`).
+Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c.nc`).
 
 **Fill values:** i4 = `-9999`, i8 = `-9999`, f8 = `-9999.0`. The reaches
 `edit_flag` variable uses the string fill value `"-9999.0"`; other string
@@ -37,7 +37,7 @@ upstream neighbor by the upstream neighbor's `reach_length` on 1:1 links.
 point). `hydro_dist_hw` assigns 0 at the headwater.
 
 **Ghost reaches.** All four distance variables retain values for ghost
-reaches in 0.0.12, including `dist_out_dijkstra`.
+reaches in v17c, including `dist_out_dijkstra`.
 
 ### Node-Level Interpolation
 

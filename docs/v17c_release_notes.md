@@ -1,6 +1,6 @@
-# SWORD v17c Beta Release Notes
+# SWORD v17c Release Notes
 
-**Version:** v17c beta 0.0.12
+**Version:** v17c
 **Date:** July 2026 (data exported May 2026)
 **Base version:** SWORD v17b (March 2025, UNC)
 
@@ -321,7 +321,7 @@ nodes, or centerlines were added or removed. v17c contains the same
 all six regions (NA, SA, EU, AF, AS, OC).
 
 Each region is distributed as a single NetCDF4 file
-(`{region}_sword_v17c_0.0.12.nc`). The group structure matches v17b
+(`{region}_sword_v17c.nc`). The group structure matches v17b
 (centerlines, nodes, reaches), and the `area_fits` and `discharge_models`
 subgroups under reaches pass through from v17b unchanged. Reach and
 centerline arrays match v17b canonical row ordering. Node arrays are
@@ -330,7 +330,7 @@ grouped contiguously by `reach_id` and ordered within each reach by
 
 Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`)
 match v17b values across all formats (NetCDF, DuckDB, PostgreSQL). Node
-coordinate columns (`x`, `y`) also match v17b after the 0.0.12 continuity
+coordinate columns (`x`, `y`) also match v17b after the v17c continuity
 revert.
 
 All new variables use a fill value of -9999 where no observation or
@@ -384,7 +384,7 @@ by node position within the reach: `dist_out`, `hydro_dist_out`,
 `hydro_dist_hw`, `dist_out_dijkstra`, `pathlen_hw`, and `pathlen_out`.
 Three are flat copies from the parent reach: `subnetwork_id`,
 `best_headwater`, and `best_outlet`. Historical flow-correction topology
-flips were fully reverted in 0.0.9, so the current 0.0.12 database does not
+flips were fully reverted in 0.0.9, so the current v17c database does not
 retain a flow-corrected reach set requiring reversed `node_id` order.
 
 All six interpolated distance columns use midpoint offsets:
@@ -446,7 +446,7 @@ measurement.
 A two-stage denoise pipeline corrected flow accumulation (`facc`) values
 to address three systematic error modes in MERIT Hydro's D8
 (eight-direction flow routing) upstream area: bifurcation cloning,
-junction inflation, and raster-vector misalignment. In the 0.0.12 database,
+junction inflation, and raster-vector misalignment. In the v17c database,
 95,880 of 248,673 reaches (38.6%) carry corrected values
 (`facc_quality = denoise_v3`). Uncorrected reaches retain v17b values.
 See [facc_correction_methodology.md](technical/facc_correction_methodology.md)
@@ -544,7 +544,7 @@ Example: 5 = negative slope (1) + high variance (4).
   `lakeflag = 1` where a narrow, shorter-than-neighbor reach sat between
   lake reaches. The later lakeflag/type reconciliation (0.0.10) rewrote
   many `edit_flag` tags, so 483 reaches carry a `lake_sandwich` tag in
-  the 0.0.12 database. ~1,755 similar cases remain (narrow connecting
+  the v17c database. ~1,755 similar cases remain (narrow connecting
   channels, chains).
 
 - **HarP lake corrections:** 7,425 reaches were reclassified from
@@ -553,7 +553,7 @@ Example: 5 = negative slope (1) + high variance (4).
   node lakeflag updated to match (node lakeflag matches the parent reach
   on all 11,112,454 nodes as of 0.0.11). The later lakeflag/type
   reconciliation (0.0.10) folded many of these into combined tags, so
-  3,981 reaches carry a `harp_lake` tag in the 0.0.12 database; node
+  3,981 reaches carry a `harp_lake` tag in the v17c database; node
   `edit_flag` is not tagged. Tags are comma-delimited when multiple
   apply.
 
@@ -569,7 +569,7 @@ Example: 5 = negative slope (1) + high variance (4).
 - **Flow correction fully reverted:** experimental flow-direction
   corrections (810 reaches at peak, including 389 with ambiguous
   oscillating WSE slope signals) were fully reverted to v17b topology in
-  0.0.9 after a scoring tautology was found. v17c-0.0.12 topology is
+  0.0.9 after a scoring tautology was found. v17c topology is
   identical to v17b; `v17c_flow_corrections` is empty.
 
 - **main_path_id consistency:** 3,134 reaches have `main_path_id` values
@@ -588,7 +588,7 @@ Example: 5 = negative slope (1) + high variance (4).
   to WARNING for this reason.
 
 - **Node geolocation corrections deferred:** The 0.0.8 and 0.0.10
-  rederived-node coordinate edits were reverted in 0.0.12 to preserve SWOT
+  rederived-node coordinate edits were reverted in v17c to preserve SWOT
   D0-D2 time-series continuity. Some node sequence/geolocation anomalies
   inherited from v17b therefore remain. Treat full geolocation repair as a
   v18 or separately approved release-envelope change.
@@ -602,7 +602,7 @@ Validation checks performed on the v17c data:
 | Audit | Finding |
 |-------|---------|
 | **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`) copied from v17b to ensure consistency across all formats. |
-| **Node coordinate continuity** | 0.0.12 restores v17b node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` for the 344 previously rederived reaches plus OC reach 51111300061 split-revert residue. Global node coordinate diff vs v17b NetCDF: 0. |
+| **Node coordinate continuity** | v17c restores v17b node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` for the 344 previously rederived reaches plus OC reach 51111300061 split-revert residue. Global node coordinate diff vs v17b NetCDF: 0. |
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
 | **path_freq gaps** | v17b had 4,952 connected non-ghost reaches with invalid path_freq (0 or -9999). Resolved in v17c; remaining nodata values are correctly attributed to ghost reaches (type=6). |
 | **subnetwork_id** | 3,027 components across 248,673 reaches verified. Pfafstetter banding correct. Zero cross-region collisions. 19 subnetworks (0.6%) span multiple v17b networks (expected). |
@@ -610,9 +610,9 @@ Validation checks performed on the v17c data:
 | **n_rch_up/n_rch_down** | 148 scalar count mismatches corrected (flow corrections flipped reach_topology but did not recalculate counts). Zero mismatches across all 248,673 reaches. |
 | **OC reach split revert** | Incomplete `break_reaches()` split of OC reach 51111300061 (434 orphan centerlines, 73 orphan nodes) fully reverted to v17b state. |
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
-| **Flow direction** | Experimental topology flips were ultimately reverted. The 1,112-flip experiment caused ~30K disconnected reaches and was rolled back; the later retained flow-correction family was also fully reverted in 0.0.9 after the scoring tautology was found. Current v17c-0.0.12 does not retain topology that differs from v17b because of this flow-correction pipeline. |
-| **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data, with node lakeflag propagated from parent reaches. After the 0.0.10 lakeflag/type reconciliation rewrote tags, 3,981 reaches carry a `harp_lake` tag in 0.0.12. |
-| **lakeflag/type consistency** | Resolved in 0.0.10. All 248,673 reaches now have consistent `lakeflag` and `type`; `type` is authoritative and diverges from the reach ID last digit on 2,648 reaches (1.1%) in 0.0.12 due to in-place corrections. |
+| **Flow direction** | Experimental topology flips were ultimately reverted. The 1,112-flip experiment caused ~30K disconnected reaches and was rolled back; the later retained flow-correction family was also fully reverted in 0.0.9 after the scoring tautology was found. Current v17c does not retain topology that differs from v17b because of this flow-correction pipeline. |
+| **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data, with node lakeflag propagated from parent reaches. After the 0.0.10 lakeflag/type reconciliation rewrote tags, 3,981 reaches carry a `harp_lake` tag in v17c. |
+| **lakeflag/type consistency** | Resolved in 0.0.10. All 248,673 reaches now have consistent `lakeflag` and `type`; `type` is authoritative and diverges from the reach ID last digit on 2,648 reaches (1.1%) in v17c due to in-place corrections. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
 [pom_validation_report.md](technical/pom_validation_report.md).
@@ -621,37 +621,37 @@ For POM (Pierre-Olivier Malaterre) validation results, see
 
 ## 6. File Formats
 
-v17c beta 0.0.12 is distributed in five formats. The NetCDF files are the
+v17c is distributed in five formats. The NetCDF files are the
 canonical release artifact (full group structure including centerlines and
 v17b subgroups); the other formats carry reaches and nodes with geometry.
 
-- **NetCDF4:** `{region}_sword_v17c_0.0.12.nc`, one file per region, where
+- **NetCDF4:** `{region}_sword_v17c.nc`, one file per region, where
   region is `na`, `sa`, `eu`, `af`, `as`, `oc`
   - Groups: `centerlines`, `nodes`, `reaches` (plus `reaches/area_fits`
     and `reaches/discharge_models` subgroups from v17b)
   - Ordering: reach and centerline arrays match v17b canonical ordering;
     node arrays are reach-contiguous and sorted by `node_order`
   - Fill value: -9999 for all numeric variables (int32, int64, float64)
-- **GeoPackage:** `sword_{REGION}_v17c_0.0.12.gpkg` per region
+- **GeoPackage:** `sword_{REGION}_v17c.gpkg` per region
   (reaches and nodes layers)
-- **Shapefile:** `{region}_sword_{reaches,nodes}_hb{XX}_v17c_0.0.12.shp`,
+- **Shapefile:** `{region}_sword_{reaches,nodes}_hb{XX}_v17c.shp`,
   split by HydroBASINS Pfafstetter level-2 basin within each region (v17b
   convention; required by the shapefile 2 GB size limit). Shapefile DBF
   format truncates attribute names to 10 characters, so fields use
   abbreviated names; the mapping table
   `shapefile_field_name_mapping.csv` ships alongside the shapefiles. The
   NetCDF/GeoPackage/GeoParquet names are authoritative.
-- **GeoParquet:** `sword_{REGION}_v17c_0.0.12_{reaches,nodes}.parquet`
+- **GeoParquet:** `sword_{REGION}_v17c_{reaches,nodes}.parquet`
   per region
-- **DuckDB:** `sword_{REGION}_v17c_0.0.12.duckdb` per region, with
+- **DuckDB:** `sword_{REGION}_v17c.duckdb` per region, with
   `reaches` and `nodes` tables (geometry stored as GEOMETRY type; written
   with DuckDB 1.3 — open with DuckDB >= 1.3 and the spatial extension)
 - **Global files:** in addition to the per-region files, whole-planet
-  merged tables are provided as `sword_global_v17c_0.0.12_{reaches,nodes}.parquet`
-  and `sword_global_v17c_0.0.12_{reaches,nodes}.duckdb` (all six regions
+  merged tables are provided as `sword_global_v17c_{reaches,nodes}.parquet`
+  and `sword_global_v17c_{reaches,nodes}.duckdb` (all six regions
   combined; each table carries a `region` column).
 - **Checksums:** SHA256 hashes for all distributed files listed in
-  `SHA256SUMS_0.0.12.txt`
+  `SHA256SUMS.txt`
 
 ---
 

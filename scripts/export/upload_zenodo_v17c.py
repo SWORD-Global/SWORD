@@ -32,7 +32,7 @@ import requests
 API = "https://zenodo.org/api"
 LATEST_RECORD_ID = 15299138  # v17b — newversion must target the latest version's id
 REPO = Path(__file__).resolve().parents[2]
-STAGING = REPO / "data/exports/v17c_beta/zenodo_0.0.12"
+STAGING = REPO / "data/exports/v17c_beta/zenodo_v17c"
 CREATORS_JSON = REPO / "scripts/export/zenodo_creators_v17c.json"
 DESCRIPTION_HTML = REPO / "scripts/export/zenodo_description_v17c.html"
 
@@ -41,14 +41,14 @@ VERSION_LABEL = "v17c"
 KEYWORDS = ["SWORD", "SWOT", "Rivers", "Hydrology", "Hydrography", "River Networks", "Global"]
 
 UPLOAD_FILES = [
-    "SWORD_v17c_0.0.12_netcdf.zip",
-    "SWORD_v17c_0.0.12_gpkg.zip",
-    "SWORD_v17c_0.0.12_shp.zip",
-    "SWORD_v17c_0.0.12_parquet.zip",
-    "SWORD_v17c_0.0.12_duckdb.zip",
-    "SWORD_v17c_0.0.12_global.zip",
-    "SHA256SUMS_0.0.12.txt",
-    "SHA256SUMS_0.0.12_files.txt",
+    "SWORD_v17c_netcdf.zip",
+    "SWORD_v17c_gpkg.zip",
+    "SWORD_v17c_shp.zip",
+    "SWORD_v17c_parquet.zip",
+    "SWORD_v17c_duckdb.zip",
+    "SWORD_v17c_global.zip",
+    "SHA256SUMS.txt",
+    "SHA256SUMS_files.txt",
 ]
 
 
