@@ -1,11 +1,11 @@
 [
   {"name": "Gearon, James H.", "affiliation": "University of North Carolina at Chapel Hill", "orcid": "0000-0002-0115-7937"},
-  {"name": "Pavelsky, Tamlin M.", "affiliation": "University of North Carolina at Chapel Hill", "orcid": "0000-0002-0613-3838"},
   {"name": "Altenau, Elizabeth H.", "affiliation": "PENDING-CONFIRM-AFFILIATION", "orcid": "0000-0001-7830-4352"},
-  {"name": "Collot d'Escury, Niek", "affiliation": "Utrecht University", "orcid": "0009-0007-7601-0247"},
-  {"name": "Malaterre, Pierre-Olivier", "affiliation": "INRAE, UMR G-EAU, Montpellier, France", "orcid": "0000-0001-5834-3944"},
+  {"name": "Pavelsky, Tamlin M.", "affiliation": "University of North Carolina at Chapel Hill", "orcid": "0000-0002-0613-3838"},
   {"name": "Durand, Michael T.", "affiliation": "The Ohio State University", "orcid": "0000-0003-2682-6196"},
-  {"name": "Yang, Xiao", "affiliation": "PENDING-CONFIRM-AFFILIATION", "orcid": "0000-0002-0046-832X"},
+  {"name": "Collot d'Escury, Niek", "affiliation": "Utrecht University", "orcid": "0009-0007-7601-0247"},
+  {"name": "Yang, Xiao", "affiliation": "Southern Methodist University", "orcid": "0000-0002-0046-832X"},
+  {"name": "Malaterre, Pierre-Olivier", "affiliation": "INRAE, UMR G-EAU, Montpellier, France", "orcid": "0000-0001-5834-3944"},
   {"name": "Frasson, Renato P. d. M.", "affiliation": "Jet Propulsion Laboratory, California Institute of Technology", "orcid": "0000-0003-4299-1730"},
   {"name": "Bendezu, Liam", "affiliation": "University of North Carolina at Chapel Hill", "orcid": "0000-0002-4116-9203"}
 ]

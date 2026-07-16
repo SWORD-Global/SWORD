@@ -56,19 +56,18 @@ def die(msg: str) -> None:
     sys.exit(f"ERROR: {msg}")
 
 
-def load_metadata() -> dict:
+def load_metadata() -> tuple[dict, list[str]]:
+    """Return (metadata, pending_affiliation_names). Caller decides whether
+    pending placeholders are fatal (they are for --execute, a warning for dry runs)."""
     creators = json.loads(CREATORS_JSON.read_text())
     pending = [c["name"] for c in creators if "PENDING" in c.get("affiliation", "")]
-    if pending:
-        die(f"creators JSON still has placeholder affiliations: {pending}. "
-            "Fill them in before uploading.")
     for c in creators:
         if not c.get("orcid"):
             die(f"creator missing ORCID: {c['name']}")
     description = DESCRIPTION_HTML.read_text().strip()
     if not description:
         die("description HTML is empty")
-    return {
+    metadata = {
         "metadata": {
             "title": TITLE,
             "upload_type": "dataset",
@@ -80,6 +79,7 @@ def load_metadata() -> dict:
             "keywords": KEYWORDS,
         }
     }
+    return metadata, pending
 
 
 def check_files() -> list[Path]:
@@ -108,23 +108,11 @@ def main() -> None:
     if not token:
         die("ZENODO_TOKEN not set in environment")
 
-    metadata = load_metadata()
-    files = check_files()
-    total_gb = sum(p.stat().st_size for p in files) / 1e9
-    creators = metadata["metadata"]["creators"]
-
-    print(f"Target record (latest version): {LATEST_RECORD_ID}")
-    print(f"Version label: {VERSION_LABEL}")
-    print(f"Creators ({len(creators)}):")
-    for i, c in enumerate(creators, 1):
-        print(f"  {i:2}. {c['name']} — {c['affiliation']} ({c['orcid']})")
-    print(f"Files to upload ({len(files)}, {total_gb:.1f} GB):")
-    for p in files:
-        print(f"  {p.name} ({p.stat().st_size / 1e9:.2f} GB)")
-
     s = get_session(token)
 
-    # Read-only validation: confirm token works and can see the record.
+    # Read-only validation first: confirm token works and can see the record.
+    # (Done before metadata checks so a dry run validates the token even while
+    # some author affiliations are still placeholders.)
     r = s.get(f"{API}/deposit/depositions/{LATEST_RECORD_ID}")
     if r.status_code == 401:
         die("token rejected (401). Check ZENODO_TOKEN and its scopes.")
@@ -132,11 +120,30 @@ def main() -> None:
         die("token valid but lacks access to this record (403). "
             "Confirm the record is shared with your account at 'Can edit' or higher.")
     r.raise_for_status()
-    print(f"\nToken OK; record accessible: {r.json()['metadata'].get('title', '?')}")
+    print(f"Token OK; record accessible: {r.json()['metadata'].get('title', '?')}")
+
+    metadata, pending = load_metadata()
+    files = check_files()
+    total_gb = sum(p.stat().st_size for p in files) / 1e9
+    creators = metadata["metadata"]["creators"]
+
+    print(f"\nTarget record (latest version): {LATEST_RECORD_ID}")
+    print(f"Version label: {VERSION_LABEL}")
+    print(f"Creators ({len(creators)}):")
+    for i, c in enumerate(creators, 1):
+        print(f"  {i:2}. {c['name']} — {c['affiliation']} ({c['orcid']})")
+    print(f"Files to upload ({len(files)}, {total_gb:.1f} GB):")
+    for p in files:
+        print(f"  {p.name} ({p.stat().st_size / 1e9:.2f} GB)")
+    if pending:
+        print(f"\n⚠️  {len(pending)} author(s) still have placeholder affiliations: {pending}")
 
     if not args.execute:
         print("\nDRY RUN — no draft created, nothing uploaded. Re-run with --execute to proceed.")
         return
+
+    if pending:
+        die(f"cannot upload while affiliations are placeholders: {pending}. Fill them in first.")
 
     # 1. Create (or fetch existing) new-version draft.
     r = s.post(f"{API}/deposit/depositions/{LATEST_RECORD_ID}/actions/newversion")
