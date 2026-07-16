@@ -218,6 +218,15 @@ Data from summary JSONs (all regions applied):
 | OC | 15,090 | 5,073 | 3,975 | 1,098 | +69.6% | 0 | 0 |
 | **Total** | **248,674** | **95,913** | **80,526** | **15,387** | — | **0** | **0** |
 
+> **Note on counts.** The totals above come from the correction-run summary
+> JSONs — correction *operations* and the region tallies they logged (which
+> sum to 248,674, one over the true 248,673-reach total, from a
+> double-counted reach). The final **shipped** v17c data has **95,880**
+> reaches flagged `facc_quality = denoise_v3`, which is exactly the set whose
+> `facc` differs from v17b (**80,538** raised, **15,342** lowered; verified by
+> full diff against the v17b NetCDF). External-facing documents (release
+> notes, Zenodo description) cite the shipped figures.
+
 ![Fig 2: Correction Type Breakdown by Region](figures/report_fig2.png)
 *Figure 2. Correction type breakdown by region. Lateral propagation (yellow) dominates, followed by junction floors (green) and baseline isotonic (purple). AS has the most corrections due to its large reach count and complex delta systems.*
 

@@ -9,10 +9,10 @@
 <li>Routing endpoints: <em>best_headwater</em> and <em>best_outlet</em> per reach.</li>
 <li>A globally unique connected-component identifier (<em>subnetwork_id</em>).</li>
 <li>SWOT observation aggregations: percentile-based water surface elevation, width, and slope statistics and observation counts (<em>n_obs</em>) computed from SWOT overpasses.</li>
-<li>Flow accumulation (facc) quality flags and corrections.</li>
+<li>A per-reach flow-accumulation correction flag (<em>facc_quality</em>); the correction itself is described under Data quality fixes below.</li>
 </ul>
 </li>
-<li><strong>Data quality fixes:</strong> node geolocation repairs, node ordering normalization, lakeflag/type reconciliation (including HarP-informed lake corrections), and lake-sandwich corrections. Node dist_out now uses a midpoint convention (each node's distance refers to the center of the ~200 m segment it represents), consistent with the new v17c distance variables.</li>
+<li><strong>Data quality fixes:</strong> Flow accumulation (<em>facc</em>) was corrected on 95,880 reaches (38.6%) to remove three systematic MERIT Hydro D8 routing artifacts &mdash; bifurcation cloning, junction double-counting, and raster&ndash;vector misalignment &mdash; raising 80,538 reaches by a median of 60% and lowering 15,342 by a median of 30% relative to v17b, and eliminating all junction-conservation and downstream-monotonicity violations. SWOT-derived reach slope statistics (<em>slope_obs_*</em>) were recomputed from node water-surface-elevation regressions, correcting stale slope signs (spurious negative median slopes dropped from 18,805 to 9,988 reaches). Additional fixes: node geolocation repairs, node ordering normalization, lakeflag/type reconciliation (including HarP-informed lake corrections), and lake-sandwich corrections. Node <em>dist_out</em> now uses a midpoint convention (each node's distance refers to the center of the ~200 m segment it represents), consistent with the new v17c distance variables.</li>
 <li><strong>Formats:</strong> v17c is distributed in NetCDF, GeoPackage, Shapefile, GeoParquet, and DuckDB. Files are packaged one ZIP per format, split by continental region (Shapefiles are further split by HydroBASINS level-2 basin). Whole-planet merged GeoParquet and DuckDB files are also provided in the "global" ZIP.</li>
 </ul>
 <p><strong>Please cite this dataset.</strong> When you use SWORD v17c in your work, cite this Zenodo record:</p>

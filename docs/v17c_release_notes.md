@@ -314,11 +314,15 @@
 
 ## 1. Overview
 
-SWORD v17c extends v17b with three additions: computed mainstem topology,
-SWOT observation statistics, and flow accumulation corrections. No reaches,
-nodes, or centerlines were added or removed. v17c contains the same
-248,673 reaches, 11.1M nodes, and 66.9M centerline points as v17b across
-all six regions (NA, SA, EU, AF, AS, OC).
+SWORD v17c extends v17b with two additions — computed mainstem topology and
+SWOT observation statistics — and one substantive correction to an existing
+variable: a global flow-accumulation (`facc`) denoise that fixes systematic
+MERIT Hydro D8 routing artifacts on 95,880 reaches (38.6%). It also ships a
+set of data-quality fixes (SWOT slope recomputation, node geolocation and
+ordering repairs, lakeflag/type reconciliation). No reaches, nodes, or
+centerlines were added or removed. v17c contains the same 248,673 reaches,
+11.1M nodes, and 66.9M centerline points as v17b across all six regions
+(NA, SA, EU, AF, AS, OC).
 
 Each region is distributed as a single NetCDF4 file
 (`{region}_sword_v17c.nc`). The group structure matches v17b
@@ -414,6 +418,15 @@ Percentile-based summaries computed from available SWOT observations. All
 percentile, range, and MAD variables share the units of the underlying
 measurement.
 
+**SWOT slope derivation (corrected in v17c).** Reach `slope_obs_*` values
+are computed from pass-level linear regressions of RiverSP node water-surface
+elevation (`wse_sm`) against node `dist_out`, then aggregated to reach-level
+percentiles. This node-WSE derivation replaces the earlier reach-level signed
+RiverSP slopes, whose sign could reflect stale node ordering; it reduces
+spurious negative median slopes from 18,805 reaches to 9,988. `slope_obs_p50`
+is populated on 173,732 reaches; the remainder lack sufficient SWOT slope
+observations.
+
 **Reaches and nodes:**
 
 | Variable | Type | Units | Description |
@@ -449,7 +462,13 @@ to address three systematic error modes in MERIT Hydro's D8
 junction inflation, and raster-vector misalignment. In the v17c database,
 95,880 of 248,673 reaches (38.6%) carry corrected values
 (`facc_quality = denoise_v3`). Uncorrected reaches retain v17b values.
-See [facc_correction_methodology.md](technical/facc_correction_methodology.md)
+
+Relative to v17b, the correction raised `facc` on 80,538 reaches
+(median +60%) and lowered it on 15,342 (median 30% decrease). The largest changes
+are at bifurcation children, which under D8 each inherit the full parent
+drainage area; v17c splits that area width-proportionally among the
+distributary branches. See
+[facc_correction_methodology.md](technical/facc_correction_methodology.md)
 for the full algorithm description.
 
 | Variable | Type | Group | Description |
@@ -465,10 +484,14 @@ v17b in 0.0.9.)
 
 ### 2.4 Other New or Updated Variables
 
+`dl_grod_id` integrates a newly added obstruction dataset, DL-GROD (Deep
+Learning Global River Obstruction Database; He et al. 2025), populated on
+26,120 reaches.
+
 | Variable | Type | Group | Description |
 |----------|------|-------|-------------|
 | `type` | int32 | reaches | Reach classification (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost). Not present in v17b NetCDF; added in v17c so NetCDF users can filter by reach type without needing the database. |
-| `dl_grod_id` | int64 | reaches | DL-GROD (Deep Learning Global River Obstruction Database; He et al. 2025) dam/obstruction ID |
+| `dl_grod_id` | int64 | reaches | DL-GROD (Deep Learning Global River Obstruction Database; He et al. 2025) dam/obstruction ID; populated on 26,120 reaches |
 | `edit_flag` | string | reaches | Comma-delimited edit provenance tags (e.g., `harp_lake,clf_reconcile`). Also contains v17b numeric codes and the literal string `NaN` (v17b's no-edit placeholder); see the variable reference for the full value list |
 
 ---
@@ -601,6 +624,8 @@ Validation checks performed on the v17c data:
 
 | Audit | Finding |
 |-------|---------|
+| **Flow accumulation (facc)** | 95,880 reaches (38.6%) corrected via the denoise pipeline (`facc_quality = denoise_v3`); the flag exactly matches the set whose `facc` differs from v17b (0 flagged-but-unchanged, 0 changed-but-unflagged). Raised on 80,538 reaches (median +60%), lowered on 15,342 (median 30% decrease). Junction-conservation (F006) and downstream-monotonicity (T003) violations resolved in all regions. |
+| **SWOT slope (`slope_obs_*`)** | Recomputed from pass-level node-WSE regressions (see §2.2), replacing stale reach-level RiverSP slope signs. Spurious negative median slopes reduced from 18,805 to 9,988 reaches; `slope_obs_p50` populated on 173,732 reaches. |
 | **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`) copied from v17b to ensure consistency across all formats. |
 | **Node coordinate continuity** | v17c restores v17b node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` for the 344 previously rederived reaches plus OC reach 51111300061 split-revert residue. Global node coordinate diff vs v17b NetCDF: 0. |
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
@@ -612,7 +637,7 @@ Validation checks performed on the v17c data:
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
 | **Flow direction** | Experimental topology flips were ultimately reverted. The 1,112-flip experiment caused ~30K disconnected reaches and was rolled back; the later retained flow-correction family was also fully reverted in 0.0.9 after the scoring tautology was found. Current v17c does not retain topology that differs from v17b because of this flow-correction pipeline. |
 | **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data, with node lakeflag propagated from parent reaches. After the 0.0.10 lakeflag/type reconciliation rewrote tags, 3,981 reaches carry a `harp_lake` tag in v17c. |
-| **lakeflag/type consistency** | Resolved in 0.0.10. All 248,673 reaches now have consistent `lakeflag` and `type`; `type` is authoritative and diverges from the reach ID last digit on 2,648 reaches (1.1%) in v17c due to in-place corrections. |
+| **lakeflag/type consistency** | ~6,200 inconsistent reaches reconciled (0.0.10) via 1,015 manual reviews, a gradient-boosted classifier (82% precision, applied only at high confidence), and HarP v1.1 corrections. All 248,673 reaches now have consistent `lakeflag` and `type`; `type` is authoritative and diverges from the reach ID last digit on 2,648 reaches (1.1%) in v17c due to in-place corrections. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
 [pom_validation_report.md](technical/pom_validation_report.md).
