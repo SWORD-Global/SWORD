@@ -22,9 +22,11 @@ authors, and files, then click Publish yourself.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
+import zipfile
 from pathlib import Path
 
 import requests
@@ -92,6 +94,30 @@ def check_files() -> list[Path]:
     return paths
 
 
+def stale_bundle_docs() -> list[str]:
+    """Return doc names whose copy inside the bundle ZIPs differs from the
+    current repo docs (guards against shipping stale release notes / var ref)."""
+    docs = REPO / "docs"
+    repo_docs = {
+        "v17c_release_notes.md": docs / "v17c_release_notes.md",
+        "v17c_release_notes.pdf": docs / "v17c_release_notes.pdf",
+        "v17c_variable_reference.md": docs / "v17c_variable_reference.md",
+        "v17c_variable_reference.pdf": docs / "v17c_variable_reference.pdf",
+    }
+    ref_zip = STAGING / "SWORD_v17c_netcdf.zip"
+    if not ref_zip.is_file():
+        die(f"missing bundle zip for freshness check: {ref_zip}")
+    stale = []
+    with zipfile.ZipFile(ref_zip) as zf:
+        names = set(zf.namelist())
+        for name, src in repo_docs.items():
+            if name not in names:
+                stale.append(f"{name} (absent from zip)")
+            elif hashlib.sha256(zf.read(name)).hexdigest() != hashlib.sha256(src.read_bytes()).hexdigest():
+                stale.append(name)
+    return stale
+
+
 def get_session(token: str) -> requests.Session:
     s = requests.Session()
     s.headers.update({"Authorization": f"Bearer {token}"})
@@ -138,12 +164,20 @@ def main() -> None:
     if pending:
         print(f"\n⚠️  {len(pending)} author(s) still have placeholder affiliations: {pending}")
 
+    stale = stale_bundle_docs()
+    if stale:
+        print(f"\n⚠️  bundle docs stale vs docs/: {stale}"
+              "\n    Run: uv run python scripts/export/refresh_bundle_docs.py")
+
     if not args.execute:
         print("\nDRY RUN — no draft created, nothing uploaded. Re-run with --execute to proceed.")
         return
 
     if pending:
         die(f"cannot upload while affiliations are placeholders: {pending}. Fill them in first.")
+    if stale:
+        die(f"cannot upload stale bundle docs: {stale}. "
+            "Run scripts/export/refresh_bundle_docs.py first.")
 
     # 1. Create (or fetch existing) new-version draft.
     r = s.post(f"{API}/deposit/depositions/{LATEST_RECORD_ID}/actions/newversion")

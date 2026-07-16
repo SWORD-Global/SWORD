@@ -314,15 +314,28 @@
 
 ## 1. Overview
 
-SWORD v17c extends v17b with two additions — computed mainstem topology and
-SWOT observation statistics — and one substantive correction to an existing
-variable: a global flow-accumulation (`facc`) denoise that fixes systematic
-MERIT Hydro D8 routing artifacts on 95,880 reaches (38.6%). It also ships a
-set of data-quality fixes (SWOT slope recomputation, node geolocation and
-ordering repairs, lakeflag/type reconciliation). No reaches, nodes, or
-centerlines were added or removed. v17c contains the same 248,673 reaches,
-11.1M nodes, and 66.9M centerline points as v17b across all six regions
-(NA, SA, EU, AF, AS, OC).
+v17c **retains every v17b variable unchanged** and adds new columns on top.
+The additions fall into three groups:
+
+1. **Actual SWOT-derived observational data** (new). For the first time,
+   SWORD carries measured SWOT water-surface elevation, width, and slope
+   aggregated per reach and node from real overpasses — percentile summaries
+   (`wse_obs_*`, `width_obs_*`, `slope_obs_*`), spread statistics, and
+   observation counts (`n_obs`). These are new columns derived from SWOT
+   observations; they do not modify the v17b static `wse`, `width`, or
+   `slope` variables, which are retained as-is.
+2. **Computed mainstem topology and routing** (new): mainstem identification,
+   best-headwater/outlet routing, new distance metrics, and a globally
+   unique `subnetwork_id`.
+3. **One correction to an existing v17b variable**: a global
+   flow-accumulation (`facc`) denoise that fixes systematic MERIT Hydro D8
+   routing artifacts on 95,880 reaches (38.6%).
+
+Alongside these, v17c ships data-quality fixes to v17b-inherited fields
+(node geolocation and ordering repairs, lakeflag/type reconciliation). No
+reaches, nodes, or centerlines were added or removed. v17c contains the same
+248,673 reaches, 11.1M nodes, and 66.9M centerline points as v17b across all
+six regions (NA, SA, EU, AF, AS, OC).
 
 Each region is distributed as a single NetCDF4 file
 (`{region}_sword_v17c.nc`). The group structure matches v17b
@@ -414,18 +427,20 @@ See the variable reference for the full convention table.
 
 ### 2.2 SWOT Observation Statistics
 
-Percentile-based summaries computed from available SWOT observations. All
-percentile, range, and MAD variables share the units of the underlying
-measurement.
+These are v17c's new SWOT-derived observational columns: water-surface
+elevation, width, and slope **measured by SWOT** and aggregated per reach and
+node across all qualifying overpasses, as percentile summaries with spread
+statistics and observation counts. They are distinct from — and do not modify
+— the v17b static `wse`, `width`, and `slope` variables, which are retained
+unchanged. All percentile, range, and MAD variables share the units of the
+underlying measurement.
 
-**SWOT slope derivation (corrected in v17c).** Reach `slope_obs_*` values
-are computed from pass-level linear regressions of RiverSP node water-surface
-elevation (`wse_sm`) against node `dist_out`, then aggregated to reach-level
-percentiles. This node-WSE derivation replaces the earlier reach-level signed
-RiverSP slopes, whose sign could reflect stale node ordering; it reduces
-spurious negative median slopes from 18,805 reaches to 9,988. `slope_obs_p50`
-is populated on 173,732 reaches; the remainder lack sufficient SWOT slope
-observations.
+**SWOT slope derivation.** Reach `slope_obs_*` values are computed from
+pass-level linear regressions of RiverSP node water-surface elevation
+(`wse_sm`) against node `dist_out`, then aggregated to reach-level percentiles
+across passes. `slope_obs_p50` is populated on 173,732 reaches (the remainder
+lack sufficient SWOT slope observations); of these, 9,988 have a negative
+median slope, flagged via `slope_obs_quality` / `slope_obs_q`.
 
 **Reaches and nodes:**
 
@@ -625,7 +640,7 @@ Validation checks performed on the v17c data:
 | Audit | Finding |
 |-------|---------|
 | **Flow accumulation (facc)** | 95,880 reaches (38.6%) corrected via the denoise pipeline (`facc_quality = denoise_v3`); the flag exactly matches the set whose `facc` differs from v17b (0 flagged-but-unchanged, 0 changed-but-unflagged). Raised on 80,538 reaches (median +60%), lowered on 15,342 (median 30% decrease). Junction-conservation (F006) and downstream-monotonicity (T003) violations resolved in all regions. |
-| **SWOT slope (`slope_obs_*`)** | Recomputed from pass-level node-WSE regressions (see §2.2), replacing stale reach-level RiverSP slope signs. Spurious negative median slopes reduced from 18,805 to 9,988 reaches; `slope_obs_p50` populated on 173,732 reaches. |
+| **SWOT observation data (`wse_obs_*`, `width_obs_*`, `slope_obs_*`)** | New SWOT-derived columns aggregated from real overpasses; they do not modify the v17b static `wse`/`width`/`slope`. `slope_obs_p50` populated on 173,732 reaches (9,988 negative, flagged via `slope_obs_quality`); derived from pass-level node-WSE regressions (see §2.2). |
 | **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`) copied from v17b to ensure consistency across all formats. |
 | **Node coordinate continuity** | v17c restores v17b node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` for the 344 previously rederived reaches plus OC reach 51111300061 split-revert residue. Global node coordinate diff vs v17b NetCDF: 0. |
 | **n_nodes / reach_length** | Internally consistent. Zero N008/G002/G003 violations. |
