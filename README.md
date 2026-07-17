@@ -6,111 +6,68 @@
 
 The **SWO**T **R**iver **D**atabase (**SWORD**) is a global hydrological river network database containing **248,673 reaches**, **11.1M nodes**, and **66.9M centerlines** across 6 continental regions (NA, SA, EU, AF, AS, OC). SWORD defines the nodes and reaches that constitute [SWOT](https://swot.jpl.nasa.gov/) river vector data products.
 
-This repository contains the tooling for SWORD development, validation, and maintenance. The current production database is managed in [DuckDB](https://duckdb.org/) (~11 GB) for fast analytical performance, with support for [PostgreSQL/PostGIS](https://postgis.net/) backends.
+## Background
 
-## Current Version: v17c beta 0.0.12
+The [Surface Water and Ocean Topography (SWOT) satellite mission](https://swot.jpl.nasa.gov/), launched in December 2022, vastly expands observations of river water surface elevation (WSE), width, and slope [(Biancamaria et al., 2016)](https://link.springer.com/chapter/10.1007/978-3-319-32449-4_6). SWOT provides river vector products in shapefile format for each overpass. To enable multitemporal analysis, reaches and nodes must be defined a priori so that observations can be consistently assigned across passes. SWORD combines multiple global river and satellite datasets (GRWL, MERIT Hydro, HydroBASINS, GRanD/GROD) to define river nodes (~200 m spacing) and reaches (~10 km) with attached hydrologic variables and a consistent topology for global rivers 30 m wide and greater. SWORD is described by [Altenau et al. (2021)](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2021WR030054).
 
-SWORD v17c beta 0.0.12 is the current release, merged to `main`. It maintains the topology of v17b while adding 56 new variables covering SWOT observation statistics, mainstem routing, Dijkstra-based distances, and corrected flow accumulation.
+## Current Version: v17c
 
-**Key Documentation:**
-- [**v17c beta 0.0.12 Release Notes**](docs/v17c_release_notes.md) ([PDF](docs/v17c_release_notes.pdf)) - Summary of changes and new variables
-- [**v17c beta 0.0.12 Variable Reference**](docs/v17c_variable_reference.md) ([PDF](docs/v17c_variable_reference.pdf)) - Detailed variable descriptions and encodings
-- [**SWORD Explorer**](https://www.swordexplorer.com/) - Web-based data access and visualization
+Before using SWORD, please read the [SWORD Product Description Document](https://drive.google.com/file/d/1_1qmuJhL_Yd6ThW2QE4gW0G1eHH_XAer/view?usp=sharing). For questions, email **sword.riverdb@gmail.com**.
 
-## Project Structure
+v17c preserves the topology and reach/node definitions of v17b and adds observation-based and routing variables:
 
-```
-src/
-  sword_duckdb/              # Core module
-    workflow.py              #   SWORDWorkflow - main entry point
-    sword_class.py           #   DuckDB-backed data access
-    schema.py                #   Table definitions (DDL)
-    reactive.py              #   Auto-recalculation of derived attributes
-    validation.py            #   Topology and attribute validation
-    lint/                    #   Lint framework (122 checks, 9 categories)
-  sword_v17c_pipeline/       # v17b -> v17c enhancement pipeline
+- **SWOT observation statistics** — per-reach and per-node distributions (percentiles, range, MAD) of water surface elevation, width, and slope derived from actual SWOT passes.
+- **Mainstem routing** — mainstem identification (`is_mainstem`, `main_path_id`) and main upstream/downstream neighbor selection (`rch_id_up_main`, `rch_id_dn_main`).
+- **Hydrological distances** — Dijkstra shortest-path and mainstem distances to outlet (`dist_out_dijkstra`, `hydro_dist_out`) and width-prioritized headwater/outlet endpoints (`best_headwater`, `best_outlet`).
+- **Corrected flow accumulation** — denoised `facc` at 95,880 reaches (38.6%) where inherited values were physically inconsistent.
 
-scripts/
-  export/                    # NetCDF, GeoPackage, Parquet exporters
-  maintenance/               # Database rebuild, import, setup
-  topology/                  # Topology recalculation utilities
-  analysis/                  # Comparison and diagnostic scripts
-  visualization/             # Map and figure generation
+All original v17b variables are retained. See the release notes for the full list.
 
-deploy/
-  reviewer/                  # Streamlit manual QA reviewer
+**Documentation:**
+- [**v17c Release Notes**](docs/v17c_release_notes.md) ([PDF](docs/v17c_release_notes.pdf)) — summary of changes and new variables
+- [**v17c Variable Reference**](docs/v17c_variable_reference.md) ([PDF](docs/v17c_variable_reference.pdf)) — detailed variable descriptions and encodings
 
-tests/sword_duckdb/          # Test suite
-```
+### Version History
 
-## Getting Started
+**Version 17** (October 2024)
+- Topological updates for consistency
+- Distance-from-outlet recalculation from shortest paths between outlets and headwaters
+- New variables: `path_freq`, `path_order`, `path_segs`, `main_side`, `stream_order`, `end_reach`, `network`
+- Improved reach geometry; additional channels for connectivity; new reach and node IDs; corrected node lengths
 
-### Database Access
+**Version 17b** (March 2025)
+- Type change for 1,662 reaches and associated nodes globally, updating impacted Reach and Node IDs
+- Corrections to reach/node lengths and distance-from-outlet for select reaches (<2% globally)
 
-Primary access is through the `SWORDWorkflow` class:
+**Version 17c** (2026)
+- SWOT observation statistics for WSE, width, and slope
+- Mainstem routing and main neighbor selection (`is_mainstem`, `main_path_id`, `rch_id_up_main`, `rch_id_dn_main`)
+- Dijkstra and mainstem hydrological distances (`dist_out_dijkstra`, `hydro_dist_out`)
+- Width-prioritized endpoints (`best_headwater`, `best_outlet`)
+- Corrected flow accumulation (`facc`)
 
-```python
-from sword_duckdb import SWORDWorkflow
+## How to Download
 
-workflow = SWORDWorkflow(user_id="jake")
-sword = workflow.load("data/duckdb/sword_v17c.duckdb", "NA")
+- [**SWORD Explorer**](https://www.swordexplorer.com/) — explore and download the current version interactively
+- [**Zenodo**](https://doi.org/10.5281/zenodo.21415370) — versioned archive with a DOI for citation
 
-# Modify with provenance tracking
-workflow.modify_reach(reach_id, wse=45.5, reason="manual correction")
+Available formats: NetCDF, GeoPackage, ESRI Shapefile, GeoParquet, and DuckDB, per continent and as global merged files.
 
-# Recalculate derived attributes
-workflow.calculate_dist_out()
+## Citation
 
-# Export
-workflow.export(formats=["geopackage"], output_dir="outputs/")
-workflow.close()
-```
+Please cite the Zenodo record:
 
-### v17c Enhancement Pipeline
+> James H. Gearon, Elizabeth H. Altenau, Tamlin M. Pavelsky, Michael T. Durand, Niek Collot d'Escury, Xiao Yang, Pierre-Olivier Malaterre, Renato P. d. M. Frasson, & Liam Bendezu. (2026). SWOT River Database (SWORD) (Version v17c) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.21415370
 
-Computes new v17c attributes (mainstems, Dijkstra distances, etc.) from base topology:
+Alternatively, or in addition, cite the development publication:
 
-```bash
-# Process all regions
-python -m src.sword_v17c_pipeline.v17c_pipeline --db data/duckdb/sword_v17c.duckdb --all
-```
+> Altenau, E. H., Pavelsky, T. M., Durand, M. T., Yang, X., Frasson, R. P. D. M., & Bendezu, L. (2021). The Surface Water and Ocean Topography (SWOT) Mission River Database (SWORD): A global river network for satellite data products. *Water Resources Research*, 57(7), e2021WR030054. https://doi.org/10.1029/2021WR030054
 
-### Lint Framework
+Concept DOI (always resolves to the latest version): https://doi.org/10.5281/zenodo.3898569
 
-122 automated checks across 9 categories (topology, attributes, facc, geometry, classification, v17c variables, flags, and network):
+## Development
 
-```bash
-# Run all checks
-python -m src.sword_duckdb.lint.cli --db data/duckdb/sword_v17c.duckdb
-
-# Filter by region or check category (e.g., Topology)
-python -m src.sword_duckdb.lint.cli --db data/duckdb/sword_v17c.duckdb --region NA --checks T
-```
-
-### Exporting Data
-
-- **NetCDF:** `python scripts/export/export_netcdf.py` (Dedicated exporter for UNC/JPL distribution; ~2.5 min for all regions)
-- **Other Formats:** `python scripts/maintenance/export_sword.py` (Supports GeoPackage, GeoParquet, and PostgreSQL)
-
-### Manual QA Reviewer
-
-Streamlit applications for manual verification of topology and classifications:
-
-```bash
-streamlit run deploy/reviewer/app.py       # Topology reviewer
-streamlit run deploy/reviewer/lake_app.py  # Lake classification reviewer
-```
-
-## Testing
-
-```bash
-python -m pytest tests/sword_duckdb/ -v
-```
-
-## Citations
-
-- **Development publication:** Altenau, E. H., Pavelsky, T. M., Durand, M. T., Yang, X., Frasson, R. P. D. M., & Bendezu, L. (2021). The Surface Water and Ocean Topography (SWOT) Mission River Database (SWORD): A global river network for satellite data products. *Water Resources Research*, 57(7), e2021WR030054.
-- **Database DOI:** James H. Gearon, Elizabeth H. Altenau, Tamlin M. Pavelsky, Michael T. Durand, Niek Collot d'Escury, Xiao Yang, Pierre-Olivier Malaterre, Renato P. d. M. Frasson, & Liam Bendezu. (2026). SWOT River Database (SWORD) (Version v17c) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.21415370 (concept DOI, all versions: https://doi.org/10.5281/zenodo.3898569)
+This repository holds the code used to develop, validate, and maintain SWORD. See [`docs/`](docs/) for technical documentation.
 
 ---
 
