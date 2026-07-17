@@ -742,7 +742,7 @@ GROUP BY operation_details->>'reviewer';
 
 | Document | Relevance |
 |----------|-----------|
-| [CLAUDE.md](../../CLAUDE.md) | Project instructions, v17c pipeline details |
+| [v17c Pipeline README](../../src/sword_v17c_pipeline/README.md) | v17c pipeline details |
 | [validation_spec_dist_out.md](validation_spec_dist_out.md) | dist_out depends on correct topology |
 | [validation_spec_v17c_mainstem_variables.md](validation_spec_v17c_mainstem_variables.md) | v17c topology uses these flags |
 | [end_reach_trib_flag_validation_spec.md](end_reach_trib_flag_validation_spec.md) | end_reach affected by topology |
