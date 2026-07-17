@@ -572,4 +572,3 @@ Pipeline execution captured:
 
 - [v17c Mainstem Variables Validation Spec](validation_spec_v17c_mainstem_variables.md)
 - [v17c Pipeline README](../../src/sword_v17c_pipeline/README.md)
-- [SWORD Project Instructions - v17c Pipeline](../../CLAUDE.md#v17c-pipeline)
