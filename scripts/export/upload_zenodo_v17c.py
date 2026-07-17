@@ -41,6 +41,7 @@ DESCRIPTION_HTML = REPO / "scripts/export/zenodo_description_v17c.html"
 
 TITLE = "SWOT River Database (SWORD)"
 VERSION_LABEL = "v17c"
+REPO_URL = "https://github.com/SWORD-Global/SWORD"
 KEYWORDS = ["SWORD", "SWOT", "Rivers", "Hydrology", "Hydrography", "River Networks", "Global"]
 
 # Source references, carried from the v17b record (same source datasets).
@@ -92,6 +93,10 @@ def load_metadata() -> tuple[dict, list[str]]:
             "keywords": KEYWORDS,
             "references": REFERENCES,
             "language": "eng",
+            "related_identifiers": [
+                {"identifier": REPO_URL, "relation": "isSupplementedBy",
+                 "resource_type": "software", "scheme": "url"},
+            ],
         }
     }
     return metadata, pending
