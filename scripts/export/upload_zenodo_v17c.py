@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -124,10 +125,31 @@ def get_session(token: str) -> requests.Session:
     return s
 
 
+def put_file_with_retry(s: requests.Session, url: str, path: Path, attempts: int = 6) -> None:
+    """Stream-upload a file, retrying transient network/SSL errors. The bucket
+    PUT is idempotent (overwrites), so re-sending a failed file is safe."""
+    for i in range(1, attempts + 1):
+        try:
+            with open(path, "rb") as fh:
+                r = s.put(url, data=fh, timeout=None)
+            r.raise_for_status()
+            return
+        except requests.exceptions.RequestException as e:
+            if i == attempts:
+                raise
+            wait = min(60, 2 ** i)
+            print(f"    transient upload error ({type(e).__name__}); "
+                  f"retry {i}/{attempts - 1} in {wait}s...", flush=True)
+            time.sleep(wait)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--execute", action="store_true",
                     help="actually create the draft and upload (default: dry run)")
+    ap.add_argument("--draft-id", type=int, default=None,
+                    help="resume an existing unpublished draft by id instead of "
+                         "creating a new version (find it at zenodo.org/me/uploads)")
     args = ap.parse_args()
 
     token = os.environ.get("ZENODO_TOKEN")
@@ -179,23 +201,34 @@ def main() -> None:
         die(f"cannot upload stale bundle docs: {stale}. "
             "Run scripts/export/refresh_bundle_docs.py first.")
 
-    # 1. Create (or fetch existing) new-version draft.
-    r = s.post(f"{API}/deposit/depositions/{LATEST_RECORD_ID}/actions/newversion")
-    r.raise_for_status()
-    body = r.json()
-    draft_url = body.get("links", {}).get("latest_draft")
-    if draft_url:
-        draft = s.get(draft_url)
+    # 1. Get the new-version draft. With --draft-id, resume that draft (robust
+    #    path for a re-run: Zenodo returns 400 from newversion when an
+    #    unpublished draft already exists, and its legacy latest_draft link is
+    #    unreliable). Otherwise create a fresh new-version draft.
+    if args.draft_id:
+        draft = s.get(f"{API}/deposit/depositions/{args.draft_id}")
         draft.raise_for_status()
         draft = draft.json()
+        if draft.get("state") != "unsubmitted":
+            die(f"draft {args.draft_id} is not an unpublished draft "
+                f"(state={draft.get('state')}).")
+        print(f"\nResuming existing draft: id={draft['id']}")
     else:
-        draft = body  # some API versions return the draft directly
+        r = s.post(f"{API}/deposit/depositions/{LATEST_RECORD_ID}/actions/newversion")
+        if r.status_code == 400:
+            die("newversion returned 400 — an unpublished draft likely already "
+                "exists. Re-run with --draft-id <id> to resume it "
+                "(find the id at https://zenodo.org/me/uploads).")
+        r.raise_for_status()
+        body = r.json()
+        draft_url = body.get("links", {}).get("latest_draft")
+        draft = s.get(draft_url).json() if draft_url else body
+        print(f"\nDraft created: id={draft['id']}")
     draft_id = draft["id"]
-    bucket = draft["links"]["bucket"]
     if draft_id == LATEST_RECORD_ID:
         die("refusing to continue: draft id equals the published record id "
             "(would edit v17b). Aborting before any change.")
-    print(f"\nDraft created: id={draft_id}")
+    bucket = draft["links"]["bucket"]
 
     # 2. Set draft metadata.
     r = s.put(f"{API}/deposit/depositions/{draft_id}", data=json.dumps(metadata),
@@ -203,18 +236,39 @@ def main() -> None:
     r.raise_for_status()
     print("Draft metadata set (title, version, description, creators, license).")
 
-    # 3. Upload files via the bucket API (streams; resumable — skips files
-    #    already present at the same size).
-    existing = {f["key"]: f["size"] for f in draft.get("files", [])}
+    # 3. Reconcile files. A new-version draft inherits the previous version's
+    #    files (v17b's zips). Remove any file not in the v17c set, then upload
+    #    the v17c files (skipping any already present at the same size, so a
+    #    re-run resumes). The legacy deposit API uses filename/filesize; the
+    #    newer representation uses key/size — handle both.
+    def _fname(f: dict):
+        return f.get("key") or f.get("filename")
+
+    def _fsize(f: dict):
+        return f.get("size") if f.get("size") is not None else f.get("filesize")
+
+    wanted = set(UPLOAD_FILES)
+    existing = {}
+    for f in draft.get("files", []):
+        nm = _fname(f)
+        if nm is None:
+            continue
+        if nm not in wanted:
+            link = f.get("links", {}).get("self")
+            resp = (s.delete(link) if link
+                    else s.delete(f"{API}/deposit/depositions/{draft_id}/files/{f['id']}"))
+            resp.raise_for_status()
+            print(f"  removed inherited file: {nm}")
+        else:
+            existing[nm] = _fsize(f)
+
     for p in files:
         size = p.stat().st_size
         if existing.get(p.name) == size:
             print(f"  skip (already uploaded): {p.name}")
             continue
         print(f"  uploading {p.name} ({size / 1e9:.2f} GB)...", flush=True)
-        with open(p, "rb") as fh:
-            up = s.put(f"{bucket}/{p.name}", data=fh, timeout=None)
-        up.raise_for_status()
+        put_file_with_retry(s, f"{bucket}/{p.name}", p)
     print("All files uploaded.")
 
     print("\nDONE — draft is UNPUBLISHED. Review and publish here:")
