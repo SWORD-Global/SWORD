@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="docs/figures /SWORD_Logo.png" width="300">
+    <img src="docs/figures/SWORD_Logo.png" width="300">
 </p>
 
 # SWOT River Database (SWORD)
@@ -71,5 +71,5 @@ This repository holds the code used to develop, validate, and maintain SWORD. Se
 
 ---
 
-![Fig1](docs/figures /global_map_dist_out_legend_basins_rch_numbers.png)
+![Fig1](docs/figures/global_map_dist_out_legend_basins_rch_numbers.png)
 *SWORD reach numbers per continent. Colors display distance from outlet calculated from shortest paths between outlets and headwaters.*
