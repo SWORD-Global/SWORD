@@ -110,7 +110,7 @@ python -m pytest tests/sword_duckdb/ -v
 ## Citations
 
 - **Development publication:** Altenau, E. H., Pavelsky, T. M., Durand, M. T., Yang, X., Frasson, R. P. D. M., & Bendezu, L. (2021). The Surface Water and Ocean Topography (SWOT) Mission River Database (SWORD): A global river network for satellite data products. *Water Resources Research*, 57(7), e2021WR030054.
-- **Database DOI:** Elizabeth H. Altenau, Tamlin M. Pavelsky, Michael T. Durand, Xiao Yang, Renato P. d. M. Frasson, & Liam Bendezu. (2025). SWOT River Database (SWORD) (Version v17b) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.15299138
+- **Database DOI:** James H. Gearon, Elizabeth H. Altenau, Tamlin M. Pavelsky, Michael T. Durand, Niek Collot d'Escury, Xiao Yang, Pierre-Olivier Malaterre, Renato P. d. M. Frasson, & Liam Bendezu. (2026). SWOT River Database (SWORD) (Version v17c) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.21415370 (concept DOI, all versions: https://doi.org/10.5281/zenodo.3898569)
 
 ---
 

@@ -1,0 +1,1659 @@
+<p><strong>VERSION NOTES:</strong></p>
+<p><strong>v17b versus v17c</strong></p>
+<p>SWORD v17c is an enhancement release built on v17b by the Global Hydrology Lab at the University of North Carolina at Chapel Hill. SWORD v17b remains the official basis for SWOT Version D RiverSP Vector Products; v17c is not the JPL-official product version. v17c preserves the full v17b structure &mdash; 248,673 reaches, 11,112,454 nodes, and ~66.9 million centerline points across 6 continental regions &mdash; with reach and node counts identical to v17b. Reach topology (neighbor relationships) and reach distance-from-outlet (dist_out) are likewise identical to v17b.</p>
+<p>v17c retains every v17b variable (no columns removed) and adds new columns on top. The v17b static fields are unchanged; the only changes to existing variables are the <em>facc</em> correction, the node <em>dist_out</em> midpoint convention, and the lakeflag/type reconciliation described below. The main additions:</p>
+<ul>
+<li><strong>Actual SWOT-derived observational data (new):</strong> for the first time, SWORD carries measured SWOT water-surface elevation, width, and slope aggregated per reach and node from real overpasses: percentile summaries (<em>wse_obs_*</em>, <em>width_obs_*</em>, <em>slope_obs_*</em>), spread statistics, and observation counts (<em>n_obs</em>). These are new columns; the v17b static <em>wse</em>, <em>width</em>, and <em>slope</em> variables are retained unchanged.</li>
+<li><strong>Flow-accumulation correction:</strong> <em>facc</em> was corrected on 95,880 reaches (38.6%) to remove three systematic MERIT Hydro D8 routing artifacts &mdash; bifurcation cloning, junction double-counting, and raster&ndash;vector misalignment &mdash; raising 80,538 reaches by a median of 60% and lowering 15,342 by a median of 30% relative to v17b, and eliminating all junction-conservation and downstream-monotonicity violations. A per-reach flag (<em>facc_quality</em>) marks the corrected reaches.</li>
+<li><strong>Computed topology and routing (new):</strong> mainstem identification (<em>is_mainstem</em>, <em>main_path_id</em>, <em>rch_id_up_main</em>/<em>rch_id_dn_main</em>), best-headwater/outlet routing (<em>best_headwater</em>, <em>best_outlet</em>), new distance metrics (<em>dist_out_dijkstra</em>, <em>hydro_dist_out</em>, <em>pathlen_hw</em>/<em>pathlen_out</em>), and a globally unique connected-component identifier (<em>subnetwork_id</em>).</li>
+<li><strong>Data quality fixes to v17b-inherited fields:</strong> node geolocation repairs, node ordering normalization, lakeflag/type reconciliation (including HarP-informed lake corrections), and lake-sandwich corrections. Node <em>dist_out</em> now uses a midpoint convention (each node's distance refers to the center of the ~200 m segment it represents), consistent with the new v17c distance variables.</li>
+<li><strong>Formats:</strong> v17c is distributed in NetCDF, GeoPackage, Shapefile, GeoParquet, and DuckDB. Files are packaged one ZIP per format, split by continental region (Shapefiles are further split by HydroBASINS level-2 basin). Whole-planet merged GeoParquet and DuckDB files are also provided in the "global" ZIP.</li>
+</ul>
+<p><strong>Please cite this dataset.</strong> When you use SWORD v17c in your work, cite this Zenodo record:</p>
+<blockquote>Gearon, J. H., et al. (2026). <em>SWOT River Database (SWORD), version v17c</em> [Data set]. Zenodo. <a href="https://doi.org/10.5281/zenodo.3898569">https://doi.org/10.5281/zenodo.3898569</a></blockquote>
+<p>Alternatively, you may cite the original SWORD paper:</p>
+<blockquote>Altenau, E. H., Pavelsky, T. M., Durand, M. T., Yang, X., Frasson, R. P. d. M., &amp; Bendezu, L. (2021). The Surface Water and Ocean Topography (SWOT) Mission River Database (SWORD): A global river network for satellite data products. <em>Water Resources Research</em>, 57(7), e2021WR030054. <a href="https://doi.org/10.1029/2021WR030054">https://doi.org/10.1029/2021WR030054</a></blockquote>
+<p>The DOI <a href="https://doi.org/10.5281/zenodo.3898569">10.5281/zenodo.3898569</a> always resolves to the most recent version of SWORD; a version-specific DOI for v17c is shown on this record's page for citing this exact release.</p>
+<p><strong>1. Summary:</strong></p>
+<p>The Surface Water and Ocean Topography (SWOT) satellite mission vastly expands observations of river water surface elevation (WSE), width, and slope. The <strong>SWO</strong>T <strong>R</strong>iver <strong>D</strong>atabase (<strong>SWORD</strong>) combines multiple global river- and satellite-related datasets to define the nodes and reaches that constitute SWOT river vector data products. SWORD provides high-resolution river nodes (200 m) and reaches (~10 km) with attached hydrologic variables (WSE, width, slope, etc.) as well as a consistent topological system for global rivers 30 m wide and greater.</p>
+<p><strong>2. Data Formats:</strong></p>
+<p>SWORD v17c is provided in netCDF, GeoPackage, shapefile, GeoParquet, and DuckDB formats. All files use a two-letter continent identifier ("af" &ndash; Africa, "as" &ndash; Asia / Siberia, "eu" &ndash; Europe / Middle East, "na" &ndash; North America, "oc" &ndash; Oceania, "sa" &ndash; South America). NetCDF files are structured in 3 groups (centerlines, nodes, and reaches) and are distributed at continental scales. GeoPackage, GeoParquet, and DuckDB files carry nodes and reaches per continental region, where nodes are ~200 m spaced points and reaches are polylines. All vector files are in geographic (latitude/longitude) projection, referenced to datum WGS84.</p>
+<p><strong>3. Attribute Description:</strong></p>
+<p>The catalog below documents every variable in the SWORD v17c files, grouped into the new v17c variables and the inherited v17b variables, for the reaches, nodes, and centerlines groups.</p>
+
+
+<p><strong>Fill values:</strong> i4 = <code>-9999</code>, i8 =
+<code>-9999</code>, f8 = <code>-9999.0</code>. The reaches
+<code>edit_flag</code> variable declares a string
+<code>_FillValue</code> attribute of <code>"-9999.0"</code>, but reaches
+with no edit tag are stored as empty strings (<code>""</code>), not the
+literal <code>"-9999.0"</code>; other string variables have no fill
+value. In the <code>rch_id_up</code> / <code>rch_id_dn</code>
+<code>[4, N]</code> neighbor arrays, empty slots use <code>-9999</code>
+(v17b used <code>0</code>).</p>
+
+<p><strong>Distance Variable
+Conventions</strong></p>
+<p>SWORD contains four distance-to-outlet variables. They differ in
+routing method, zero-point, and reach endpoint reporting convention. The
+table below summarizes these conventions; see “Node-Level Interpolation”
+for how each extends to nodes.</p>
+<table>
+
+<thead>
+<tr>
+<th>Variable</th>
+<th>Routing</th>
+<th>Reach-level value</th>
+<th>Outlet value</th>
+<th>Ghost reaches</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dist_out</code> (v17b)</td>
+<td>v17b topology</td>
+<td>reported at reach upstream endpoint</td>
+<td><code>reach_length</code></td>
+<td>has value</td>
+</tr>
+<tr>
+<td><code>hydro_dist_out</code></td>
+<td><code>rch_id_dn_main</code> chain</td>
+<td>reported at reach upstream endpoint</td>
+<td><code>reach_length</code></td>
+<td>has value</td>
+</tr>
+<tr>
+<td><code>dist_out_dijkstra</code></td>
+<td>Dijkstra shortest path</td>
+<td>reported at reach upstream endpoint</td>
+<td><code>reach_length</code></td>
+<td>has value</td>
+</tr>
+<tr>
+<td><code>hydro_dist_hw</code></td>
+<td><code>rch_id_up_main</code> chain</td>
+<td>reported at reach upstream endpoint</td>
+<td>0</td>
+<td>has value</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reach scalar convention.</strong> These reach-level values
+are endpoint reports, not traversal-origin claims.
+<code>dist_out</code>, <code>hydro_dist_out</code>, and
+<code>dist_out_dijkstra</code> are outlet-distance scalars reported at
+the upstream endpoint of each reach; each reach exceeds its downstream
+neighbor by its own <code>reach_length</code> on 1:1 links.
+<code>hydro_dist_hw</code> is also reported at the upstream endpoint,
+but measures distance from <code>best_headwater</code>; each downstream
+reach exceeds its upstream neighbor by the upstream neighbor’s
+<code>reach_length</code> on 1:1 links.</p>
+<p><strong>Reference values.</strong> <code>dist_out</code>,
+<code>hydro_dist_out</code>, and <code>dist_out_dijkstra</code> all
+assign an outlet reach a value equal to its <code>reach_length</code>
+(the upstream endpoint is one reach length from the outlet point).
+<code>hydro_dist_hw</code> assigns 0 at the headwater.</p>
+<p><strong>Ghost reaches.</strong> All four distance variables retain
+values for ghost reaches in v17c, including
+<code>dist_out_dijkstra</code>.</p>
+<p><strong>Node-Level Interpolation</strong></p>
+<p>Six distance variables are interpolated per node using a midpoint
+offset within the parent reach:
+<code>offset = cumsum(node_length) - 0.5 * node_length</code>, where the
+cumulative sum is ordered by <code>node_order</code>. This places each
+node at the geometric center of its <code>node_length</code> segment. On
+a single-path network (no junctions), <code>dist_out</code>,
+<code>hydro_dist_out</code>, and <code>dist_out_dijkstra</code> are
+exactly equal at every node.</p>
+<table>
+
+<thead>
+<tr>
+<th>Variable</th>
+<th>Node formula</th>
+<th>node_order=n (upstream)</th>
+<th>node_order=1 (downstream)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dist_out</code></td>
+<td><code>reach.do - reach_length + offset</code></td>
+<td><code>~ reach.do</code></td>
+<td><code>~ reach.do - reach_length</code></td>
+</tr>
+<tr>
+<td><code>hydro_dist_out</code></td>
+<td><code>reach.hdo - reach_length + offset</code></td>
+<td><code>~ reach.hdo</code></td>
+<td><code>~ reach.hdo - reach_length</code></td>
+</tr>
+<tr>
+<td><code>dist_out_dijkstra</code></td>
+<td><code>reach.dod - reach_length + offset</code></td>
+<td><code>~ reach.dod</code></td>
+<td><code>~ reach.dod - reach_length</code></td>
+</tr>
+<tr>
+<td><code>hydro_dist_hw</code></td>
+<td><code>reach.hdh + reach_length - offset</code></td>
+<td><code>~ reach.hdh</code></td>
+<td><code>~ reach.hdh + reach_length</code></td>
+</tr>
+<tr>
+<td><code>pathlen_hw</code></td>
+<td><code>reach.plh - reach_length + offset</code></td>
+<td><code>~ reach.plh - reach_length</code></td>
+<td><code>~ reach.plh</code></td>
+</tr>
+<tr>
+<td><code>pathlen_out</code></td>
+<td><code>reach.plo + reach_length - offset</code></td>
+<td><code>~ reach.plo + reach_length</code></td>
+<td><code>~ reach.plo</code></td>
+</tr>
+</tbody>
+</table>
+<p>Three additional variables (<code>subnetwork_id</code>,
+<code>best_headwater</code>, <code>best_outlet</code>) are flat copies
+from the parent reach.</p>
+<p><strong>Boundary behavior.</strong> The reach-level formulas imply
+continuous endpoint values on 1:1 links, but node values are midpoint
+samples within their <code>node_length</code> segments. Adjacent
+boundary nodes therefore need not be identical, and bifurcation-rejoin
+structures can retain larger single-scalar <code>dist_out</code>
+gaps.</p>
+
+<p><strong>New v17c Reach Variables</strong></p>
+<table>
+
+<thead>
+<tr>
+<th>Variable</th>
+<th>NetCDF Type</th>
+<th>Units</th>
+<th>Fill Value</th>
+<th>Encoding</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>dist_out_dijkstra</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Dijkstra shortest-path outlet distance reported at the reach
+upstream endpoint; outlet reach = reach_length; values retained for
+ghost reaches</td>
+</tr>
+<tr>
+<td>hydro_dist_out</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Mainstem outlet distance reported at the reach upstream endpoint via
+rch_id_dn_main chain; outlet reach = reach_length</td>
+</tr>
+<tr>
+<td>hydro_dist_hw</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Mainstem headwater distance reported at the reach upstream endpoint
+via rch_id_up_main chain; headwater = 0</td>
+</tr>
+<tr>
+<td>rch_id_up_main</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Main upstream neighbor reach ID (mainstem-preferred)</td>
+</tr>
+<tr>
+<td>rch_id_dn_main</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Main downstream neighbor reach ID (mainstem-preferred)</td>
+</tr>
+<tr>
+<td>subnetwork_id</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Connected component ID (Pfafstetter-offset, globally unique; differs
+from v17b <code>network</code>)</td>
+</tr>
+<tr>
+<td>main_path_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>ID of the mainstem path this reach belongs to</td>
+</tr>
+<tr>
+<td>is_mainstem</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>0=not_mainstem; 1=mainstem</td>
+<td>Whether reach is on a mainstem path</td>
+</tr>
+<tr>
+<td>best_headwater</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Width-prioritized upstream headwater reach ID</td>
+</tr>
+<tr>
+<td>best_outlet</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Width-prioritized downstream outlet reach ID</td>
+</tr>
+<tr>
+<td>pathlen_hw</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Cumulative reach_length sum from best_headwater to the downstream
+end of the reach (headwater = 0, increases downstream)</td>
+</tr>
+<tr>
+<td>pathlen_out</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Cumulative reach_length sum toward best_outlet (outlet = 0,
+increases upstream)</td>
+</tr>
+<tr>
+<td>facc_quality</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>1=denoise_v3</td>
+<td>Flow accumulation correction flag</td>
+</tr>
+<tr>
+<td>dl_grod_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>DL-GROD (Deep Learning Global River Obstruction Database; He et
+al. 2025) dam/obstruction ID</td>
+</tr>
+<tr>
+<td>wse_obs_p10</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 10th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p20</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 20th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p30</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 30th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p40</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 40th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p50</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 50th percentile (median)</td>
+</tr>
+<tr>
+<td>wse_obs_p60</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 60th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p70</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 70th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p80</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 80th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p90</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 90th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_range</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE range (p90 - p10)</td>
+</tr>
+<tr>
+<td>wse_obs_mad</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE median absolute deviation</td>
+</tr>
+<tr>
+<td>width_obs_p10</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 10th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p20</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 20th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p30</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 30th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p40</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 40th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p50</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 50th percentile (median)</td>
+</tr>
+<tr>
+<td>width_obs_p60</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 60th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p70</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 70th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p80</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 80th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p90</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 90th percentile</td>
+</tr>
+<tr>
+<td>width_obs_range</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width range (p90 - p10)</td>
+</tr>
+<tr>
+<td>width_obs_mad</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width median absolute deviation</td>
+</tr>
+<tr>
+<td>slope_obs_p10</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 10th percentile</td>
+</tr>
+<tr>
+<td>slope_obs_p20</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 20th percentile</td>
+</tr>
+<tr>
+<td>slope_obs_p30</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 30th percentile</td>
+</tr>
+<tr>
+<td>slope_obs_p40</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 40th percentile</td>
+</tr>
+<tr>
+<td>slope_obs_p50</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 50th percentile (median)</td>
+</tr>
+<tr>
+<td>slope_obs_p60</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 60th percentile</td>
+</tr>
+<tr>
+<td>slope_obs_p70</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 70th percentile</td>
+</tr>
+<tr>
+<td>slope_obs_p80</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 80th percentile</td>
+</tr>
+<tr>
+<td>slope_obs_p90</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope 90th percentile</td>
+</tr>
+<tr>
+<td>slope_obs_range</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope range (p90 - p10)</td>
+</tr>
+<tr>
+<td>slope_obs_mad</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT slope median absolute deviation</td>
+</tr>
+<tr>
+<td>slope_obs_adj</td>
+<td>f8</td>
+<td>meters/meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Adjusted SWOT slope (bias-corrected)</td>
+</tr>
+<tr>
+<td>slope_obs_slopeF</td>
+<td>f8</td>
+<td></td>
+<td>-9999.0</td>
+<td></td>
+<td>Slope quality F-statistic</td>
+</tr>
+<tr>
+<td>slope_obs_reliable</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>0=unreliable; 1=reliable</td>
+<td>Whether SWOT slope is reliable</td>
+</tr>
+<tr>
+<td>slope_obs_quality</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>0..8; see flag reference</td>
+<td>SWOT slope quality category</td>
+</tr>
+<tr>
+<td>slope_obs_n</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Number of RiverSP node observations used in pass-level slope
+fits</td>
+</tr>
+<tr>
+<td>slope_obs_n_passes</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Number of SWOT passes with slope</td>
+</tr>
+<tr>
+<td>slope_obs_q</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Integer bitfield (1=negative, 2=low_passes, 4=high_var, 8=extreme,
+16=clipped)</td>
+<td>SWOT slope quality bitfield</td>
+</tr>
+<tr>
+<td>n_obs</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Total number of SWOT observations</td>
+</tr>
+</tbody>
+</table>
+<p><strong>New v17c Node Variables</strong></p>
+<table>
+
+<thead>
+<tr>
+<th>Variable</th>
+<th>NetCDF Type</th>
+<th>Units</th>
+<th>Fill Value</th>
+<th>Encoding</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>subnetwork_id</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Connected component ID (from parent reach)</td>
+</tr>
+<tr>
+<td>best_headwater</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Width-prioritized upstream headwater reach ID</td>
+</tr>
+<tr>
+<td>best_outlet</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Width-prioritized downstream outlet reach ID</td>
+</tr>
+<tr>
+<td>pathlen_hw</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Cumulative path length from headwater, interpolated by node position
+within reach; single-node reaches use midpoint</td>
+</tr>
+<tr>
+<td>pathlen_out</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Cumulative path length to outlet, interpolated by node position
+within reach; single-node reaches use midpoint</td>
+</tr>
+<tr>
+<td>hydro_dist_out</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Mainstem distance to best_outlet, interpolated by node position
+within reach; single-node reaches use midpoint</td>
+</tr>
+<tr>
+<td>hydro_dist_hw</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Distance from best_headwater, interpolated by node position within
+reach; single-node reaches use midpoint</td>
+</tr>
+<tr>
+<td>dist_out_dijkstra</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>Dijkstra shortest-path distance to outlet, interpolated by node
+position within reach; single-node reaches use midpoint; values retained
+for ghost reaches</td>
+</tr>
+<tr>
+<td>wse_obs_p10</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 10th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p20</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 20th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p30</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 30th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p40</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 40th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p50</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 50th percentile (median)</td>
+</tr>
+<tr>
+<td>wse_obs_p60</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 60th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p70</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 70th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p80</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 80th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_p90</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE 90th percentile</td>
+</tr>
+<tr>
+<td>wse_obs_range</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE range (p90 - p10)</td>
+</tr>
+<tr>
+<td>wse_obs_mad</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT WSE median absolute deviation</td>
+</tr>
+<tr>
+<td>width_obs_p10</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 10th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p20</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 20th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p30</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 30th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p40</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 40th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p50</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 50th percentile (median)</td>
+</tr>
+<tr>
+<td>width_obs_p60</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 60th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p70</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 70th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p80</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 80th percentile</td>
+</tr>
+<tr>
+<td>width_obs_p90</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width 90th percentile</td>
+</tr>
+<tr>
+<td>width_obs_range</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width range (p90 - p10)</td>
+</tr>
+<tr>
+<td>width_obs_mad</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td></td>
+<td>SWOT width median absolute deviation</td>
+</tr>
+<tr>
+<td>n_obs</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td></td>
+<td>Total number of SWOT observations</td>
+</tr>
+<tr>
+<td>facc_quality</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>1=denoise_v3</td>
+<td>Flow accumulation correction flag</td>
+</tr>
+</tbody>
+</table>
+<p><strong>v17b Variables</strong></p>
+<p>Values are unchanged from v17b unless noted elsewhere in the release
+notes. Rows marked “Not in v17b NetCDF; added in v17c” are database
+attributes that v17c now includes in the NetCDF export; they were not
+variables in the v17b NetCDF files.</p>
+<p><strong><code>edit_flag</code> note.</strong> <code>edit_flag</code>
+is a comma-delimited tag list recording edit provenance. Values include
+v17b numeric edit codes (e.g. <code>1</code>, <code>7</code>), the
+literal string <code>NaN</code> (v17b’s no-edit placeholder — present on
+~126K reaches; parsers must treat it as a string, not a float), and v17c
+tags: <code>facc_denoise_v3</code>, <code>harp_lake</code>,
+<code>lake_sandwich</code>, <code>clf_reconcile</code>,
+<code>clf_provisional_river</code>, <code>ghost_reclass</code>,
+<code>facc_suspect</code>, <code>facc_traced</code>. Multiple tags
+combine comma-delimited (e.g. <code>harp_lake,clf_reconcile</code>). In
+the NetCDF export, the reaches <code>edit_flag</code> variable declares
+a string <code>_FillValue</code> attribute of <code>"-9999.0"</code>,
+but reaches with no edit tag are stored as empty strings
+(<code>""</code>), not the literal <code>"-9999.0"</code>. Treat an
+empty string (and the <code>NaN</code> placeholder) as “no edit.”</p>
+<p><strong>Reaches</strong></p>
+<table>
+
+<thead>
+<tr>
+<th>Variable</th>
+<th>NetCDF Type</th>
+<th>Units</th>
+<th>Fill Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>reach_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Reach identifier (format: CBBBBBRRRRT)</td>
+</tr>
+<tr>
+<td>x</td>
+<td>f8</td>
+<td>degrees east</td>
+<td>-9999.0</td>
+<td>Reach centroid longitude</td>
+</tr>
+<tr>
+<td>x_min</td>
+<td>f8</td>
+<td>degrees east</td>
+<td>-9999.0</td>
+<td>Minimum longitude of reach extent</td>
+</tr>
+<tr>
+<td>x_max</td>
+<td>f8</td>
+<td>degrees east</td>
+<td>-9999.0</td>
+<td>Maximum longitude of reach extent</td>
+</tr>
+<tr>
+<td>y</td>
+<td>f8</td>
+<td>degrees north</td>
+<td>-9999.0</td>
+<td>Reach centroid latitude</td>
+</tr>
+<tr>
+<td>y_min</td>
+<td>f8</td>
+<td>degrees north</td>
+<td>-9999.0</td>
+<td>Minimum latitude of reach extent</td>
+</tr>
+<tr>
+<td>y_max</td>
+<td>f8</td>
+<td>degrees north</td>
+<td>-9999.0</td>
+<td>Maximum latitude of reach extent</td>
+</tr>
+<tr>
+<td>reach_length</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>Length of reach centerline</td>
+</tr>
+<tr>
+<td>n_nodes</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Number of nodes in reach</td>
+</tr>
+<tr>
+<td>wse</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>Water surface elevation (MERIT Hydro)</td>
+</tr>
+<tr>
+<td>wse_var</td>
+<td>f8</td>
+<td>meters^2</td>
+<td>-9999.0</td>
+<td>WSE variance</td>
+</tr>
+<tr>
+<td>width</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>River width (GRWL)</td>
+</tr>
+<tr>
+<td>width_var</td>
+<td>f8</td>
+<td>meters^2</td>
+<td>-9999.0</td>
+<td>Width variance</td>
+</tr>
+<tr>
+<td>facc</td>
+<td>f8</td>
+<td>km^2</td>
+<td>-9999.0</td>
+<td>Flow accumulation (MERIT Hydro)</td>
+</tr>
+<tr>
+<td>n_chan_max</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Max number of channels at any node</td>
+</tr>
+<tr>
+<td>n_chan_mod</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Modal number of channels</td>
+</tr>
+<tr>
+<td>obstr_type</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Obstruction type (0=none, 1=dam, 2=lock, 3=low-head, 4=falls)</td>
+</tr>
+<tr>
+<td>grod_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>GRanD/GROD dam ID</td>
+</tr>
+<tr>
+<td>hfalls_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>High falls ID</td>
+</tr>
+<tr>
+<td>slope</td>
+<td>f8</td>
+<td>meters/kilometers</td>
+<td>-9999.0</td>
+<td>Water surface slope from MERIT DEM</td>
+</tr>
+<tr>
+<td>dist_out</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>Network outlet distance reported at the reach upstream endpoint
+(v17b original; outlet reach = reach_length, not 0). See “Distance
+Variable Conventions” for comparison with v17c distance variables</td>
+</tr>
+<tr>
+<td>n_rch_up</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Number of upstream neighbor reaches</td>
+</tr>
+<tr>
+<td>n_rch_down</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Number of downstream neighbor reaches</td>
+</tr>
+<tr>
+<td>lakeflag</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Water body type (0=river, 1=lake, 2=canal, 3=tidal)</td>
+</tr>
+<tr>
+<td>type</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Reach type (1=river, 3=lake_on_river, 4=dam, 5=unreliable, 6=ghost).
+Not in v17b NetCDF; added in v17c. Values from v17b database.</td>
+</tr>
+<tr>
+<td>add_flag</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>Manually added reach flag. Not in v17b NetCDF; added in v17c.</td>
+</tr>
+<tr>
+<td>swot_obs</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Number of expected SWOT observations per cycle</td>
+</tr>
+<tr>
+<td>swot_obs_source</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>Source of SWOT observation data. Not in v17b NetCDF; added in
+v17c.</td>
+</tr>
+<tr>
+<td>max_width</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>Maximum width at any node</td>
+</tr>
+<tr>
+<td>low_slope_flag</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Low slope flag</td>
+</tr>
+<tr>
+<td>trib_flag</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>MHV tributary enters (0=no, 1=yes, spatial proximity)</td>
+</tr>
+<tr>
+<td>path_freq</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Traversal count (increases toward outlets)</td>
+</tr>
+<tr>
+<td>path_order</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Path order from traversal</td>
+</tr>
+<tr>
+<td>path_segs</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Unique ID for (path_order, path_freq) combination</td>
+</tr>
+<tr>
+<td>stream_order</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Stream order: round(log(path_freq)) + 1</td>
+</tr>
+<tr>
+<td>main_side</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Channel role (0=main, 1=side, 2=secondary outlet)</td>
+</tr>
+<tr>
+<td>end_reach</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Endpoint type (0=middle, 1=headwater, 2=outlet, 3=junction)</td>
+</tr>
+<tr>
+<td>network</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Connected component ID</td>
+</tr>
+<tr>
+<td>dn_node_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Downstream boundary node ID. Not in v17b NetCDF; added in v17c.</td>
+</tr>
+<tr>
+<td>up_node_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Upstream boundary node ID. Not in v17b NetCDF; added in v17c.</td>
+</tr>
+<tr>
+<td>river_name</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>River name from GRWL</td>
+</tr>
+<tr>
+<td>river_name_en</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>River name (English). Not in v17b NetCDF; added in v17c.</td>
+</tr>
+<tr>
+<td>river_name_local</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>River name (local language). Not in v17b NetCDF; added in v17c.</td>
+</tr>
+<tr>
+<td>edit_flag</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>Comma-delimited edit provenance tags; see the <code>edit_flag</code>
+note below</td>
+</tr>
+<tr>
+<td>version</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>Data version identifier. Not in v17b NetCDF; added in v17c.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nodes</strong></p>
+<table>
+
+<thead>
+<tr>
+<th>Variable</th>
+<th>NetCDF Type</th>
+<th>Units</th>
+<th>Fill Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>node_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Node identifier (format: CBBBBBRRRRNNNT)</td>
+</tr>
+<tr>
+<td>x</td>
+<td>f8</td>
+<td>degrees east</td>
+<td>-9999.0</td>
+<td>Node longitude</td>
+</tr>
+<tr>
+<td>y</td>
+<td>f8</td>
+<td>degrees north</td>
+<td>-9999.0</td>
+<td>Node latitude</td>
+</tr>
+<tr>
+<td>node_length</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>Length of river represented by this node</td>
+</tr>
+<tr>
+<td>node_order</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>1-based position within reach (1=downstream, n=upstream, by
+dist_out). Not in v17b NetCDF; added in v17c.</td>
+</tr>
+<tr>
+<td>reach_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Parent reach ID (format: CBBBBBRRRRT)</td>
+</tr>
+<tr>
+<td>wse</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>Water surface elevation (MERIT Hydro)</td>
+</tr>
+<tr>
+<td>wse_var</td>
+<td>f8</td>
+<td>meters^2</td>
+<td>-9999.0</td>
+<td>WSE variance</td>
+</tr>
+<tr>
+<td>width</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>River width (GRWL)</td>
+</tr>
+<tr>
+<td>width_var</td>
+<td>f8</td>
+<td>meters^2</td>
+<td>-9999.0</td>
+<td>Width variance</td>
+</tr>
+<tr>
+<td>n_chan_max</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Max number of channels</td>
+</tr>
+<tr>
+<td>n_chan_mod</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Modal number of channels</td>
+</tr>
+<tr>
+<td>obstr_type</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Obstruction type</td>
+</tr>
+<tr>
+<td>grod_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>GRanD/GROD dam ID</td>
+</tr>
+<tr>
+<td>hfalls_id</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>High falls ID</td>
+</tr>
+<tr>
+<td>dist_out</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>Distance to network outlet. Interpolated from reach
+<code>dist_out</code> using node_length midpoint offsets (same formula
+as <code>hydro_dist_out</code> and <code>dist_out_dijkstra</code>). On
+single-path networks all three are exactly equal</td>
+</tr>
+<tr>
+<td>wth_coef</td>
+<td>f8</td>
+<td></td>
+<td>-9999.0</td>
+<td>Width coefficient</td>
+</tr>
+<tr>
+<td>ext_dist_coef</td>
+<td>f8</td>
+<td></td>
+<td>-9999.0</td>
+<td>Extraction distance coefficient</td>
+</tr>
+<tr>
+<td>facc</td>
+<td>f8</td>
+<td>km^2</td>
+<td>-9999.0</td>
+<td>Flow accumulation (MERIT Hydro)</td>
+</tr>
+<tr>
+<td>lakeflag</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Water body type (0=river, 1=lake, 2=canal, 3=tidal). Propagated from
+parent reach lakeflag per JPL request.</td>
+</tr>
+<tr>
+<td>max_width</td>
+<td>f8</td>
+<td>meters</td>
+<td>-9999.0</td>
+<td>Maximum width</td>
+</tr>
+<tr>
+<td>meander_length</td>
+<td>f8</td>
+<td></td>
+<td>-9999.0</td>
+<td>Meander wavelength</td>
+</tr>
+<tr>
+<td>sinuosity</td>
+<td>f8</td>
+<td></td>
+<td>-9999.0</td>
+<td>Channel sinuosity</td>
+</tr>
+<tr>
+<td>manual_add</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Manually added node flag</td>
+</tr>
+<tr>
+<td>trib_flag</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>MHV tributary enters (0=no, 1=yes)</td>
+</tr>
+<tr>
+<td>path_freq</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Traversal count</td>
+</tr>
+<tr>
+<td>path_order</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Path order</td>
+</tr>
+<tr>
+<td>path_segs</td>
+<td>i8</td>
+<td></td>
+<td>-9999</td>
+<td>Path segment ID</td>
+</tr>
+<tr>
+<td>stream_order</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Stream order</td>
+</tr>
+<tr>
+<td>main_side</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Channel role (0=main, 1=side, 2=secondary outlet)</td>
+</tr>
+<tr>
+<td>end_reach</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Endpoint type (0=middle, 1=headwater, 2=outlet, 3=junction)</td>
+</tr>
+<tr>
+<td>network</td>
+<td>i4</td>
+<td></td>
+<td>-9999</td>
+<td>Connected component ID</td>
+</tr>
+<tr>
+<td>add_flag</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>Manually added node flag. Not in v17b NetCDF; added in v17c.</td>
+</tr>
+<tr>
+<td>river_name</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>River name</td>
+</tr>
+<tr>
+<td>edit_flag</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>Comma-delimited edit provenance tags; see the <code>edit_flag</code>
+note below</td>
+</tr>
+<tr>
+<td>version</td>
+<td>string</td>
+<td></td>
+<td></td>
+<td>Data version identifier. Not in v17b NetCDF; added in v17c.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Multi-dimensional Arrays</strong></p>
+<table>
+
+<thead>
+<tr>
+<th>Variable</th>
+<th>Group</th>
+<th>Shape</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cl_ids</td>
+<td>reaches</td>
+<td>[2, num_reaches]</td>
+<td>i8</td>
+<td>Min (row 0) and max (row 1) centerline point IDs bounding each reach
+(v17b format)</td>
+</tr>
+<tr>
+<td>rch_id_up</td>
+<td>reaches</td>
+<td>[4, num_reaches]</td>
+<td>i8</td>
+<td>Up to 4 upstream neighbor reach IDs</td>
+</tr>
+<tr>
+<td>rch_id_dn</td>
+<td>reaches</td>
+<td>[4, num_reaches]</td>
+<td>i8</td>
+<td>Up to 4 downstream neighbor reach IDs</td>
+</tr>
+<tr>
+<td>iceflag</td>
+<td>reaches</td>
+<td>[366, num_reaches]</td>
+<td>i4</td>
+<td>Daily ice presence flag (Julian day 1-366)</td>
+</tr>
+<tr>
+<td>swot_orbits</td>
+<td>reaches</td>
+<td>[75, num_reaches]</td>
+<td>i8</td>
+<td>SWOT orbit IDs that observe this reach</td>
+</tr>
+<tr>
+<td>cl_ids</td>
+<td>nodes</td>
+<td>[2, num_nodes]</td>
+<td>i8</td>
+<td>Min (row 0) and max (row 1) centerline point IDs bounding each node
+(v17b format)</td>
+</tr>
+<tr>
+<td>cl_id</td>
+<td>centerlines</td>
+<td>[num_points]</td>
+<td>i8</td>
+<td>Centerline point ID</td>
+</tr>
+<tr>
+<td>x</td>
+<td>centerlines</td>
+<td>[num_points]</td>
+<td>f8</td>
+<td>Centerline point longitude (degrees east)</td>
+</tr>
+<tr>
+<td>y</td>
+<td>centerlines</td>
+<td>[num_points]</td>
+<td>f8</td>
+<td>Centerline point latitude (degrees north)</td>
+</tr>
+<tr>
+<td>reach_id</td>
+<td>centerlines</td>
+<td>[4, num_points]</td>
+<td>i8</td>
+<td>Reach ID at each centerline point (row 0); rows 1-3 hold neighboring
+reach IDs at reach boundaries. Copied from v17b</td>
+</tr>
+<tr>
+<td>node_id</td>
+<td>centerlines</td>
+<td>[4, num_points]</td>
+<td>i8</td>
+<td>Node ID at each centerline point (row 0); rows 1-3 hold neighboring
+node IDs. Copied from v17b</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Subgroups (copied from v17b)</strong></p>
+<table>
+
+<thead>
+<tr>
+<th>Subgroup</th>
+<th>Parent</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>reaches/area_fits</td>
+<td>reaches</td>
+<td>Area-based rating curve fit coefficients</td>
+</tr>
+<tr>
+<td>reaches/discharge_models</td>
+<td>reaches</td>
+<td>Discharge model parameters (organized by constraint/model)</td>
+</tr>
+</tbody>
+</table>
