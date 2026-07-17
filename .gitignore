@@ -237,3 +237,8 @@ DrainageAreaFix/
 .claude/
 .dmux-hooks/
 .dgov-hooks/
+AGENTS.md
+CLAUDE.md
+
+# Vendored / unused submodule (kept local only)
+deepwatermap/
