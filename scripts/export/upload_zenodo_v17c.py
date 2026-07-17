@@ -43,6 +43,16 @@ TITLE = "SWOT River Database (SWORD)"
 VERSION_LABEL = "v17c"
 KEYWORDS = ["SWORD", "SWOT", "Rivers", "Hydrology", "Hydrography", "River Networks", "Global"]
 
+# Source references, carried from the v17b record (same source datasets).
+REFERENCES = [
+    "Allen, G. H., & Pavelsky, T. M. (2018). Global extent of rivers and streams. Science, 361(6402), 585-588.",
+    "Lehner, B., Grill G. (2013): Global river hydrography and network routing: baseline data and new approaches to study the world's large river systems. Hydrological Processes, 27(15): 2171-2186. Data is available at www.hydrosheds.org.",
+    "Tessler, Z. D., Vorosmarty, C. J., Grossberg, M., Gladkova, I., Aizenman, H., Syvitski, J. P. M., & Foufoula-Georgiou, E. (2015). Profiling risk and sustainability in coastal deltas of the world. Science, 349(6248), 638-643.",
+    "Yamazaki, D., Ikeshima, D., Sosa, J., Bates, P. D., Allen, G., & Pavelsky, T. (2019). MERIT Hydro: A high-resolution global hydrography map based on latest topography datasets. Water Resources Research. https://doi.org/10.1029/2019WR024873.",
+    "SWOT Orbits: https://www.aviso.altimetry.fr/en/missions/future-missions/swot/orbit.html",
+    "Altenau, E. H., Pavelsky, T. M., Durand, M. T., Yang, X., Frasson, R. P. D. M., & Bendezu, L. (2021). The Surface Water and Ocean Topography (SWOT) Mission River Database (SWORD): A global river network for satellite data products. Water Resources Research, 57(7), e2021WR030054.",
+]
+
 UPLOAD_FILES = [
     "SWORD_v17c_netcdf.zip",
     "SWORD_v17c_gpkg.zip",
@@ -80,6 +90,8 @@ def load_metadata() -> tuple[dict, list[str]]:
             "license": "cc-by-4.0",
             "access_right": "open",
             "keywords": KEYWORDS,
+            "references": REFERENCES,
+            "language": "eng",
         }
     }
     return metadata, pending
