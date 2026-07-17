@@ -12,7 +12,7 @@ The [Surface Water and Ocean Topography (SWOT) satellite mission](https://swot.j
 
 ## Current Version: v17c
 
-Before using SWORD, please read the [SWORD Product Description Document](https://drive.google.com/file/d/1_1qmuJhL_Yd6ThW2QE4gW0G1eHH_XAer/view?usp=sharing). For questions, email **sword.riverdb@gmail.com**.
+For detailed variable descriptions, release notes, and downloads, see the [**Zenodo record**](https://doi.org/10.5281/zenodo.21415370). Before using SWORD, please also read the [SWORD Product Description Document](https://drive.google.com/file/d/1_1qmuJhL_Yd6ThW2QE4gW0G1eHH_XAer/view?usp=sharing). For questions, email **james.gearon@unc.edu**.
 
 v17c preserves the topology and reach/node definitions of v17b and adds observation-based and routing variables:
 
