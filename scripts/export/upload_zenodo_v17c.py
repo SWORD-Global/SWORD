@@ -162,7 +162,12 @@ def main() -> None:
     ap.add_argument("--draft-id", type=int, default=None,
                     help="resume an existing unpublished draft by id instead of "
                          "creating a new version (find it at zenodo.org/me/uploads)")
+    ap.add_argument("--metadata-only", action="store_true",
+                    help="update draft metadata (description/creators/references) "
+                         "only; do not touch files. Requires --draft-id.")
     args = ap.parse_args()
+    if args.metadata_only and not args.draft_id:
+        die("--metadata-only requires --draft-id")
 
     token = os.environ.get("ZENODO_TOKEN")
     if not token:
@@ -209,7 +214,7 @@ def main() -> None:
 
     if pending:
         die(f"cannot upload while affiliations are placeholders: {pending}. Fill them in first.")
-    if stale:
+    if stale and not args.metadata_only:
         die(f"cannot upload stale bundle docs: {stale}. "
             "Run scripts/export/refresh_bundle_docs.py first.")
 
@@ -247,6 +252,11 @@ def main() -> None:
               headers={"Content-Type": "application/json"})
     r.raise_for_status()
     print("Draft metadata set (title, version, description, creators, license).")
+
+    if args.metadata_only:
+        print("\nMETADATA-ONLY — files untouched. Review here:")
+        print(f"  https://zenodo.org/uploads/{draft_id}")
+        return
 
     # 3. Reconcile files. A new-version draft inherits the previous version's
     #    files (v17b's zips). Remove any file not in the v17c set, then upload

@@ -314,8 +314,10 @@
 
 ## 1. Overview
 
-v17c **retains every v17b variable unchanged** and adds new columns on top.
-The additions fall into three groups:
+v17c **retains every v17b variable** (no columns removed) and adds new columns
+on top. v17b's static fields are preserved unchanged; the only changes to
+existing variables are the specific corrections noted below (`facc`, node
+`dist_out`, and `lakeflag`/`type`). The additions fall into three groups:
 
 1. **Actual SWOT-derived observational data** (new). For the first time,
    SWORD carries measured SWOT water-surface elevation, width, and slope
@@ -539,6 +541,12 @@ CF attributes: `flag_values = [1]`, `flag_meanings = "denoise_v3"`.
 CF attributes: `flag_values = [0,1,2,3,4,5,6,7,8]`,
 `flag_meanings = "reliable small_negative moderate_negative large_negative negative below_ref_uncertainty high_uncertainty noise_high_nobs flat_water_noise"`.
 
+The working database also carries a `below_noise` category (427 reaches, slope
+below the SWOT noise floor) that is not among codes 0-8; in this release those
+reaches export with the `slope_obs_quality` fill value (-9999). They still
+carry a `slope_obs_p50` value, so filter on `slope_obs_p50 != -9999` rather
+than on `slope_obs_quality` alone when selecting reaches with a computed slope.
+
 ### slope_obs_reliable
 
 | Value | Meaning |
@@ -595,6 +603,21 @@ Example: 5 = negative slope (1) + high variance (4).
   `edit_flag` is not tagged. Tags are comma-delimited when multiple
   apply.
 
+- **Neighbor-array fill convention (vs v17b):** In the NetCDF `rch_id_up` and
+  `rch_id_dn` `[4, N]` arrays, empty neighbor slots use the fill value
+  `-9999`, whereas v17b used `0`. The neighbor relationships themselves are
+  identical to v17b; only the empty-slot sentinel differs. Code that diffs the
+  raw arrays against v17b, or that treats `0` as "no neighbor," should account
+  for this.
+
+- **Swapped neighbor vectors on two reaches (GeoParquet/DuckDB only):** Reaches
+  45220300256 (AS) and 71382000696 (NA) have their denormalized
+  `rch_id_up_1..4` / `rch_id_dn_1..4` columns swapped in the GeoParquet and
+  DuckDB exports (the single downstream neighbor appears in `rch_id_up_1`, and
+  `rch_id_dn_1..4` are 0). The canonical NetCDF `rch_id_up`/`rch_id_dn` arrays
+  and the topology table are correct for both reaches; only the denormalized
+  vector columns in these two formats are affected.
+
 - **area_fits and discharge_models:** Direct copies from v17b. Not
   recomputed against v17c facc or SWOT values.
 
@@ -610,11 +633,10 @@ Example: 5 = negative slope (1) + high variance (4).
   0.0.9 after a scoring tautology was found. v17c topology is
   identical to v17b; `v17c_flow_corrections` is empty.
 
-- **main_path_id consistency:** 3,134 reaches have `main_path_id` values
-  inconsistent with current `(best_headwater, best_outlet)` tuples (V013-
-  V015 lint checks). 80 reaches in NA have `best_headwater` pointing to
-  non-headwater reaches. Requires recomputing `main_path_id` from current
-  headwater/outlet assignments.
+- **main_path_id consistency:** 19 `(best_headwater, best_outlet)` tuples map
+  to more than one `main_path_id` (V015 lint check), affecting 230 reaches.
+  The related continuity checks (V013, V014) and `best_headwater` validity
+  (V007) report zero violations.
 
 - **River naming:** 51.2% of reaches are unnamed (NODATA), ranging from
   26% (AF) to 69% (OC). 2.6% of mainstem 1:1 links have local name
@@ -652,7 +674,7 @@ Validation checks performed on the v17c data:
 | **River name formatting** | 291 formatting issues corrected (separators, whitespace). Automated checks now enforce "; " separator and alphabetical ordering. |
 | **Flow direction** | Experimental topology flips were ultimately reverted. The 1,112-flip experiment caused ~30K disconnected reaches and was rolled back; the later retained flow-correction family was also fully reverted in 0.0.9 after the scoring tautology was found. Current v17c does not retain topology that differs from v17b because of this flow-correction pipeline. |
 | **HarP lake corrections** | 7,425 reaches reclassified lakeflag 0 to 1 from HarP v1.1 data, with node lakeflag propagated from parent reaches. After the 0.0.10 lakeflag/type reconciliation rewrote tags, 3,981 reaches carry a `harp_lake` tag in v17c. |
-| **lakeflag/type consistency** | ~6,200 inconsistent reaches reconciled (0.0.10) via 1,015 manual reviews, a gradient-boosted classifier (82% precision, applied only at high confidence), and HarP v1.1 corrections. All 248,673 reaches now have consistent `lakeflag` and `type`; `type` is authoritative and diverges from the reach ID last digit on 2,648 reaches (1.1%) in v17c due to in-place corrections. |
+| **lakeflag/type consistency** | ~6,200 inconsistent reaches reconciled (0.0.10) via 1,015 manual reviews, a gradient-boosted classifier (82% precision, applied only at high confidence), and HarP v1.1 corrections. All 248,673 reaches are consistent under the two primary rules (no lakeflag=1 with type=1, no lakeflag=0 with type=3); some rarer lakeflag/type edge combinations (e.g. lakeflag=3 tidal with type=1) remain and are expected. `type` is authoritative and diverges from the reach ID last digit on 2,648 reaches (1.1%) in v17c due to in-place corrections. |
 
 For POM (Pierre-Olivier Malaterre) validation results, see
 [pom_validation_report.md](technical/pom_validation_report.md).

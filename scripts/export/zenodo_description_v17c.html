@@ -1,11 +1,11 @@
 <p><strong>VERSION NOTES:</strong></p>
 <p><strong>v17b versus v17c</strong></p>
-<p>SWORD v17c is an enhancement release built on v17b by the Global Hydrology Lab at the University of North Carolina at Chapel Hill. SWORD v17b remains the official basis for SWOT Version D RiverSP Vector Products; v17c is not the JPL-official product version. v17c preserves the full v17b structure &mdash; 248,673 reaches, 11,112,454 nodes, and ~66.9 million centerline points across 6 continental regions &mdash; with reach and node counts identical to v17b. Reach topology and reach distance-from-outlet (dist_out) are likewise identical to v17b.</p>
-<p>v17c retains every v17b variable unchanged and adds new columns on top. The main additions:</p>
+<p>SWORD v17c is an enhancement release built on v17b by the Global Hydrology Lab at the University of North Carolina at Chapel Hill. SWORD v17b remains the official basis for SWOT Version D RiverSP Vector Products; v17c is not the JPL-official product version. v17c preserves the full v17b structure &mdash; 248,673 reaches, 11,112,454 nodes, and ~66.9 million centerline points across 6 continental regions &mdash; with reach and node counts identical to v17b. Reach topology (neighbor relationships) and reach distance-from-outlet (dist_out) are likewise identical to v17b.</p>
+<p>v17c retains every v17b variable (no columns removed) and adds new columns on top. The v17b static fields are unchanged; the only changes to existing variables are the <em>facc</em> correction, the node <em>dist_out</em> midpoint convention, and the lakeflag/type reconciliation described below. The main additions:</p>
 <ul>
 <li><strong>Actual SWOT-derived observational data (new):</strong> for the first time, SWORD carries measured SWOT water-surface elevation, width, and slope aggregated per reach and node from real overpasses: percentile summaries (<em>wse_obs_*</em>, <em>width_obs_*</em>, <em>slope_obs_*</em>), spread statistics, and observation counts (<em>n_obs</em>). These are new columns; the v17b static <em>wse</em>, <em>width</em>, and <em>slope</em> variables are retained unchanged.</li>
 <li><strong>Flow-accumulation correction:</strong> <em>facc</em> was corrected on 95,880 reaches (38.6%) to remove three systematic MERIT Hydro D8 routing artifacts &mdash; bifurcation cloning, junction double-counting, and raster&ndash;vector misalignment &mdash; raising 80,538 reaches by a median of 60% and lowering 15,342 by a median of 30% relative to v17b, and eliminating all junction-conservation and downstream-monotonicity violations. A per-reach flag (<em>facc_quality</em>) marks the corrected reaches.</li>
-<li><strong>Computed topology and routing (new, ~56 columns total):</strong> mainstem identification (<em>is_mainstem</em>, <em>main_path_id</em>, <em>rch_id_up_main</em>/<em>rch_id_dn_main</em>), best-headwater/outlet routing (<em>best_headwater</em>, <em>best_outlet</em>), new distance metrics (<em>dist_out_dijkstra</em>, <em>hydro_dist_out</em>, <em>pathlen_hw</em>/<em>pathlen_out</em>), and a globally unique connected-component identifier (<em>subnetwork_id</em>).</li>
+<li><strong>Computed topology and routing (new):</strong> mainstem identification (<em>is_mainstem</em>, <em>main_path_id</em>, <em>rch_id_up_main</em>/<em>rch_id_dn_main</em>), best-headwater/outlet routing (<em>best_headwater</em>, <em>best_outlet</em>), new distance metrics (<em>dist_out_dijkstra</em>, <em>hydro_dist_out</em>, <em>pathlen_hw</em>/<em>pathlen_out</em>), and a globally unique connected-component identifier (<em>subnetwork_id</em>).</li>
 <li><strong>Data quality fixes to v17b-inherited fields:</strong> node geolocation repairs, node ordering normalization, lakeflag/type reconciliation (including HarP-informed lake corrections), and lake-sandwich corrections. Node <em>dist_out</em> now uses a midpoint convention (each node's distance refers to the center of the ~200 m segment it represents), consistent with the new v17c distance variables.</li>
 <li><strong>Formats:</strong> v17c is distributed in NetCDF, GeoPackage, Shapefile, GeoParquet, and DuckDB. Files are packaged one ZIP per format, split by continental region (Shapefiles are further split by HydroBASINS level-2 basin). Whole-planet merged GeoParquet and DuckDB files are also provided in the "global" ZIP.</li>
 </ul>
@@ -24,8 +24,13 @@
 
 <p><strong>Fill values:</strong> i4 = <code>-9999</code>, i8 =
 <code>-9999</code>, f8 = <code>-9999.0</code>. The reaches
-<code>edit_flag</code> variable uses the string fill value
-<code>"-9999.0"</code>; other string variables have no fill value.</p>
+<code>edit_flag</code> variable declares a string
+<code>_FillValue</code> attribute of <code>"-9999.0"</code>, but reaches
+with no edit tag are stored as empty strings (<code>""</code>), not the
+literal <code>"-9999.0"</code>; other string variables have no fill
+value. In the <code>rch_id_up</code> / <code>rch_id_dn</code>
+<code>[4, N]</code> neighbor arrays, empty slots use <code>-9999</code>
+(v17b used <code>0</code>).</p>
 
 <p><strong>Distance Variable
 Conventions</strong></p>
@@ -920,8 +925,11 @@ tags: <code>facc_denoise_v3</code>, <code>harp_lake</code>,
 <code>clf_provisional_river</code>, <code>ghost_reclass</code>,
 <code>facc_suspect</code>, <code>facc_traced</code>. Multiple tags
 combine comma-delimited (e.g. <code>harp_lake,clf_reconcile</code>). In
-the NetCDF export, the reaches <code>edit_flag</code> variable carries
-the string fill value <code>"-9999.0"</code> where empty.</p>
+the NetCDF export, the reaches <code>edit_flag</code> variable declares
+a string <code>_FillValue</code> attribute of <code>"-9999.0"</code>,
+but reaches with no edit tag are stored as empty strings
+(<code>""</code>), not the literal <code>"-9999.0"</code>. Treat an
+empty string (and the <code>NaN</code> placeholder) as “no edit.”</p>
 <p><strong>Reaches</strong></p>
 <table>
 

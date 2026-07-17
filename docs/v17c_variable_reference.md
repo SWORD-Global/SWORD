@@ -3,8 +3,11 @@
 Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c.nc`).
 
 **Fill values:** i4 = `-9999`, i8 = `-9999`, f8 = `-9999.0`. The reaches
-`edit_flag` variable uses the string fill value `"-9999.0"`; other string
-variables have no fill value.
+`edit_flag` variable declares a string `_FillValue` attribute of `"-9999.0"`,
+but reaches with no edit tag are stored as empty strings (`""`), not the
+literal `"-9999.0"`; other string variables have no fill value. In the
+`rch_id_up` / `rch_id_dn` `[4, N]` neighbor arrays, empty slots use `-9999`
+(v17b used `0`).
 
 ---
 
@@ -179,8 +182,10 @@ reaches; parsers must treat it as a string, not a float), and v17c tags:
 `facc_denoise_v3`, `harp_lake`, `lake_sandwich`, `clf_reconcile`,
 `clf_provisional_river`, `ghost_reclass`, `facc_suspect`, `facc_traced`.
 Multiple tags combine comma-delimited (e.g. `harp_lake,clf_reconcile`).
-In the NetCDF export, the reaches `edit_flag` variable carries the string
-fill value `"-9999.0"` where empty.
+In the NetCDF export, the reaches `edit_flag` variable declares a string
+`_FillValue` attribute of `"-9999.0"`, but reaches with no edit tag are
+stored as empty strings (`""`), not the literal `"-9999.0"`. Treat an empty
+string (and the `NaN` placeholder) as "no edit."
 
 ### Reaches
 
