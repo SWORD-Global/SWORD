@@ -1,266 +1,333 @@
-# HANDOVER — Global SWOT WSE percentile-tail investigation
+# HANDOVER — Stored WSE upper-tail case viewer
 
 **Date:** 2026-07-28
 
 **Branch:** `codex/wse-percentile-tail-handover`
 
-**Starting commit:** `4e54ccd` (`Merge v17c beta 0.0.12 release prep`)
+**Parent commit:** `815026b`
 
-**Status:** Investigation incomplete; next session should begin with the full River raw-observation audit described below.
+**Status:** Stop iterating on presentation maps. The next task is to build a
+local HTML case-review viewer for the alarming stored WSE upper tail, beginning
+with western China and the Tibetan Plateau. No filtering or treatment decision
+has been made, and no SWORD database was modified.
 
-## Why this handover exists
+## Immediate concern
 
-The global node-level maps of SWOT WSE percentile spread show a pervasive upper tail, especially across the Tibetan Plateau and Himalayas. The working conclusion is:
+The direct-stored p90-p10 map contains a large, visually coherent concentration
+of values above the 50 m display cap east and northeast of India, across western
+China and the Tibetan Plateau. It is too extensive to dismiss as a few
+reservoir-filling examples and too suspicious to present as literal hydrologic
+variability without case-level inspection.
 
-- the stored v17c percentile fields cannot yet be presented as a clean map of hydrologic variability;
-- the known `>=50 m` audit proves that much of the extreme tail is caused by percentile computation and observation-QC inconsistencies;
-- a smaller subset contains plausible reach-coherent physical events, including reservoir filling and operations;
-- the much larger `20–50 m` shoulder has not yet been reconstructed from raw RiverSP observations, so its cause is unresolved;
-- the current non-emergency filtered map is therefore useful for diagnosis, but not presentation-ready as a literal hydrologic signal.
+Do not explain the cluster away. Build the viewer, inspect representative
+nodes and reaches, record the evidence, and only then decide whether filtering,
+special treatment, or different scientific framing is warranted.
 
-The next session needs to get to the bottom of the full `>=20 m` population before a final image is sent to Tamlin.
+## Locked decisions from this session
 
-## Non-negotiable interpretation corrections
+1. The investigation layer must use the **stored SWORD v17c percentile
+   fields**, not substitute a recalculation into the map.
+2. Do **not** gate the investigation layer at 20 m. The 20 m value was an audit
+   trigger, not a scientifically privileged boundary.
+3. The selected direct-stored maps use a 50 m color-scale ceiling. That is a
+   **display cap, not a data cutoff**. Values above 50 m are retained and shown
+   in white.
+4. Do not label the upper tail, or the western-China cluster, as reservoirs.
+   Reservoir filling is one plausible physical cause for some cases, not an
+   explanation for the regional pattern.
+5. The acceptable interim wording is:
 
-1. Here, **original** or **stored** means the current v17c node percentile fields. It does not mean a fresh reconstruction from raw RiverSP observations.
-2. RiverSP observation latitude/longitude are detected-water centroids. They are not evidence that a fixed SWORD `node_id` moved geographically. Do not revive the earlier “spatial mixing” interpretation based on observation centroids.
-3. The global maps do not interpolate. They rasterize nodes into a 3200-pixel-wide Robinson grid and retain the maximum node value in each display cell. This greatly amplifies the visual prevalence of rare high values.
-4. Absence from DL-GROD/HydroFALLS is not evidence that an extreme is false. Recent or incomplete dams, including known reservoir-filling examples, may be missing.
-5. Do not edit `sword_v17b.duckdb`. No database modification is required for this investigation.
+   > The residual tail may mix unresolved measurement effects with real
+   > physical changes, including reservoir filling.
 
-## Locked population and distribution results
+6. Do not choose or apply a production filter during viewer construction.
+   Record candidate evidence and preserve every original stored value.
+7. Keep the existing raw reconstruction and audit classes available as
+   comparison layers. They are diagnostics; they must not silently replace the
+   stored values being investigated.
 
-Eligible node population: **9,362,955 nodes**.
+## What the regional count actually shows
 
-### Original stored percentile spreads
+The first bounded count used the stored database-only parquet and its existing
+basic `eligible` flag. The western-China investigation box is provisionally:
 
-| Spread | `>=20 m` | `>=50 m` | `>=100 m` | Maximum |
-|---|---:|---:|---:|---:|
-| p60–p40 | 35,022 | 7,991 | 2,407 | 881.086 m |
-| p70–p30 | 91,260 | 21,448 | 6,820 | 1,373.388 m |
-| p80–p20 | 177,286 | 42,877 | 13,976 | 1,571.298 m |
-| p90–p10 | 354,544 | 86,717 | 28,419 | 1,820.197 m |
+`90–105°E, 25–36°N`
 
-For stored p90–p10:
+Within that box:
 
-- median: **2.279 m**
-- p95: **16.183 m**
-- p99: **47.915 m**
+| Stored p90-p10 result | Nodes | Reaches |
+|---|---:|---:|
+| At least 20 m | 23,018 | — |
+| At least 50 m | 9,430 | 1,305 |
+| At least 100 m | 3,879 | — |
 
-### Current non-emergency filtered product
+For the 9,430 nodes at or above 50 m:
 
-Full-suite population: **9,340,693 nodes**. This excludes 20,396 unresolved `>=50 m` nodes, 1,862 repaired zero outer spreads, and four zero intermediate spreads.
+- median stored spread is **88.0 m**;
+- median stored `n_obs` is **23**;
+- 799 nodes have the coarse database `physical_context_flag`;
+- the values are distributed across many reaches, not a single reservoir or a
+  small handful of sites.
 
-| Spread | `>=20 m` | `>=50 m` | `>=100 m` | Maximum |
-|---|---:|---:|---:|---:|
-| p60–p40 | 13,577 | 221 | 14 | 162.933 m |
-| p70–p30 | 49,447 | 712 | 73 | 176.120 m |
-| p80–p20 | 116,547 | 1,559 | 220 | 185.951 m |
-| p90–p10 | 284,986 | 2,406 | 602 | 198.997 m |
+The same 9,430 nodes divide under the completed raw-observation audit as:
 
-For filtered p90–p10:
-
-- median: **2.263 m**
-- p95: **14.726 m**
-- p99: **33.300 m**
-
-## The central unresolved result
-
-The current conservative screen only reconstructed stored p90–p10 values at or above 50 m. It barely touches the large 30–50 m shoulder:
-
-| Displayed filtered p90–p10 | Nodes | Still using stored value | Repaired from raw observations |
+| Audit category | Nodes | Share | Distinct reaches |
 |---|---:|---:|---:|
-| 30–40 m | 76,611 | 72,196 (94.2%) | 4,415 |
-| 40–50 m | 45,611 | 40,494 (88.8%) | 5,117 |
-| 30–50 m total | 122,222 | 112,690 (92.2%) | 9,532 |
+| `CONFIRMED_AGGREGATION_FILTER_ARTIFACT` | 4,501 | 47.7% | 1,028 |
+| `LOW_SUPPORT_UNSTABLE` | 2,392 | 25.4% | 494 |
+| `PASS_DATUM_OFFSET_PATTERN` | 1,072 | 11.4% | 305 |
+| `UNRESOLVED` | 926 | 9.8% | 366 |
+| `REACH_COHERENT_PHYSICAL_CANDIDATE` | 539 | 5.7% | 20 |
 
-This is the strongest reason not to treat the current non-emergency map as final. The apparent 30–50 m prevalence is overwhelmingly unaudited stored data, not surviving reconstructed raw-observation evidence.
+This is the key starting fact. The stored regional pattern is real as a product
+feature, but much of it is already known to collapse or become unstable under
+quality-matched reconstruction. The 539 reach-coherent candidates still are
+not proof of reservoirs or even proof of physical variability.
 
-Within those 112,690 untouched nodes:
+A broader `73–105°E, 25–40°N` check contains 13,758 eligible stored nodes at or
+above 50 m on 1,931 reaches. The highest-density two-degree cells include:
 
-- 61,869 (54.9%) have at least one database-only statistical warning: low sample count, tail inflation, tail imbalance, or a thin central distribution;
-- only 12,935 (about 11.5%) have a mapped physical-context flag;
-- median stored `n_obs` is 30 for 30–40 m and 29 for 40–50 m;
-- median p80–p20 is 22.186 m and 30.286 m, respectively;
-- median tail-inflation ratio is 1.533 and 1.465;
-- median tail-imbalance ratio is 0.883 and 0.893.
+- 100–102°E, 30–32°N: 1,109 nodes on 67 reaches;
+- 102–104°E, 26–28°N: 705 nodes on 62 reaches;
+- 104–106°E, 26–28°N: 566 nodes on 42 reaches;
+- 102–104°E, 28–30°N: 560 nodes on 78 reaches;
+- 94–96°E, 28–30°N: 547 nodes on 80 reaches.
 
-These summaries cannot determine which individual nodes are false. They show that a large fraction is statistically suspicious and that raw reconstruction is necessary.
+Use the western-China box as the default view, but derive the actual connected
+hotspot footprint rather than treating this provisional rectangle as a
+scientific region.
 
-## Reach coherence
+## Why the global raster looks especially alarming
 
-The untouched 30–50 m shoulder spans **25,562 reaches**:
+The current map does not interpolate, but it does rasterize nodes into a
+3200-pixel-wide Robinson grid and retain the **maximum node value in each
+occupied display cell**. At continental scale, a single extreme node can
+control a cell. Values above the 50 m color cap all become the same white
+over-range color.
 
-- 9,025 affected reaches contain only one flagged node;
-- the median affected-node fraction per reach is 5.77%;
-- only 7.7% of nodes lie on multi-node reaches where at least half the reach is in the 30–50 m band;
-- 35.9% are isolated or occupy less than 10% of their reach.
+The HTML viewer must therefore show actual node locations and reach context.
+When zoomed out, any clustering must distinguish:
 
-Many nodes therefore look spatially isolated, but there are coherent reaches on the Peace, Angara, Omo, Jinsha, Yellow River, and elsewhere. Several are lake-like (`lakeflag=1`, commonly `type=3`) and may reflect genuine impoundment filling, reservoir operation, pass offsets, or reach-wide datum effects. Reach coherence is a prioritization signal, not proof of physical variability.
+- node count;
+- maximum spread;
+- median spread; and
+- fraction above the selected threshold.
 
-## What the completed `>=50 m` raw audit established
+Do not reproduce the maximum-only raster as the primary diagnostic view.
 
-Original stored p90–p10 extremes: **86,717 nodes**.
+## Selected direct-stored maps
 
-| Outcome | Nodes |
-|---|---:|
-| Exact, internally consistent `wse` with `node_q <= 1` falls below 50 m | 63,434 |
-| Leave-one-observation correction falls below 50 m | 481 |
-| Well-supported extremes retained | 2,406 |
-| Unresolved and masked | 20,396 |
+These are the clean, annotation-free maps that triggered the current concern:
 
-Known production mechanisms:
+- p80-p20:
+  `outputs/qc/swot_wse_percentiles_20260727/figures/SWORD_v17c_global_node_wse_p80-p20_spread_talk_screen_dark_jet_continuous-log_independent-scales_stored-sword_clean-no-annotations_400dpi.png`
+- p90-p10:
+  `outputs/qc/swot_wse_percentiles_20260727/figures/SWORD_v17c_global_node_wse_p90-p10_spread_talk_screen_dark_jet_continuous-log_independent-scales_stored-sword_clean-no-annotations_400dpi.png`
+- combined map:
+  `outputs/qc/swot_wse_percentiles_20260727/figures/SWORD_v17c_global_node_wse_percentile_spreads_talk_screen_dark_jet_continuous-log_independent-scales_stored-sword_clean-no-annotations_400dpi.png`
+- authoritative render manifest:
+  `outputs/qc/swot_wse_percentiles_20260727/figures/tamlin_wse_percentile_map_talk_screen_jet_continuous-log_independent-scales_stored-sword_clean-no-annotations_manifest.json`
+- current wording handoff:
+  `outputs/qc/swot_wse_percentiles_20260727/figures/tamlin_wse_percentile_map_stored_sword_50m_handoff.md`
 
-- production percentiles used `APPROX_QUANTILE`, whereas the audit used exact `QUANTILE_CONT`;
-- node aggregation used raw `wse` while filtering on `wse_sm_q`, rather than applying the corresponding `node_q`;
-- in the `>=50 m` target set, this admitted 1,306,015 rows that passed the production filter but had `node_q` 2 or 3;
-- residual extremes often involve `node_q=1` suspect observations, sparse support, or pass/cycle-level offsets and datum jumps;
-- some cases are physically real, including the Maerdang and Tuoba reservoir-filling examples.
+The p80-p20 scale is logarithmic from 0.1 to 50 m. The p90-p10 scale is
+logarithmic from 0.5 to 50 m. The scales are panel-specific and the colors are
+not numerically comparable between panels.
 
-The important point is that 2,406 retained extremes are not automatically 2,406 genuine hydrologic excursions. They are only the subset that survived the current conservative screen.
+Reproduction command:
 
-## Display amplification
+```bash
+SWORD_MAP_SOURCE_MODE=stored-sword \
+SWORD_MAP_COLORMAP=jet \
+SWORD_MAP_SCALE=continuous \
+SWORD_MAP_PANEL_SCALES=independent \
+SWORD_MAP_SCALE_MAX_M=50 \
+SWORD_MAP_EXPORT_SEPARATE=1 \
+SWORD_MAP_SHOW_PANEL_ANNOTATIONS=0 \
+SWORD_MAP_SHOW_STATUS_LEGEND=0 \
+SWORD_MAP_OUTPUT_TAG=clean-no-annotations \
+python scripts/visualization/render_tamlin_wse_percentile_map.py
+```
 
-The map uses maximum-node aggregation within display pixels:
+## Viewer mission
 
-- p90–p10 node values `>=20 m`: 3.05% of nodes, but 21.7% of occupied map cells;
-- node values `>=40 m`: 0.514% of nodes, but 7.85% of occupied map cells.
+Build a local HTML viewer that answers four questions:
 
-On the continuous-log Jet scale, a red-looking pixel does not necessarily mean 50 m. Approximate red tones begin around 13–37 m, with the darkest red approaching 50 m. Always inspect the color bar before interpreting screenshots.
+1. Is the apparent regional mass created mainly by isolated extreme nodes,
+   whole reaches, connected river corridors, or display aggregation?
+2. Which stored extremes collapse under exact quality-matched reconstruction,
+   and what observation, pass, cycle, or controller behavior explains them?
+3. Which cases remain reach-coherent and temporally plausible after audit?
+4. Among surviving cases, what evidence supports reservoir filling, other
+   physical change, repeatable pass/datum effects, or an unresolved mixture?
 
-## Current defensible and diagnostic figures
+The first deliverable is an evidence-recording investigation tool, not a new
+figure and not a final filter.
 
-All paths below are under:
+## Minimum viewer behavior
 
-`outputs/qc/swot_wse_percentiles_20260727/figures/`
+### Map
 
-### Emergency presentation map
+- Open by default to `90–105°E, 25–36°N`.
+- Plot actual SWORD nodes, with an optional reach-line layer.
+- Toggle stored p90-p10 and stored p80-p20.
+- Filter or style by thresholds such as 20, 50, 100, and 200 m without deleting
+  any rows.
+- Toggle the five audit categories and `physical_context_flag`.
+- Provide search for `node_id` and `reach_id`.
+- At low zoom, show count, maximum, median, and threshold fraction separately;
+  never collapse all four into a maximum-only symbol.
+- Keep a basemap or imagery option for physical context if it can be used
+  locally and reproducibly.
 
-The emergency product masks every final displayed p90–p10 node at or above 20 m after the existing repair and renders those nodes gray in both percentile-spread maps:
+### Node detail
 
-- `SWORD_v17c_global_node_wse_p90-p10_spread_talk_screen_dark_jet_continuous-log_emergency-pending-raw-qc-ge20m_400dpi.png`
-- corresponding p80–p20 PNG and PDFs
-- `tamlin_wse_percentile_map_talk_screen_jet_continuous-log_independent-scales_emergency-pending-raw-qc-ge20m_manifest.json`
+At minimum show:
 
-Emergency counts:
+- `node_id`, `reach_id`, `node_order`, region, longitude, latitude;
+- stored `wse_obs_p10`, `p20`, `p50`, `p80`, and `p90`;
+- stored p80-p20 and p90-p10 spreads;
+- stored `n_obs`, tail inflation, tail imbalance, and relevant database flags;
+- `lakeflag`, parent `type`, `obstr_type`, `grod_id`, `hfalls_id`,
+  `parent_dl_grod_id`, and `physical_context_flag`;
+- audit category and reason;
+- exact `wse + node_q <= 1` spread, `node_q=0` spread, smoothed-WSE spread,
+  leave-one-observation minimum, leave-one-cycle/pass minimum, and
+  leave-one-pass minimum;
+- p10 and p90 controller cycle, pass, granule, `node_q`, `node_q_b`,
+  `wse_sm_q`, and `wse_sm_q_b`.
 
-- pending raw-QC nodes: **284,987**
-- visible mapped nodes: **9,057,572**
-- visible raw-repaired nodes: 49,066 quality-matched plus 95 leave-one-observation cases
+### Reach context
 
-This is the only currently defensible presentation fallback, but its caption must say that high-spread nodes are masked pending raw-observation QC.
+- Show every eligible node along the selected reach in `node_order`.
+- Report number and fraction above 20, 50, 100, and 200 m.
+- Show the longest contiguous run above the active threshold.
+- Plot stored and reconstructed spreads along the reach.
+- Make neighboring upstream and downstream reaches discoverable if practical.
+- Clearly separate database lake/dam context from analyst interpretation.
 
-### Non-emergency diagnostic maps
+### Observation evidence
 
-- `SWORD_v17c_global_node_wse_p80-p20_spread_talk_screen_dark_jet_continuous-log_400dpi.png`
-- `SWORD_v17c_global_node_wse_p90-p10_spread_talk_screen_dark_jet_continuous-log_400dpi.png`
-- `tamlin_wse_percentile_map_talk_screen_jet_continuous-log_independent-scales_manifest.json`
+The first version can use the local reconstruction summaries, but the viewer
+should leave a clear route to attach raw RiverSP observations for selected
+cases. For a reviewed case, eventually show:
 
-Do not present these as a literal global hydrologic-variability result until the `>=20 m` raw audit is complete.
+- observation date or cycle/pass chronology;
+- raw `wse` and smoothed WSE;
+- `node_q`, `node_q_b`, `wse_sm_q`, and `wse_sm_q_b`;
+- which observations control stored/reconstructed p10 and p90;
+- the result of removing an observation, cycle/pass group, or recurring pass.
 
-### Distribution figures
+Do not block the initial HTML build on a global raw-observation download.
+Start with the local regional subset, then fetch raw histories for selected
+cases through River.
 
-- `SWORD_v17c_node_wse_full_suite_original_vs_non_emergency_filtered_histograms_dark_400dpi.png`
-- corresponding PDF and summary JSON
-- `SWORD_v17c_node_wse_percentile_spread_distribution_talk_screen_dark_400dpi.png`
+## Review recording
 
-The full-suite comparison is 6400 × 3600 pixels at 400 dpi and is the best current diagnostic overview.
+The viewer must support persistent, reloadable review records. Static HTML can
+use browser local storage plus explicit JSON/CSV export and import. Every record
+should include:
 
-Additional interpretation notes:
+- stable `node_id` and `reach_id`;
+- review timestamp and reviewer;
+- stored values and audit category captured at review time;
+- disposition:
+  `aggregation/filter artifact`, `low support/unstable`,
+  `pass/datum pattern`, `plausible reservoir/impoundment`,
+  `plausible other physical change`, `mixed`, or `unresolved`;
+- confidence;
+- evidence checked;
+- free-text notes;
+- optional bookmark/screenshot reference.
 
-- `outputs/qc/swot_wse_percentiles_20260727/qc_summary.md`
-- `outputs/qc/swot_wse_percentiles_20260727/residual_ge50_interpretation.md`
-- `outputs/qc/swot_wse_percentiles_20260727/figures/tamlin_wse_percentile_map_talk_screen_handoff.md`
+Keep the recorded analyst disposition separate from the automated audit
+category. Preserve the original values and maintain an append-only export or
+revision history so a changed judgment is auditable.
 
-This root handover supersedes those notes where they differ.
+## Authoritative local inputs
 
-## Scripts involved
+Direct stored product:
 
-Current analysis and rendering work is intentionally left uncommitted and visible in `git status`. Important files include:
+- `outputs/qc/swot_wse_percentiles_20260727/node_wse_percentile_qc_database_only.parquet`
+- 11,112,454 total nodes; 9,362,955 basic eligible nodes;
+- 354,544 eligible stored p90-p10 values at least 20 m;
+- 86,717 eligible stored p90-p10 values at least 50 m.
 
-- `scripts/analysis/reconstruct_swot_wse_raw_qc.py`
-- `scripts/analysis/integrate_swot_wse_raw_qc.py`
-- `scripts/analysis/build_talk_screen_leave_one_observation.py`
-- `scripts/analysis/summarize_swot_wse_raw_sensitivity.py`
-- `scripts/analysis/audit_swot_wse_percentiles.py`
-- `scripts/analysis/crosscheck_wse_spread_tail_dl_grod.py`
-- `scripts/visualization/render_tamlin_wse_percentile_map.py`
-- `scripts/visualization/render_tamlin_wse_percentile_distribution.py`
-- `scripts/visualization/render_full_suite_raw_vs_filtered_histograms.py`
-- `scripts/visualization/render_swot_wse_raw_qc_figures.py`
+Raw reconstruction comparison:
 
-Recent implementation details:
+- `outputs/qc/swot_wse_percentiles_20260727/raw_river/ge20_march22/summary/node_ge20_reconstruction_comparison.parquet`
 
-- `build_talk_screen_leave_one_observation.py` now reconstructs p10 through p90 after deleting the influential observation. Its latest successful rebuild found 2,887 initial candidates, 481 single-observation-unstable nodes, 2,406 stable nodes, and zero percentile-order failures.
-- `render_tamlin_wse_percentile_map.py` implements the non-emergency repair path and supports emergency masking through `SWORD_MAP_PENDING_RAW_QC_GE_M=20`.
+Five-way audit classification:
 
-Do not stage all untracked scripts blindly. `.napkin.md` and `README.md` also contain pre-existing modifications and must be preserved unless their exact scope is reviewed.
+- `outputs/qc/swot_wse_percentiles_20260727/raw_river/ge20_march22/classification/node_ge20_auditable_classification.parquet`
 
-## River access blocker at handover
+Reach-coherent candidates:
 
-The `river` shell helper is available only in an interactive zsh startup environment. The latest connection attempt hung before authentication:
+- `outputs/qc/swot_wse_percentiles_20260727/raw_river/ge20_march22/classification/ge20_reach_coherent_physical_candidates.parquet`
 
-- `zsh -ic 'type river'` resolves the helper;
-- a PTY call through the helper produced no output for 60 seconds;
-- TCP port 22 to `152.19.218.21` timed out;
-- the active route used gateway `192.168.1.1`, interface `en0`, local address `192.168.1.157`.
+Strict-good presentation subset, useful only as a comparison layer:
 
-This is a network-route/VPN/campus-access blocker, not a credential or query failure. Re-establish VPN or campus routing before retrying.
+- `outputs/qc/swot_wse_percentiles_20260727/raw_river/ge20_march22/presentation/node_wse_percentile_ge20_strict_good_tail_presentation.parquet`
 
-Relevant River locations:
+The previous full audit handover is archived at:
 
-- raw RiverSP parquet lake: `/not_backed_up/jgearon/swot/parquet_lake_D`
-- prior audit root: `/not_backed_up/jgearon/swot/qc/swot_wse_percentiles_20260727`
-- prior remote reconstruction script: `reconstruct_swot_wse_raw_qc.py`
+- `docs/handovers/HANDOVER_2026-07-28_wse-percentile-tail-audit.md`
 
-The previous full `>=50 m` scan completed in about 112.5 seconds, so the expanded target is tractable once River is reachable.
+## Existing implementation state
 
-## Exact next-session plan
+`scripts/visualization/render_tamlin_wse_percentile_map.py` now supports:
 
-1. Read this handover before inspecting older notes.
-2. Restore River connectivity. Verify port 22, then run a trivial command through `river`.
-3. Build `stored_ge20_node_targets.parquet` for all **354,544** eligible stored p90–p10 `>=20 m` nodes. Match the existing full-target schema and use `target_scope='NODE_OUTER_GE20'`.
-4. Push the target parquet and the current `reconstruct_swot_wse_raw_qc.py` to the remote audit directory.
-5. Run bounded, exact reconstructions for:
-   - production-filter reproduction;
-   - exact `wse` with the internally corresponding `node_q <= 1`;
-   - smoothed `wse_sm` with `wse_sm_q`;
-   - `node_q = 0` as a strict diagnostic.
-6. Initially retain the previous cutoff through **2026-03-22** for direct comparability. Optionally repeat with all currently available observations afterward.
-7. Pull summary tables first. Quantify the collapse by stored bins 20–30, 30–40, 40–50, and `>=50 m`; region; sample count; approximate versus exact quantiles; and QC filter.
-8. On the reconstructed residual `>=20 m` or `>=30 m` population, run:
-   - leave-one-observation sensitivity;
-   - leave-one-pass or leave-one-cycle/pass sensitivity;
-   - controller-node quality-bit summaries.
-9. Assign every candidate to one of five auditable categories:
-   - confirmed aggregation/filter artifact;
-   - pass/datum-offset pattern;
-   - low-sample unstable;
-   - reach-coherent physical candidate;
-   - unresolved.
-10. Cross-check coherent physical candidates against lake and reach type, DL-GROD/HydroFALLS, recent dams, and the observation chronology. Treat dam-catalog absence as unknown, not negative evidence.
-11. Re-render the final Tamlin map only from reprocessed values. If presentation timing arrives first, use the emergency `>=20 m` masked version with explicit provisional wording.
-12. Update this handover and the QC summary with the resulting decision rule and counts.
+- `SWORD_MAP_SOURCE_MODE=stored-sword`;
+- configurable output DPI;
+- binned, logarithmic, linear, square-root, and quantile scales;
+- independent or shared panel scales;
+- optional panel annotations and status legend.
 
-## Recommended decision gate
+It compiled cleanly and passed Ruff after the edits. It remains untracked in
+the current worktree, as do the analysis scripts used during the investigation.
+Do not stage all untracked files blindly.
 
-Do not release a “global SWOT variability” figure until the full `>=20 m` reconstruction answers:
+Before choosing the viewer stack, inspect the existing reviewer patterns under
+`deploy/reviewer/` and the map utilities already in the repository. The user
+specifically wants an HTML viewer; do not substitute a notebook-only or
+Streamlit-only deliverable.
 
-1. What fraction of the 284,986 currently displayed p90–p10 `>=20 m` nodes collapse under an internally consistent observation/QC pairing?
-2. Among survivors, how many are supported across multiple observations and multiple passes?
-3. How many are reach-coherent or temporally consistent with a known physical event?
-4. What residual population remains unresolved?
+## Suggested first implementation sequence
 
-The target outcome is not a surgical classifier for every node. It is a transparent, reproducible screen that removes clear artifacts, preserves defensible physical excursions, and either supports a presentation map or clearly justifies masking the unresolved tail.
+1. Build a compact regional investigation dataset for `90–105°E, 25–36°N`
+   joining stored values, reconstruction results, and audit classes by stable
+   `node_id` and `reach_id`.
+2. Verify row uniqueness, threshold counts, and the 9,430-node >=50 m total
+   before rendering.
+3. Derive reach summaries and a connected-hotspot footprint.
+4. Build the HTML map and detail panels from the compact subset.
+5. Add review persistence and export/import before doing substantive review.
+6. Review a stratified sample spanning magnitude, support, audit class,
+   physical-context status, and reach coherence.
+7. Fetch raw RiverSP histories only for prioritized cases and attach them to
+   the review record.
+8. Summarize what proportions are defensibly attributable to known failure
+   modes, plausible physical events, and unresolved cases before proposing any
+   filter or treatment.
 
-## Repository state and preservation
+## Stop rules
 
-- Base branch was `main`; this handover was created on `codex/wse-percentile-tail-handover`.
-- The working tree already contained modified `.napkin.md`, modified `README.md`, and the untracked analysis/rendering scripts listed by `git status`.
-- Those files were deliberately not folded into the handover commit.
-- The prior May 28 release handover was archived as `docs/handovers/HANDOVER_2026-05-28_v17c-0.0.12.md`.
-- Source databases were not modified during this QC and figure work.
+Stop and report before:
 
-## First sentence for the next session
+- changing either SWORD database;
+- encoding a new production filter;
+- replacing stored percentiles in the investigation layer;
+- claiming the regional cluster is caused by reservoirs;
+- treating missing dam-catalog context as negative evidence;
+- broad-staging or committing the dirty worktree.
 
-“Resume the global SWOT WSE percentile-tail investigation from `HANDOVER.md`; first restore River access and reconstruct every stored node with p90–p10 `>=20 m` from raw Collection D observations before changing the Tamlin map.”
+The next scientific decision comes after recorded case evidence, not from the
+global raster alone.
+
+## Repository preservation
+
+- `sword_v17b.duckdb` and `sword_v17c.duckdb` were not modified.
+- `.napkin.md`, `README.md`, and unrelated pre-existing edits remain untouched.
+- Investigation scripts remain untracked/uncommitted.
+- Stage and commit only the active handover and its archived predecessor unless
+  the user explicitly expands the scope.
