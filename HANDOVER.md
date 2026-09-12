@@ -1,333 +1,312 @@
-# HANDOVER — Stored WSE upper-tail case viewer
+# HANDOVER — Finish node-level SWORD–MERIT FACC rederivation
 
-**Date:** 2026-07-28
+**Prepared:** 2026-09-12T19:20:44Z
 
-**Branch:** `codex/wse-percentile-tail-handover`
+**Repository:** `/Users/jakegearon/projects/SWORD`
 
-**Parent commit:** `815026b`
+**Current branch:** `codex/wse-percentile-tail-handover`
 
-**Status:** Stop iterating on presentation maps. The next task is to build a
-local HTML case-review viewer for the alarming stored WSE upper tail, beginning
-with western China and the Tibetan Plateau. No filtering or treatment decision
-has been made, and no SWORD database was modified.
+**Starting commit:** `f462947`
 
-## Immediate concern
+**State:** Candidate-only research workflow. No SWORD database has been modified.
 
-The direct-stored p90-p10 map contains a large, visually coherent concentration
-of values above the 50 m display cap east and northeast of India, across western
-China and the Tibetan Plateau. It is too extensive to dismiss as a few
-reservoir-filling examples and too suspicious to present as literal hydrologic
-variability without case-level inspection.
+## Mission
 
-Do not explain the cluster away. Build the viewer, inspect representative
-nodes and reaches, record the evidence, and only then decide whether filtering,
-special treatment, or different scientific framing is warranted.
+Take the North America prototype across the finish line by preserving the
+validated junction-to-junction SWORD-to-MERIT route matching, replacing the
+temporary one-value-per-reach stationing shortcut with ordered node-level
+registration, and then rerunning topology and independent HydroBASINS checks.
 
-## Locked decisions from this session
+The core feasibility question is answered positively: selecting a coherent
+MERIT D8 route for a whole SWORD centerline section works. The unfinished part
+is assigning every SWORD node to the correct ordered position on that fixed
+route, especially at confluences, lakes, and split/rejoin structures.
 
-1. The investigation layer must use the **stored SWORD v17c percentile
-   fields**, not substitute a recalculation into the map.
-2. Do **not** gate the investigation layer at 20 m. The 20 m value was an audit
-   trigger, not a scientifically privileged boundary.
-3. The selected direct-stored maps use a 50 m color-scale ceiling. That is a
-   **display cap, not a data cutoff**. Values above 50 m are retained and shown
-   in white.
-4. Do not label the upper tail, or the western-China cluster, as reservoirs.
-   Reservoir filling is one plausible physical cause for some cases, not an
-   explanation for the regional pattern.
-5. The acceptable interim wording is:
+## Critical correction — do not miss this
 
-   > The residual tail may mix unresolved measurement effects with real
-   > physical changes, including reservoir filling.
+The production architecture is:
 
-6. Do not choose or apply a production filter during viewer construction.
-   Record candidate evidence and preserve every original stored value.
-7. Keep the existing raw reconstruction and audit classes available as
-   comparison layers. They are diagnostics; they must not silently replace the
-   stored values being investigated.
+1. Select **one coherent MERIT route at the whole centerline-section level**
+   (the SWORD segment between junctions), using geometry plus D8/MHV
+   connectivity.
+2. Register **every SWORD node** along that already selected route in strict
+   upstream-to-downstream order.
+3. Assign each node the UPA of its corresponding MERIT route cell.
+4. Derive the compatibility reach value only afterward as
+   `reach.facc = MAX(node.facc)`.
 
-## What the regional count actually shows
+Do **not** select routes independently per node or per reach. Also do **not**
+move a single representative reach station downstream. The current script
+`scripts/analysis/assign_merit_section_reaches.py` uses
+`representative_step = int(np.median(steps))`; that was a fast feasibility
+prototype and is not the final algorithm. Its reach-level values and all
+HydroBASINS metrics derived from them are provisional.
 
-The first bounded count used the stored database-only parquet and its existing
-basic `eligible` flag. The western-China investigation box is provisionally:
+This correction is consistent with
+`docs/validation_specs/facc_validation_spec.md`: the source workflow samples
+FACC for centerline/node support and reach FACC is the maximum node value.
 
-`90–105°E, 25–36°N`
+## Read first
 
-Within that box:
+1. Repository `AGENTS.md` instructions supplied in the task context.
+2. `output/facc_detection/rederivation_probe_20260908/PROGRESS.md`
+3. `docs/validation_specs/facc_validation_spec.md`
+4. `scripts/analysis/assign_merit_section_reaches.py` — useful prototype, but
+   specifically identify and replace the median-step shortcut.
+5. Current frozen result and validation records:
+   - `output/facc_detection/rederivation_probe_20260908/na_full_run_20260911/ordinary_reach_assignment_v22_v17c_receiver_subchain/reach_candidates.csv`
+   - `output/facc_detection/rederivation_probe_20260908/na_full_run_20260911/ordinary_reach_topology_audit_v22_v17c_receiver_subchain/topology_passing_candidates.csv`
+   - `output/facc_detection/rederivation_probe_20260908/na_full_run_20260911/ordinary_reach_topology_audit_v22_v17c_receiver_subchain/topology_audit_summary.json`
+   - `output/facc_detection/rederivation_probe_20260908/na_full_run_20260911/value_uncertainty_summary_v1.json`
+   - `output/facc_detection/rederivation_probe_20260908/na_full_run_20260911/hydrobasins_validation_v1/validation_protocol.json`
+   - `output/facc_detection/rederivation_probe_20260908/na_full_run_20260911/hydrobasins_validation_v1/validation_summary.json`
 
-| Stored p90-p10 result | Nodes | Reaches |
-|---|---:|---:|
-| At least 20 m | 23,018 | — |
-| At least 50 m | 9,430 | 1,305 |
-| At least 100 m | 3,879 | — |
+## Locked scientific and data decisions
 
-For the 9,430 nodes at or above 50 m:
+- Route identity is selected at the **section/whole-centerline level**.
+- Values are assigned at the **SWORD node level**, monotonically along the
+  fixed MERIT route.
+- Reach FACC is a downstream/max-node compatibility aggregate, not a route
+  selection primitive.
+- Use v17c `main_path_id`, `is_mainstem`, `rch_id_up_main`, and
+  `rch_id_dn_main`. Do not use legacy `main_side` as current routing authority.
+- MERIT UPA continuity validates a geometry/connectivity-selected route; it
+  must not choose whichever candidate resembles v17b FACC.
+- HydroBASINS is evaluation-only. It must not choose routes, station positions,
+  thresholds, or values.
+- MHV is routing/connectivity evidence. Exact upstream MHV product lineage is
+  still `NOT FOUND`; River copies are bounded staging extracts, not canonical
+  source authority.
+- Keep lakes separate from ordinary-river rules. Large UPA jumps through lakes
+  may be physically correct because the lake outlet represents all upstream
+  contributing area.
+- Do not reject a route merely because a real tributary produces a large UPA
+  increase that SWORD does not explicitly represent.
+- Candidate-only until Jake explicitly authorizes database writes.
 
-- median stored spread is **88.0 m**;
-- median stored `n_obs` is **23**;
-- 799 nodes have the coarse database `physical_context_flag`;
-- the values are distributed across many reaches, not a single reservoir or a
-  small handful of sites.
+## Database and worktree safety
 
-The same 9,430 nodes divide under the completed raw-observation audit as:
+- Never modify `data/duckdb/sword_v17b.duckdb`; it is the pristine reference.
+- For this workflow, also keep `data/duckdb/sword_v17c.duckdb` unchanged until
+  explicit authorization, even though it is generally the editable database.
+- The worktree is heavily dirty with unrelated user work and many untracked
+  analysis scripts. Preserve it. Do not mass-add, clean, reset, or overwrite.
+- The current branch name belongs to an older WSE task. Before implementation,
+  create or move this work to a correctly named `codex/` feature branch only
+  after checking with the user or repository workflow; do not commit directly
+  to `main`.
 
-| Audit category | Nodes | Share | Distinct reaches |
-|---|---:|---:|---:|
-| `CONFIRMED_AGGREGATION_FILTER_ARTIFACT` | 4,501 | 47.7% | 1,028 |
-| `LOW_SUPPORT_UNSTABLE` | 2,392 | 25.4% | 494 |
-| `PASS_DATUM_OFFSET_PATTERN` | 1,072 | 11.4% | 305 |
-| `UNRESOLVED` | 926 | 9.8% | 366 |
-| `REACH_COHERENT_PHYSICAL_CANDIDATE` | 539 | 5.7% | 20 |
+## Current bounded result
 
-This is the key starting fact. The stored regional pattern is real as a product
-feature, but much of it is already known to collapse or become unstable under
-quality-matched reconstruction. The 539 reach-coherent candidates still are
-not proof of reservoirs or even proof of physical variability.
+The conservative v22 ordinary-river prototype contains:
 
-A broader `73–105°E, 25–40°N` check contains 13,758 eligible stored nodes at or
-above 50 m on 1,931 reaches. The highest-density two-degree cells include:
+- 7,582 candidate reaches;
+- 7,557 topology-passing reaches (99.67% conditional consistency);
+- 25 review rows;
+- 23 unique violating edges among 8,628 audited incident edges (0.27%);
+- residual structure: eight ordinary reciprocal same-main-path edges plus 15
+  lake-associated edges.
 
-- 100–102°E, 30–32°N: 1,109 nodes on 67 reaches;
-- 102–104°E, 26–28°N: 705 nodes on 62 reaches;
-- 104–106°E, 26–28°N: 566 nodes on 42 reaches;
-- 102–104°E, 28–30°N: 560 nodes on 78 reaches;
-- 94–96°E, 28–30°N: 547 nodes on 80 reaches.
+Repeat matching gives 2.73% section-target discordance and 1.35% positioned-
+reach discordance at a 1% value threshold. These are internal route-ambiguity
+proxies, not absolute FACC error rates.
 
-Use the western-China box as the default view, but derive the actual connected
-hotspot footprint rather than treating this provisional rectangle as a
-scientific region.
+The frozen HydroBASINS L6 outlet comparison admits 454 unambiguous exits. The
+temporary reach-median candidates have 1.14% median absolute disagreement,
+10.40% p90, 29.65% p95, and 94.27% within 20%. v17b has 1.78% median and 83.48%
+within 20%; current v17c has 18.05% median and 51.76% within 20%. These results
+show strong feasibility but **must be rerun after node-level assignment**.
 
-## Why the global raster looks especially alarming
+Frozen v22 cohort SHA256:
+`ba0be4b6d44eb4a771579b0680db238d205b1fe387b0c5d797a7d03d25543504`.
 
-The current map does not interpolate, but it does rasterize nodes into a
-3200-pixel-wide Robinson grid and retain the **maximum node value in each
-occupied display cell**. At continental scale, a single extreme node can
-control a cell. Values above the 50 m color cap all become the same white
-over-range color.
+## Blue Earth acceptance case
 
-The HTML viewer must therefore show actual node locations and reach context.
-When zoomed out, any clustering must distinguish:
+Use SWORD reach `74288200011` as the first node-level acceptance test. Its
+selected MERIT route follows the river well; the failure is the prototype's
+median reach station, not route identity.
 
-- node count;
-- maximum spread;
-- median spread; and
-- fraction above the selected threshold.
+- All target centerline samples project to MERIT path steps 86–299.
+- The temporary median step is 192, giving only `6050.64453125 km2`.
+- An internal tributary enters at steps 243→244:
+  `6058.57 → 8928.80 km2`; the other inflow is about `2870.23 km2` and closure
+  is effectively exact.
+- The Blue Earth/Minnesota receiving-river confluence is at steps 297→298:
+  `8937.945 → 38734.555 km2`; the other inflow is about `29796.604 km2`.
+- The SWORD downstream node `74288200010011` projects near step 298 (about
+  50 m away), showing why boundary ownership must be topology-aware.
+- HydroBASINS L6 is `9241.2 km2`; v17b is `10801.775 km2`.
 
-Do not reproduce the maximum-only raster as the primary diagnostic view.
+Expected behavior: ordered Blue Earth nodes should progress through the route,
+including the real internal tributary increase to roughly 8,938 km2. The last
+tributary node/reach aggregate must remain on the **pre-receiving-river** side;
+the downstream receiver's nodes take the post-confluence approximately 38,735
+km2 value. Resolve this using SWORD topology and node/reach boundary identity,
+not nearest geometry alone.
 
-## Selected direct-stored maps
+## Three route-identity regression cases
 
-These are the clean, annotation-free maps that triggered the current concern:
+The HydroBASINS review found four new regressions above 15 percentage points.
+Blue Earth is the stationing case above. The other three are route-identity
+failures that node-level assignment alone must not promote:
 
-- p80-p20:
-  `outputs/qc/swot_wse_percentiles_20260727/figures/SWORD_v17c_global_node_wse_p80-p20_spread_talk_screen_dark_jet_continuous-log_independent-scales_stored-sword_clean-no-annotations_400dpi.png`
-- p90-p10:
-  `outputs/qc/swot_wse_percentiles_20260727/figures/SWORD_v17c_global_node_wse_p90-p10_spread_talk_screen_dark_jet_continuous-log_independent-scales_stored-sword_clean-no-annotations_400dpi.png`
-- combined map:
-  `outputs/qc/swot_wse_percentiles_20260727/figures/SWORD_v17c_global_node_wse_percentile_spreads_talk_screen_dark_jet_continuous-log_independent-scales_stored-sword_clean-no-annotations_400dpi.png`
-- authoritative render manifest:
-  `outputs/qc/swot_wse_percentiles_20260727/figures/tamlin_wse_percentile_map_talk_screen_jet_continuous-log_independent-scales_stored-sword_clean-no-annotations_manifest.json`
-- current wording handoff:
-  `outputs/qc/swot_wse_percentiles_20260727/figures/tamlin_wse_percentile_map_stored_sword_50m_handoff.md`
+- Big Muddy `74270400011`: target tributary was stationed after joining the
+  approximately 1.82 million km2 Mississippi trunk; expected local scale is
+  approximately 5,800–6,100 km2.
+- Unnamed Arctic reach `81244000011`: projected onto an approximately 77,000
+  km2 neighboring trunk despite an 8,352 km2 HydroBASINS outlet and poor
+  centerline alignment.
+- Chenal de l'Ouest `72120600011`: projected onto an offset approximately
+  13,000–21,000 km2 trunk rather than its approximately 3,650 km2 outlet path.
 
-The p80-p20 scale is logarithmic from 0.1 to 50 m. The p90-p10 scale is
-logarithmic from 0.5 to 50 m. The scales are panel-specific and the colors are
-not numerically comparable between panels.
+Generalize an independent trunk-identity gate using whole-section alignment
+and D8/MHV connectivity. Do not tune candidate values toward HydroBASINS or
+v17b.
 
-Reproduction command:
+## Implementation sequence
+
+### 1. Build ordered node-to-route registration
+
+Create a candidate-only script, for example
+`scripts/analysis/assign_merit_section_nodes.py`, that consumes the already
+validated section route and emits at least:
+
+`section_id, node_id, reach_id, node_order, route_id, path_step,
+merit_upa_km2, projection_distance_m, assignment_evidence, review_reason`.
+
+For each section:
+
+- load SWORD nodes in upstream-to-downstream order; note that stored
+  `node_order` is 1 at the downstream end and increases upstream, so reverse it
+  for downstream traversal;
+- keep the selected MERIT route fixed;
+- solve an ordered projection with nondecreasing MERIT path step;
+- prefer a constrained dynamic-programming/sequence-alignment solution over
+  independent nearest-neighbor picks; distance is the primary local cost, with
+  no freedom to jump to another route;
+- permit multiple nearby SWORD nodes to map to the same raster cell when
+  resolution requires it;
+- record distance and ambiguity rather than silently forcing poorly aligned
+  sections;
+- treat shared reach endpoints and confluence cells with explicit topology-
+  aware boundary rules;
+- when sections overlap, require node assignments to agree within a declared
+  tolerance or withhold the conflict.
+
+### 2. Aggregate reach candidates
+
+Only after node assignment, compute each reach candidate as
+`MAX(merit_upa_km2)` over its assigned nodes. Retain the full node profile and
+provenance; the reach table is a derived export.
+
+### 3. Add acceptance tests before scaling
+
+At minimum test:
+
+- path steps are nondecreasing downstream within every selected route;
+- node UPA has no significant downstream decrease except explicitly classified
+  distributary behavior;
+- reach FACC equals maximum node FACC;
+- Blue Earth captures the approximately 8,938 km2 pre-confluence value without
+  inheriting the approximately 38,735 km2 receiver value;
+- the downstream receiving reach gets the post-confluence value;
+- Big Muddy, 812440, and Chenal de l'Ouest are withheld by route identity rather
+  than made monotonic on the wrong trunk;
+- repeat/overlap assignments agree;
+- lake cases do not inherit ordinary-river jump rejection.
+
+### 4. Run the frozen North America production envelope
+
+Use the same route inputs and frozen v22 envelope so the only methodological
+change is node registration. Write a new dated/versioned output directory; do
+not overwrite v22 or HydroBASINS v1 artifacts.
+
+### 5. Revalidate
+
+- rerun node and reach monotonicity/topology audits;
+- rerun repeat-match ambiguity at node and reach levels;
+- freeze a new candidate cohort with checksums;
+- rerun the HydroBASINS outlet comparison using the correct downstream/pre-
+  receiver node-derived reach values;
+- regenerate the four priority diagnostics and verify Blue Earth changes for
+  the right reason while the other three remain withheld.
+
+### 6. Finish coverage, then lakes
+
+The 7,557 passing reaches are a conservative production envelope, not all of
+SWORD NA. After the node engine passes, quantify total section/node/reach
+coverage and reason-coded abstentions across the complete North America scope.
+Then apply the separate position-preserving lake workflow to the 15 residual
+lake-associated boundaries.
+
+## Existing code worth reusing
+
+- Route and D8 matching:
+  - `scripts/analysis/match_merit_sword_segments.py`
+  - `scripts/analysis/run_merit_segment_validation.py`
+  - `scripts/analysis/prototype_merit_continuity_rescue.py`
+- Current provisional reach stationing:
+  - `scripts/analysis/assign_merit_section_reaches.py`
+- v17c route/component work:
+  - `scripts/analysis/assign_v17c_mainpath_positions.py`
+  - `scripts/analysis/resolve_v17c_split_rejoin_components.py`
+  - `scripts/analysis/gate_v17c_contiguous_subchains.py`
+  - `scripts/analysis/gate_v17c_branched_prefixes.py`
+- Validation:
+  - `scripts/analysis/audit_noam_candidate_topology.py`
+  - `scripts/analysis/freeze_noam_hydrobasins_validation.py`
+  - `scripts/analysis/evaluate_noam_candidates_hydrobasins.py`
+- Review outputs:
+  - `scripts/analysis/build_hydrobasins_outlier_review_package.py`
+  - `scripts/visualization/plot_hydrobasins_outlier_diagnostics.py`
+
+## Current review package
+
+- GeoPackage:
+  `output/facc_detection/rederivation_probe_20260908/na_full_run_20260911/hydrobasins_validation_v1/geospatial_review/hydrobasins_outlier_review.gpkg`
+  — SHA256 `b770a0d9f0b7cdea400e93b5e821244b63fd4058dbf23f3c30d8f152f14d9b0a`.
+- Satellite diagnostic:
+  `output/facc_detection/rederivation_probe_20260908/na_full_run_20260911/hydrobasins_validation_v1/geospatial_review/hydrobasins_priority_cases_satellite.png`
+  — SHA256 `e588128de44bca2e1707df4f052210d7409afb653507906c963c54f7c3aaf730`.
+- GeoPackage layers: 26 outlier points, 26 outlier reaches, 26 HydroBASINS
+  polygons, four priority MERIT routes, four priority MERIT stations, and 33
+  contextual SWORD section reaches; all are valid EPSG:4326 geometries.
+
+## Verification baseline
+
+The following focused test files previously passed together (41 tests):
 
 ```bash
-SWORD_MAP_SOURCE_MODE=stored-sword \
-SWORD_MAP_COLORMAP=jet \
-SWORD_MAP_SCALE=continuous \
-SWORD_MAP_PANEL_SCALES=independent \
-SWORD_MAP_SCALE_MAX_M=50 \
-SWORD_MAP_EXPORT_SEPARATE=1 \
-SWORD_MAP_SHOW_PANEL_ANNOTATIONS=0 \
-SWORD_MAP_SHOW_STATUS_LEGEND=0 \
-SWORD_MAP_OUTPUT_TAG=clean-no-annotations \
-python scripts/visualization/render_tamlin_wse_percentile_map.py
+python -m pytest \
+  tests/sword_duckdb/test_merit_continuity_rescue.py \
+  tests/sword_duckdb/test_merit_outlet_holdout.py \
+  tests/sword_duckdb/test_merit_outlet_validation.py \
+  tests/sword_duckdb/test_merit_section_holdout.py \
+  tests/sword_duckdb/test_merit_segment_matcher.py -q
 ```
 
-## Viewer mission
+Rerun these before and after the node-level implementation, then add focused
+node-registration tests. Run broader SWORD tests only after checking that the
+dirty worktree and local data dependencies will not be disturbed.
 
-Build a local HTML viewer that answers four questions:
+## Definition of done
 
-1. Is the apparent regional mass created mainly by isolated extreme nodes,
-   whole reaches, connected river corridors, or display aggregation?
-2. Which stored extremes collapse under exact quality-matched reconstruction,
-   and what observation, pass, cycle, or controller behavior explains them?
-3. Which cases remain reach-coherent and temporally plausible after audit?
-4. Among surviving cases, what evidence supports reservoir filling, other
-   physical change, repeatable pass/datum effects, or an unresolved mixture?
+- One fixed route per SWORD junction-to-junction section.
+- Every covered SWORD node receives a monotonic, provenance-rich MERIT path
+  position and UPA value.
+- Reach FACC is exactly the maximum assigned node FACC.
+- Blue Earth is correct at the internal tributary and receiver boundary.
+- Wrong-trunk cases are withheld by a general route-identity rule.
+- Ordinary, split/rejoin, and lake behaviors are explicitly separated.
+- North America coverage and every abstention are quantified.
+- Topology, repeat-match, and HydroBASINS validation are rerun and frozen.
+- No production database is changed without explicit authorization.
 
-The first deliverable is an evidence-recording investigation tool, not a new
-figure and not a final filter.
+## Effort assessment
 
-## Minimum viewer behavior
-
-### Map
-
-- Open by default to `90–105°E, 25–36°N`.
-- Plot actual SWORD nodes, with an optional reach-line layer.
-- Toggle stored p90-p10 and stored p80-p20.
-- Filter or style by thresholds such as 20, 50, 100, and 200 m without deleting
-  any rows.
-- Toggle the five audit categories and `physical_context_flag`.
-- Provide search for `node_id` and `reach_id`.
-- At low zoom, show count, maximum, median, and threshold fraction separately;
-  never collapse all four into a maximum-only symbol.
-- Keep a basemap or imagery option for physical context if it can be used
-  locally and reproducibly.
-
-### Node detail
-
-At minimum show:
-
-- `node_id`, `reach_id`, `node_order`, region, longitude, latitude;
-- stored `wse_obs_p10`, `p20`, `p50`, `p80`, and `p90`;
-- stored p80-p20 and p90-p10 spreads;
-- stored `n_obs`, tail inflation, tail imbalance, and relevant database flags;
-- `lakeflag`, parent `type`, `obstr_type`, `grod_id`, `hfalls_id`,
-  `parent_dl_grod_id`, and `physical_context_flag`;
-- audit category and reason;
-- exact `wse + node_q <= 1` spread, `node_q=0` spread, smoothed-WSE spread,
-  leave-one-observation minimum, leave-one-cycle/pass minimum, and
-  leave-one-pass minimum;
-- p10 and p90 controller cycle, pass, granule, `node_q`, `node_q_b`,
-  `wse_sm_q`, and `wse_sm_q_b`.
-
-### Reach context
-
-- Show every eligible node along the selected reach in `node_order`.
-- Report number and fraction above 20, 50, 100, and 200 m.
-- Show the longest contiguous run above the active threshold.
-- Plot stored and reconstructed spreads along the reach.
-- Make neighboring upstream and downstream reaches discoverable if practical.
-- Clearly separate database lake/dam context from analyst interpretation.
-
-### Observation evidence
-
-The first version can use the local reconstruction summaries, but the viewer
-should leave a clear route to attach raw RiverSP observations for selected
-cases. For a reviewed case, eventually show:
-
-- observation date or cycle/pass chronology;
-- raw `wse` and smoothed WSE;
-- `node_q`, `node_q_b`, `wse_sm_q`, and `wse_sm_q_b`;
-- which observations control stored/reconstructed p10 and p90;
-- the result of removing an observation, cycle/pass group, or recurring pass.
-
-Do not block the initial HTML build on a global raw-observation download.
-Start with the local regional subset, then fetch raw histories for selected
-cases through River.
-
-## Review recording
-
-The viewer must support persistent, reloadable review records. Static HTML can
-use browser local storage plus explicit JSON/CSV export and import. Every record
-should include:
-
-- stable `node_id` and `reach_id`;
-- review timestamp and reviewer;
-- stored values and audit category captured at review time;
-- disposition:
-  `aggregation/filter artifact`, `low support/unstable`,
-  `pass/datum pattern`, `plausible reservoir/impoundment`,
-  `plausible other physical change`, `mixed`, or `unresolved`;
-- confidence;
-- evidence checked;
-- free-text notes;
-- optional bookmark/screenshot reference.
-
-Keep the recorded analyst disposition separate from the automated audit
-category. Preserve the original values and maintain an append-only export or
-revision history so a changed judgment is auditable.
-
-## Authoritative local inputs
-
-Direct stored product:
-
-- `outputs/qc/swot_wse_percentiles_20260727/node_wse_percentile_qc_database_only.parquet`
-- 11,112,454 total nodes; 9,362,955 basic eligible nodes;
-- 354,544 eligible stored p90-p10 values at least 20 m;
-- 86,717 eligible stored p90-p10 values at least 50 m.
-
-Raw reconstruction comparison:
-
-- `outputs/qc/swot_wse_percentiles_20260727/raw_river/ge20_march22/summary/node_ge20_reconstruction_comparison.parquet`
-
-Five-way audit classification:
-
-- `outputs/qc/swot_wse_percentiles_20260727/raw_river/ge20_march22/classification/node_ge20_auditable_classification.parquet`
-
-Reach-coherent candidates:
-
-- `outputs/qc/swot_wse_percentiles_20260727/raw_river/ge20_march22/classification/ge20_reach_coherent_physical_candidates.parquet`
-
-Strict-good presentation subset, useful only as a comparison layer:
-
-- `outputs/qc/swot_wse_percentiles_20260727/raw_river/ge20_march22/presentation/node_wse_percentile_ge20_strict_good_tail_presentation.parquet`
-
-The previous full audit handover is archived at:
-
-- `docs/handovers/HANDOVER_2026-07-28_wse-percentile-tail-audit.md`
-
-## Existing implementation state
-
-`scripts/visualization/render_tamlin_wse_percentile_map.py` now supports:
-
-- `SWORD_MAP_SOURCE_MODE=stored-sword`;
-- configurable output DPI;
-- binned, logarithmic, linear, square-root, and quantile scales;
-- independent or shared panel scales;
-- optional panel annotations and status legend.
-
-It compiled cleanly and passed Ruff after the edits. It remains untracked in
-the current worktree, as do the analysis scripts used during the investigation.
-Do not stage all untracked files blindly.
-
-Before choosing the viewer stack, inspect the existing reviewer patterns under
-`deploy/reviewer/` and the map utilities already in the repository. The user
-specifically wants an HTML viewer; do not substitute a notebook-only or
-Streamlit-only deliverable.
-
-## Suggested first implementation sequence
-
-1. Build a compact regional investigation dataset for `90–105°E, 25–36°N`
-   joining stored values, reconstruction results, and audit classes by stable
-   `node_id` and `reach_id`.
-2. Verify row uniqueness, threshold counts, and the 9,430-node >=50 m total
-   before rendering.
-3. Derive reach summaries and a connected-hotspot footprint.
-4. Build the HTML map and detail panels from the compact subset.
-5. Add review persistence and export/import before doing substantive review.
-6. Review a stratified sample spanning magnitude, support, audit class,
-   physical-context status, and reach coherence.
-7. Fetch raw RiverSP histories only for prioritized cases and attach them to
-   the review record.
-8. Summarize what proportions are defensibly attributable to known failure
-   modes, plausible physical events, and unresolved cases before proposing any
-   filter or treatment.
-
-## Stop rules
-
-Stop and report before:
-
-- changing either SWORD database;
-- encoding a new production filter;
-- replacing stored percentiles in the investigation layer;
-- claiming the regional cluster is caused by reservoirs;
-- treating missing dam-catalog context as negative evidence;
-- broad-staging or committing the dirty worktree.
-
-The next scientific decision comes after recorded case evidence, not from the
-global raster alone.
-
-## Repository preservation
-
-- `sword_v17b.duckdb` and `sword_v17c.duckdb` were not modified.
-- `.napkin.md`, `README.md`, and unrelated pre-existing edits remain untouched.
-- Investigation scripts remain untracked/uncommitted.
-- Stage and commit only the active handover and its archived predecessor unless
-  the user explicitly expands the scope.
+This is medium work, not a rederivation from scratch. The hard route-selection
+and connectivity prototypes already exist. The remaining core is an ordered
+node-registration engine, confluence boundary handling, regression tests, and
+a full rerun. It is realistically finishable within the discussed 2–3 week
+window if the next agent preserves the current route evidence and avoids
+case-by-case value tuning.
