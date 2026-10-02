@@ -36,11 +36,34 @@ FILL_F8 = np.float64(-9999.0)
 # -- Quality/flag string-to-int mappings ------------------------------------
 # CF-convention: flag_values + flag_meanings attributes document the encoding.
 
-FACC_QUALITY_MAP = {"denoise_v3": 1}
+# facc_quality is the string rederived_v1:<source>:<tier>[:review] in DuckDB,
+# GeoPackage and GeoParquet. NetCDF keeps the int32 flag variable and encodes
+# code = 100 * source + 10 * tier + review.
+FACC_QUALITY_SOURCES = {"engine": 1, "soft": 2, "bridge": 3, "fill": 4}
+FACC_QUALITY_TIERS = {"A": 1, "A2": 2, "B": 3, "C": 4, "D": 5, "E": 6}
+FACC_QUALITY_MAP = {
+    f"rederived_v1:{source}:{tier}{':review' if review else ''}": (
+        100 * s_code + 10 * t_code + review
+    )
+    for source, s_code in FACC_QUALITY_SOURCES.items()
+    for tier, t_code in FACC_QUALITY_TIERS.items()
+    for review in (0, 1)
+}
 FACC_QUALITY_FLAG_ATTRS = {
-    "flag_values": np.array([1], dtype=np.int32),
-    "flag_meanings": "denoise_v3",
-    "comment": "1=corrected by facc denoising v3; fill_value=not flagged",
+    "flag_values": np.array(sorted(FACC_QUALITY_MAP.values()), dtype=np.int32),
+    "flag_meanings": " ".join(
+        name.replace(":", "_")
+        for name, _code in sorted(FACC_QUALITY_MAP.items(), key=lambda kv: kv[1])
+    ),
+    "comment": (
+        "facc provenance, code = 100*source + 10*tier + review. "
+        "source: 1=engine (section D8 trace), 2=soft (probabilistic section matcher), "
+        "3=bridge (held from the nearest usable matched value), "
+        "4=fill (network-constrained fill). "
+        "tier: 1=A, 2=A2, 3=B, 4=C, 5=D, 6=E. "
+        "review: 1 = junction_inconsistent or topology_suspect. "
+        "String form in DuckDB/GeoPackage/GeoParquet: rederived_v1:<source>:<tier>[:review]"
+    ),
 }
 
 SLOPE_OBS_QUALITY_MAP = {
@@ -424,12 +447,28 @@ def _is_valid(v) -> bool:
     return True
 
 
-def _convert_varchar_col(arr: np.ndarray, mapping: dict) -> np.ndarray:
-    """Convert VARCHAR column to i4 using mapping dict. Unmapped → -9999."""
+def _convert_varchar_col(
+    arr: np.ndarray, mapping: dict, strict: bool = False
+) -> np.ndarray:
+    """Convert VARCHAR column to i4 using mapping dict.
+
+    Unmapped values become -9999, unless *strict*, in which case any non-null
+    value missing from *mapping* raises ValueError.
+    """
     out = np.full(len(arr), FILL_I4, dtype=np.int32)
+    unmapped: set = set()
     for i, v in enumerate(arr):
-        if _is_valid(v) and v in mapping:
+        if not _is_valid(v):
+            continue
+        if v in mapping:
             out[i] = mapping[v]
+        elif strict:
+            unmapped.add(v)
+    if unmapped:
+        raise ValueError(
+            f"Values with no NetCDF code: {sorted(unmapped)[:10]} "
+            f"({len(unmapped)} distinct); extend the mapping before exporting"
+        )
     return out
 
 
@@ -582,6 +621,9 @@ VARCHAR_INT_COLS = {
     "facc_quality": FACC_QUALITY_MAP,
     "slope_obs_quality": SLOPE_OBS_QUALITY_MAP,
 }
+# Every facc_quality string must have a code; slope_obs_quality keeps the
+# documented behaviour of exporting below_noise as fill.
+STRICT_VARCHAR_INT_COLS = {"facc_quality"}
 STRING_COLS = {
     "river_name",
     "edit_flag",
@@ -609,7 +651,11 @@ def _write_scalar_var(grp, nc_name, nc_type, fill_value, data, attrs, dim_name):
         if nc_name in BOOL_COLS:
             var[:] = _convert_bool_col(data)
         elif nc_name in VARCHAR_INT_COLS:
-            var[:] = _convert_varchar_col(data, VARCHAR_INT_COLS[nc_name])
+            var[:] = _convert_varchar_col(
+                data,
+                VARCHAR_INT_COLS[nc_name],
+                strict=nc_name in STRICT_VARCHAR_INT_COLS,
+            )
         else:
             var[:] = _null_to_fill(data, fill_value)
     for attr_name, attr_val in attrs.items():

@@ -1,6 +1,6 @@
 # SWORD v17c Variable Reference
 
-Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c_beta.nc`).
+Quick-lookup for all variables in the v17c NetCDF export files (`{region}_sword_v17c.nc`, beta 0.0.13).
 
 **Fill values:** i4 = `-9999`, i8 = `-9999`, f8 = `-9999.0`
 
@@ -82,7 +82,7 @@ single-scalar `dist_out` gaps.
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
 | pathlen_hw | f8 | meters | -9999.0 | | Cumulative reach_length sum from best_headwater to the downstream end of the reach (headwater = 0, increases downstream) |
 | pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum toward best_outlet (outlet = 0, increases upstream) |
-| facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
+| facc_quality | i4 | | -9999 | code = 100*source + 10*tier + review; source 1=engine, 2=soft, 3=bridge, 4=fill; tier 1=A, 2=A2, 3=B, 4=C, 5=D, 6=E; review 1=flagged | facc provenance (0.0.13). String `rederived_v1:<source>:<tier>[:review]` in DuckDB/GeoPackage/GeoParquet; `:review` = `junction_inconsistent` or `topology_suspect`. See release notes Section 3 |
 | dl_grod_id | i8 | | -9999 | | Dam/lake GROD ID (downstream lookup) |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
@@ -161,7 +161,7 @@ single-scalar `dist_out` gaps.
 | width_obs_range | f8 | meters | -9999.0 | | SWOT width range (p90 - p10) |
 | width_obs_mad | f8 | meters | -9999.0 | | SWOT width median absolute deviation |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
-| facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
+| facc_quality | i4 | | -9999 | code = 100*source + 10*tier + review; source 1=engine, 2=soft, 3=bridge, 4=fill; tier 1=A, 2=A2, 3=B, 4=C, 5=D, 6=E; review 1=flagged | facc provenance (0.0.13). String `rederived_v1:<source>:<tier>[:review]` in DuckDB/GeoPackage/GeoParquet; `:review` = `junction_inconsistent` or `topology_suspect`. See release notes Section 3 |
 
 ## v17b Variables (unchanged)
 
@@ -182,7 +182,7 @@ single-scalar `dist_out` gaps.
 | wse_var | f8 | meters^2 | -9999.0 | WSE variance |
 | width | f8 | meters | -9999.0 | River width (GRWL) |
 | width_var | f8 | meters^2 | -9999.0 | Width variance |
-| facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |
+| facc | f8 | km^2 | -9999.0 | Upstream drainage area, rederived from MERIT Hydro UPA in 0.0.13 (replaces the v17b value; provenance in `facc_quality`). Junction-aware reach value, equal to the node maximum on all but 49 reaches |
 | n_chan_max | i4 | | -9999 | Max number of channels at any node |
 | n_chan_mod | i4 | | -9999 | Modal number of channels |
 | obstr_type | i4 | | -9999 | Obstruction type (0=none, 1=dam, 2=lock, 3=low-head, 4=falls) |
@@ -237,7 +237,7 @@ single-scalar `dist_out` gaps.
 | dist_out | f8 | meters | -9999.0 | Distance to network outlet. Interpolated from reach `dist_out` using node_length midpoint offsets (same formula as `hydro_dist_out` and `dist_out_dijkstra`). On single-path networks all three are exactly equal |
 | wth_coef | f8 | | -9999.0 | Width coefficient |
 | ext_dist_coef | f8 | | -9999.0 | Extraction distance coefficient |
-| facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |
+| facc | f8 | km^2 | -9999.0 | Upstream drainage area, rederived from MERIT Hydro UPA in 0.0.13 (replaces the v17b value; provenance in `facc_quality`). Never increases upstream within a reach |
 | lakeflag | i8 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal). Propagated from parent reach lakeflag per JPL request. |
 | max_width | f8 | meters | -9999.0 | Maximum width |
 | meander_length | f8 | | -9999.0 | Meander wavelength |
