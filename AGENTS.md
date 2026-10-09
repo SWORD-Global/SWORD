@@ -35,6 +35,8 @@ postgresql://user:password@host:port/database
 | `SWORD_PRIMARY_BACKEND` | `duckdb` or `postgres` |
 | `SWORD_POSTGRES_URL` | Full connection string |
 | `SWORD_DUCKDB_PATH` | Path to DuckDB file (when using duckdb) |
+| `MERIT_HYDRO_USER` | MERIT Hydro download site HTTP Basic Auth user (legacy `mh_download.py`) |
+| `MERIT_HYDRO_PASSWORD` | MERIT Hydro download site HTTP Basic Auth password (legacy `mh_download.py`) |
 
 **Quick Start - Load DuckDB to PostgreSQL:**
 ```bash

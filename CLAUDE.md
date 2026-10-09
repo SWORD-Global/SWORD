@@ -36,6 +36,8 @@ postgresql://user:password@host:port/database
 | `SWORD_POSTGRES_URL` | Full connection string |
 | `SWORD_DUCKDB_PATH` | Path to DuckDB file (when using duckdb) |
 | `PLANET_API_KEY` | Planet Basemaps key for satellite tiles (topology investigator, reviewer apps) |
+| `MERIT_HYDRO_USER` | MERIT Hydro download site HTTP Basic Auth user (legacy `mh_download.py`) |
+| `MERIT_HYDRO_PASSWORD` | MERIT Hydro download site HTTP Basic Auth password (legacy `mh_download.py`) |
 
 **Quick Start - Load DuckDB to PostgreSQL:**
 ```bash
