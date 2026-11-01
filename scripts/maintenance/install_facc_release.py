@@ -41,8 +41,8 @@ from pathlib import Path
 import duckdb
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import apply_facc_0015_product as p0014  # noqa: E402
-from apply_facc_rederivation import (  # noqa: E402
+import apply_facc_0015_product as p0014
+from apply_facc_rederivation import (
     ENTITIES,
     REGIONS,
     ApplyError,
@@ -85,7 +85,9 @@ PRODUCT_COLUMNS = {
 }
 
 
-def load_release(config_path: Path, root: Path) -> tuple[dict, dict[str, tuple[dict, Path]]]:
+def load_release(
+    config_path: Path, root: Path
+) -> tuple[dict, dict[str, tuple[dict, Path]]]:
     config = json.loads(config_path.read_text())
     if config.get("schema_version") != 2:
         raise ApplyError(f"{config_path}: expected schema_version 2")
@@ -110,7 +112,9 @@ def stage_inputs(con, products: dict[str, tuple[dict, Path]]) -> dict:
             path = product_dir / f["name"]
             digest = sha256_file(path)
             if digest != f["sha256"]:
-                raise ApplyError(f"{path.name}: sha256 {digest} != manifest {f['sha256']}")
+                raise ApplyError(
+                    f"{path.name}: sha256 {digest} != manifest {f['sha256']}"
+                )
             meta[f"{name}/{f['name']}"] = {"sha256": digest, "rows": f["rows"]}
             cols = PRODUCT_COLUMNS[name][f["entity"]]
             parts[f["entity"]].append(
@@ -132,13 +136,20 @@ def validate_inputs(con) -> dict:
     errors: list[str] = []
     flags = ", ".join(f"'{f}'" for f in FLAGS)
     qualities = ", ".join(f"'{QUALITY_PREFIX}:{s}'" for s in SOURCES)
-    informational = {"input_rows", "facc_changing", "facc_total_changing",
-                     "facc_flag_changing", "facc_quality_changing"}
+    informational = {
+        "input_rows",
+        "facc_changing",
+        "facc_total_changing",
+        "facc_flag_changing",
+        "facc_quality_changing",
+    }
 
     for name in ("numeric", "metadata"):
         for entity, key in ENTITIES:
             t = f"_in_{name}_{entity}"
-            n_rows, n_ids = _one(con, f"SELECT count(*), count(DISTINCT {key}) FROM {t}")
+            n_rows, n_ids = _one(
+                con, f"SELECT count(*), count(DISTINCT {key}) FROM {t}"
+            )
             checks = {
                 "rows_ne_manifest": (
                     f"SELECT count(*) FROM (SELECT file_region, count(*) AS n, "
@@ -236,12 +247,16 @@ def build_stage(con) -> dict:
     return stats
 
 
-def write_backup_files(con, backup_dir: Path, regions: list[str], dry_run: bool) -> dict:
+def write_backup_files(
+    con, backup_dir: Path, regions: list[str], dry_run: bool
+) -> dict:
     out = {}
     cols = ", ".join(WRITTEN_COLUMNS)
     for entity, key in ENTITIES:
         for region in regions:
-            path = backup_dir / f"facc_before_release_20261027_{entity}_{region}.parquet"
+            path = (
+                backup_dir / f"facc_before_release_20261027_{entity}_{region}.parquet"
+            )
             if path.exists():
                 bad = _one(
                     con,
@@ -250,11 +265,18 @@ def write_backup_files(con, backup_dir: Path, regions: list[str], dry_run: bool)
                     FULL OUTER JOIN read_parquet({sql_path(path)}) b USING ({key})
                     WHERE d.{key} IS NULL OR b.{key} IS NULL OR
                     """
-                    + " OR ".join(f"d.{c} IS DISTINCT FROM b.{c}" for c in WRITTEN_COLUMNS),
+                    + " OR ".join(
+                        f"d.{c} IS DISTINCT FROM b.{c}" for c in WRITTEN_COLUMNS
+                    ),
                 )[0]
                 if bad:
-                    raise ApplyError(f"Backup {path} exists but differs from the DB on {bad} rows")
-                out[path.name] = {"status": "verified_existing", "sha256": sha256_file(path)}
+                    raise ApplyError(
+                        f"Backup {path} exists but differs from the DB on {bad} rows"
+                    )
+                out[path.name] = {
+                    "status": "verified_existing",
+                    "sha256": sha256_file(path),
+                }
             elif dry_run:
                 out[path.name] = {"status": "would_create"}
             else:
@@ -275,7 +297,9 @@ def verify_apply(con, counts_before: dict, indexes_before: list, stage: dict) ->
     for entity, key in ENTITIES:
         n = _one(con, f"SELECT count(*) FROM {entity}")[0]
         if n != counts_before[entity]:
-            raise ApplyError(f"{entity}: row count changed {counts_before[entity]} -> {n}")
+            raise ApplyError(
+                f"{entity}: row count changed {counts_before[entity]} -> {n}"
+            )
         diff = _one(
             con,
             f"SELECT count(*) FROM {entity} d FULL OUTER JOIN _stage_{entity} s USING ({key}) "
@@ -285,10 +309,14 @@ def verify_apply(con, counts_before: dict, indexes_before: list, stage: dict) ->
         if diff:
             raise ApplyError(f"{entity}: {diff} rows differ from the staged values")
         by_flag = dict(
-            con.execute(f"SELECT facc_flag, count(*) FROM {entity} GROUP BY 1 ORDER BY 1").fetchall()
+            con.execute(
+                f"SELECT facc_flag, count(*) FROM {entity} GROUP BY 1 ORDER BY 1"
+            ).fetchall()
         )
         if by_flag != stage[entity]["by_flag"]:
-            raise ApplyError(f"{entity}: label counts {by_flag} != staged {stage[entity]['by_flag']}")
+            raise ApplyError(
+                f"{entity}: label counts {by_flag} != staged {stage[entity]['by_flag']}"
+            )
         out[entity] = {"rows": n, "staged_mismatches": diff, "by_flag": by_flag}
     if sorted(table_indexes(con)) != sorted(indexes_before):
         raise ApplyError("Index set changed during the write")
@@ -309,7 +337,9 @@ def do_apply(args) -> dict:
         validation = validate_inputs(con)
         log("Input valid; staging")
         stage = build_stage(con)
-        counts_before = {e: _one(con, f"SELECT count(*) FROM {e}")[0] for e, _ in ENTITIES}
+        counts_before = {
+            e: _one(con, f"SELECT count(*) FROM {e}")[0] for e, _ in ENTITIES
+        }
         indexes_before = table_indexes(con)
         backups = write_backup_files(con, Path(args.backup_dir), regions, args.dry_run)
         summary = {
@@ -342,7 +372,9 @@ def do_apply(args) -> dict:
                     for name, (manifest, _dir) in products.items()
                 },
                 "quality_vocabulary": f"{QUALITY_PREFIX}:<facc_source>",
-                "snapped_to_bounds": {e: stage[e]["snapped_to_bounds"] for e, _ in ENTITIES},
+                "snapped_to_bounds": {
+                    e: stage[e]["snapped_to_bounds"] for e, _ in ENTITIES
+                },
                 "backup_files": {
                     k: v for k, v in backups.items() if k.endswith(f"_{region}.parquet")
                 },
@@ -355,9 +387,13 @@ def do_apply(args) -> dict:
         p0014.WRITTEN_COLUMNS[:] = WRITTEN_COLUMNS
         p0014.USER_ID = "jake"
         p0014.SESSION_ID = config["id"]
-        op_ids = p0014.run_write(con, regions, "_stage_", OPERATION_KIND, reason, details_for)
+        op_ids = p0014.run_write(
+            con, regions, "_stage_", OPERATION_KIND, reason, details_for
+        )
         summary["operation_ids"] = op_ids
-        summary["verification"] = verify_apply(con, counts_before, indexes_before, stage)
+        summary["verification"] = verify_apply(
+            con, counts_before, indexes_before, stage
+        )
         summary["elapsed_s"] = round(time.time() - t0, 1)
         return summary
     finally:
@@ -374,7 +410,9 @@ def main() -> int:
     )
     parser.add_argument("--release-config", required=True)
     parser.add_argument("--backup-dir", required=True)
-    parser.add_argument("--dry-run", action="store_true", help="Validate and report only")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Validate and report only"
+    )
     args = parser.parse_args()
     try:
         guard_paths(

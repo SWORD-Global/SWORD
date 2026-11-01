@@ -1,4 +1,4 @@
-"""Combine per-region SWORD 0.0.13 GeoParquet into global all-continent files.
+"""Combine per-region SWORD v17c GeoParquet into global all-continent files.
 
 Produces, for each layer (reaches, nodes):
   - one combined GeoParquet (streamed, geo metadata preserved with unioned bbox)
@@ -12,8 +12,7 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
-VERSION = "0.0.13"
-BUNDLE = Path(f"data/exports/v17c_beta/zenodo_{VERSION}")
+BUNDLE = Path(sys.argv[1]) if len(sys.argv) > 1 else sys.exit("usage: combine_global_parquet.py <bundle dir with parquet/>")
 SRC = BUNDLE / "parquet"
 OUT = BUNDLE / "global"
 REGIONS = ["AF", "AS", "EU", "NA", "OC", "SA"]
