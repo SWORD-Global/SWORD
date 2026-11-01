@@ -27,7 +27,7 @@
       ],
       "manifest": "output/facc_detection/variants/facc_metadata_reassessed_20261027/product/MANIFEST.json",
       "manifest_sha256": "c050d6571535130468396fa6a8d32503ebd08496385fdab0178d84378a29a9d7",
-      "note": "every reach reassessed from current values; facc_quality is rederived_v3:<source>, a source-method label, not an accuracy grade"
+      "note": "every reach reassessed from current values; facc_quality is the source-method name (the product strings carry a rederived_v3: prefix that the install drops), not an accuracy grade"
     }
   },
   "verified_candidate": {

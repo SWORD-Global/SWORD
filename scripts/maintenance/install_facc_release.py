@@ -5,6 +5,8 @@
 
     numeric    facc, facc_total   per-channel and whole-river drainage area (km2)
     metadata   facc_flag, facc_quality   one label per reach, copied to its nodes
+               (the product's ``rederived_v3:`` prefix on facc_quality is dropped;
+               the database stores the plain source-method name)
 
 Only those four columns are written, on ``reaches`` and ``nodes``. The other
 product fields (facc_head, facc_total_head, facc_source, facc_class,
@@ -226,7 +228,8 @@ def build_stage(con) -> dict:
             f"CREATE OR REPLACE TEMP TABLE _stage_{entity} AS "
             f"SELECT n.{key}, n.region, "
             "least(greatest(n.facc, 1.0), greatest(n.facc_total, 1.0)) AS facc, "
-            "greatest(n.facc_total, 1.0) AS facc_total, m.facc_flag, m.facc_quality "
+            "greatest(n.facc_total, 1.0) AS facc_total, m.facc_flag, "
+            f"replace(m.facc_quality, '{QUALITY_PREFIX}:', '') AS facc_quality "
             f"FROM _in_numeric_{entity} n JOIN _in_metadata_{entity} m USING ({key})"
         )
         rows, snapped = _one(

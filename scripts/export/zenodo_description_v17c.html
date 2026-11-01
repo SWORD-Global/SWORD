@@ -307,12 +307,17 @@ gauge and basin comparisons</td>
 <td>i4</td>
 <td></td>
 <td>-9999</td>
-<td>3001=anchor; 3002=anchor_proximity; 3003=anchor_aligned;
-3004=interpolated; 3005=lake_derived; 3006=partitioned_arm;
-3007=fallback_fill; 3008=fallback_prior</td>
-<td>Source method of the <code>facc</code> value
-(<code>rederived_v3:&lt;source&gt;</code> in
-GeoPackage/GeoParquet/DuckDB). Not an accuracy grade</td>
+<td>3001=anchor (a MERIT-Basins reach was matched to this reach);
+3002=anchor_proximity (matched by proximity); 3003=anchor_aligned
+(matched by aligning junctions); 3004=interpolated (between matched
+reaches along the channel); 3005=lake_derived (lake reach, from its
+inflows); 3006=partitioned_arm (side channel or distributary with a
+width-based share); 3007=fallback_fill (no match; from neighbouring
+reaches); 3008=fallback_prior (headwater with no match; prior
+estimate)</td>
+<td>How the <code>facc</code> value was obtained. GeoPackage,
+GeoParquet, DuckDB and Shapefile store the name. Not an accuracy grade;
+see <code>facc_flag</code></td>
 </tr>
 <tr>
 <td>dl_grod_id</td>
@@ -946,12 +951,17 @@ gauge and basin comparisons</td>
 <td>i4</td>
 <td></td>
 <td>-9999</td>
-<td>3001=anchor; 3002=anchor_proximity; 3003=anchor_aligned;
-3004=interpolated; 3005=lake_derived; 3006=partitioned_arm;
-3007=fallback_fill; 3008=fallback_prior</td>
-<td>Source method of the <code>facc</code> value
-(<code>rederived_v3:&lt;source&gt;</code> in
-GeoPackage/GeoParquet/DuckDB). Not an accuracy grade</td>
+<td>3001=anchor (a MERIT-Basins reach was matched to this reach);
+3002=anchor_proximity (matched by proximity); 3003=anchor_aligned
+(matched by aligning junctions); 3004=interpolated (between matched
+reaches along the channel); 3005=lake_derived (lake reach, from its
+inflows); 3006=partitioned_arm (side channel or distributary with a
+width-based share); 3007=fallback_fill (no match; from neighbouring
+reaches); 3008=fallback_prior (headwater with no match; prior
+estimate)</td>
+<td>How the <code>facc</code> value was obtained, copied from the parent
+reach. GeoPackage, GeoParquet, DuckDB and Shapefile store the name. Not
+an accuracy grade; see <code>facc_flag</code></td>
 </tr>
 </tbody>
 </table>

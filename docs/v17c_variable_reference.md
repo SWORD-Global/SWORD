@@ -89,7 +89,7 @@ single-scalar `dist_out` gaps.
 | pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum toward best_outlet (outlet = 0, increases upstream) |
 | facc_total | f8 | km^2 | -9999.0 | | Whole-river drainage area at this point, all channels combined. Equals `facc` except in braided and delta reaches; use it for gauge and basin comparisons |
 | facc_flag | string | | | ok, suspect, same_river, braid_share, delta_arm, filled | One label per reach, copied to its nodes; see release notes §3 |
-| facc_quality | i4 | | -9999 | 3001=anchor; 3002=anchor_proximity; 3003=anchor_aligned; 3004=interpolated; 3005=lake_derived; 3006=partitioned_arm; 3007=fallback_fill; 3008=fallback_prior | Source method of the `facc` value (`rederived_v3:<source>` in GeoPackage/GeoParquet/DuckDB). Not an accuracy grade |
+| facc_quality | i4 | | -9999 | 3001=anchor (a MERIT-Basins reach was matched to this reach); 3002=anchor_proximity (matched by proximity); 3003=anchor_aligned (matched by aligning junctions); 3004=interpolated (between matched reaches along the channel); 3005=lake_derived (lake reach, from its inflows); 3006=partitioned_arm (side channel or distributary with a width-based share); 3007=fallback_fill (no match; from neighbouring reaches); 3008=fallback_prior (headwater with no match; prior estimate) | How the `facc` value was obtained. GeoPackage, GeoParquet, DuckDB and Shapefile store the name. Not an accuracy grade; see `facc_flag` |
 | dl_grod_id | i8 | | -9999 | | DL-GROD (Deep Learning Global River Obstruction Database; He et al. 2025) dam/obstruction ID |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
@@ -170,7 +170,7 @@ single-scalar `dist_out` gaps.
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
 | facc_total | f8 | km^2 | -9999.0 | | Whole-river drainage area at this point, all channels combined. Equals `facc` except in braided and delta reaches; use it for gauge and basin comparisons |
 | facc_flag | string | | | ok, suspect, same_river, braid_share, delta_arm, filled | One label per reach, copied to its nodes; see release notes §3 |
-| facc_quality | i4 | | -9999 | 3001=anchor; 3002=anchor_proximity; 3003=anchor_aligned; 3004=interpolated; 3005=lake_derived; 3006=partitioned_arm; 3007=fallback_fill; 3008=fallback_prior | Source method of the `facc` value (`rederived_v3:<source>` in GeoPackage/GeoParquet/DuckDB). Not an accuracy grade |
+| facc_quality | i4 | | -9999 | 3001=anchor (a MERIT-Basins reach was matched to this reach); 3002=anchor_proximity (matched by proximity); 3003=anchor_aligned (matched by aligning junctions); 3004=interpolated (between matched reaches along the channel); 3005=lake_derived (lake reach, from its inflows); 3006=partitioned_arm (side channel or distributary with a width-based share); 3007=fallback_fill (no match; from neighbouring reaches); 3008=fallback_prior (headwater with no match; prior estimate) | How the `facc` value was obtained, copied from the parent reach. GeoPackage, GeoParquet, DuckDB and Shapefile store the name. Not an accuracy grade; see `facc_flag` |
 
 ## v17b Variables
 

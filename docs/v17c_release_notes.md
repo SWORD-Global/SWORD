@@ -40,8 +40,9 @@ none of them was published.
   in all 60 basins; nodes copy their reach. 9,513 reach flags changed. All
   1,428 junctions where outgoing `facc` is below the sum of its inflows
   now carry a non-`ok` flag (1,421 `suspect`, 7 `same_river`).
-  `facc_quality` is now `rederived_v3:<source>` (NetCDF codes 3001-3008)
-  and records the source method only; it is not an accuracy grade. The
+  `facc_quality` now names the source method (`anchor`, `interpolated`,
+  `fallback_fill`, ...; NetCDF codes 3001-3008) and nothing else; it is not
+  an accuracy grade. The
   variable keeps the name and int32 type of the July 2026 release, where
   code 1 meant "corrected by the denoise"; the code spaces do not overlap,
   so a July value cannot be misread as a 0.0.15 one, but the meaning has
@@ -50,8 +51,9 @@ none of them was published.
   a README, sent for drainage-area testing): the four fields shipped here
   carry the same values as that candidate on every reach and node, except
   that one reach and 47 nodes within 3e-14 km^2 of a bound were moved onto
-  it (`1 <= facc <= facc_total`). The candidate's `facc_source` is the
-  suffix of `facc_quality`; its `facc_head`, `facc_total_head`, `facc_class`
+  it (`1 <= facc <= facc_total`). The candidate's `facc_source` equals
+  `facc_quality` here (the candidate's `facc_quality` strings carry a
+  `rederived_v3:` prefix that this release drops); its `facc_head`, `facc_total_head`, `facc_class`
   and `facc_review` are not in this release, and its NetCDF layout (1-D
   neighbour columns, string codes) differs from the published layout used
   here.
@@ -585,7 +587,7 @@ shared area is counted once.
 | `facc` | float64 | reaches, nodes | Drainage area of this channel (km^2). The reach value is at its downstream end; node values are interpolated along the reach. |
 | `facc_total` | float64 | reaches, nodes | Whole-river drainage area at this point, all channels combined (km^2). Equals `facc` away from splits. Use it to compare with gauges and basins. |
 | `facc_flag` | string | reaches, nodes | One label per reach, copied to its nodes: `ok`, `suspect`, `same_river`, `braid_share`, `delta_arm`, `filled`. See §3. |
-| `facc_quality` | int32 | reaches, nodes | Source method of the `facc` value, coded 3001-3008 (string `rederived_v3:<source>` in the other formats). See §3. |
+| `facc_quality` | int32 | reaches, nodes | Source method of the `facc` value, coded 3001-3008 (the source name as a string in the other formats). See §3. |
 
 **Checks on the shipped values.** Along single channels `facc` never
 decreases downstream (v17b: 5,754 decreases of more than 0.1% on the
@@ -644,22 +646,22 @@ Only the highest-priority label is stored, in the order listed.
 ### facc_quality
 
 Source method of the `facc` value. NetCDF stores the code; GeoPackage,
-GeoParquet and DuckDB store the string. It is not an accuracy grade; use
-`facc_flag` for warnings.
+GeoParquet, DuckDB and Shapefile store the name. It is not an accuracy
+grade; use `facc_flag` for warnings.
 
-| Code | String | Reaches | Meaning |
-|-----:|--------|--------:|---------|
-| 3001 | `rederived_v3:anchor` | 189,450 | MERIT-Basins reach matched to this reach |
-| 3002 | `rederived_v3:anchor_proximity` | 4,377 | MERIT-Basins reach paired by proximity |
-| 3003 | `rederived_v3:anchor_aligned` | 152 | MERIT-Basins reach matched by junction alignment |
-| 3004 | `rederived_v3:interpolated` | 7,246 | Interpolated along the channel between matched reaches |
-| 3005 | `rederived_v3:lake_derived` | 28,593 | Lake reach derived from its inflows |
-| 3006 | `rederived_v3:partitioned_arm` | 9,066 | Side channel or distributary carrying a width-based share |
-| 3007 | `rederived_v3:fallback_fill` | 8,302 | Carried from neighbouring reaches |
-| 3008 | `rederived_v3:fallback_prior` | 1,487 | Headwater prior |
+| Code | Name | Reaches | Meaning |
+|-----:|------|--------:|---------|
+| 3001 | `anchor` | 189,450 | A MERIT-Basins reach was matched to this reach; the value is read from it |
+| 3002 | `anchor_proximity` | 4,377 | Matched to a MERIT-Basins reach by proximity rather than along the network |
+| 3003 | `anchor_aligned` | 152 | Matched to a MERIT-Basins reach by aligning junctions |
+| 3004 | `interpolated` | 7,246 | Interpolated along the channel between matched reaches |
+| 3005 | `lake_derived` | 28,593 | Lake reach; derived from its inflows |
+| 3006 | `partitioned_arm` | 9,066 | Side channel or distributary carrying a width-based share |
+| 3007 | `fallback_fill` | 8,302 | No usable match; carried from neighbouring reaches |
+| 3008 | `fallback_prior` | 1,487 | Headwater with no match; a prior estimate |
 
 CF attributes: `flag_values = [3001, ..., 3008]`, `flag_meanings` lists the
-strings with `:` replaced by `_`.
+names in the same order.
 
 ### slope_obs_quality
 

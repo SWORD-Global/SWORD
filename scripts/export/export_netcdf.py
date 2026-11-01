@@ -36,10 +36,10 @@ FILL_F8 = np.float64(-9999.0)
 # -- Quality/flag string-to-int mappings ------------------------------------
 # CF-convention: flag_values + flag_meanings attributes document the encoding.
 
-# facc_quality is the string rederived_v3:<facc_source> in DuckDB, GeoPackage
-# and GeoParquet (facc release 20261027). NetCDF keeps the int32 flag variable
-# and encodes code = 3000 + source. It records the source method, not an
-# accuracy grade; warnings are in facc_flag.
+# facc_quality is the plain source-method name (anchor, interpolated, ...) in
+# DuckDB, GeoPackage and GeoParquet (facc release 20261027). NetCDF keeps the
+# int32 flag variable and encodes code = 3000 + source. It records the source
+# method, not an accuracy grade; warnings are in facc_flag.
 FACC_QUALITY_SOURCES = {
     "anchor": 1,
     "anchor_proximity": 2,
@@ -50,10 +50,7 @@ FACC_QUALITY_SOURCES = {
     "fallback_fill": 7,
     "fallback_prior": 8,
 }
-FACC_QUALITY_MAP = {
-    f"rederived_v3:{source}": 3000 + code
-    for source, code in FACC_QUALITY_SOURCES.items()
-}
+FACC_QUALITY_MAP = {source: 3000 + code for source, code in FACC_QUALITY_SOURCES.items()}
 FACC_QUALITY_FLAG_ATTRS = {
     "flag_values": np.array(sorted(FACC_QUALITY_MAP.values()), dtype=np.int32),
     "flag_meanings": " ".join(
@@ -68,7 +65,7 @@ FACC_QUALITY_FLAG_ATTRS = {
         "6=partitioned_arm (braid/delta width-share partition), "
         "7=fallback_fill (carried from neighbors), 8=fallback_prior (headwater prior). "
         "Not an accuracy grade; see facc_flag. "
-        "String form in DuckDB/GeoPackage/GeoParquet: rederived_v3:<source>"
+        "String form in DuckDB/GeoPackage/GeoParquet: the source name"
     ),
 }
 
