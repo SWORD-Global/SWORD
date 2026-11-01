@@ -27,9 +27,19 @@ import pandas as pd
 import time
 import argparse
 
-# HTTP Basic Auth credentials for MERIT Hydro.
-USERNAME = "hydrography"
-PASSWORD = "rivernetwork"
+# HTTP Basic Auth credentials for MERIT Hydro, read from the environment so no
+# secret lives in the repository. Register at
+# https://hydro.iis.u-tokyo.ac.jp/~yamadai/MERIT_Hydro/ and export both variables
+# before running this script.
+try:
+    USERNAME = os.environ["MERIT_HYDRO_USER"]
+    PASSWORD = os.environ["MERIT_HYDRO_PASSWORD"]
+except KeyError as missing:
+    sys.exit(
+        f"mh_download.py: environment variable {missing.args[0]} is not set. "
+        "Export MERIT_HYDRO_USER and MERIT_HYDRO_PASSWORD "
+        "(MERIT Hydro HTTP Basic Auth) before running."
+    )
 DOWNLOADABLE_EXTENSIONS = {".tar"}
 
 ###########################################################################
