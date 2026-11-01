@@ -34,7 +34,7 @@ from pathlib import Path
 import requests
 
 API = "https://zenodo.org/api"
-LATEST_RECORD_ID = 21415370  # v17c (July 2026) — newversion must target the latest version's id
+LATEST_RECORD_ID = 22259077  # v17c (2 Sep 2026 version) — newversion must target the latest version's id
 REPO = Path(__file__).resolve().parents[2]
 STAGING = REPO / "data/exports/v17c_beta/zenodo_v17c_facc_20261027"
 CREATORS_JSON = REPO / "scripts/export/zenodo_creators_v17c.json"
@@ -65,6 +65,8 @@ UPLOAD_FILES = [
     "SHA256SUMS.txt",
     "SHA256SUMS_files.txt",
 ]
+# Inherited from the previous version and kept as-is: neither deleted nor re-uploaded.
+KEEP_INHERITED = {"SWORD_v17b_to_v16_Translation.zip"}
 
 
 def die(msg: str) -> None:
@@ -282,6 +284,9 @@ def main() -> None:
     for f in draft.get("files", []):
         nm = _fname(f)
         if nm is None:
+            continue
+        if nm in KEEP_INHERITED:
+            print(f"  keeping inherited file: {nm}")
             continue
         if nm not in wanted:
             link = f.get("links", {}).get("self")

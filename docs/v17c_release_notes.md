@@ -6,6 +6,12 @@
 
 ## Changelog
 
+Published on Zenodo (concept DOI 10.5281/zenodo.3898569): build 0.0.12 on
+17 July 2026; the same data again on 2 September 2026 with the v17b-to-v16
+ID translation archive added to the record; and build 0.0.15 in November
+2026. Builds 0.0.13 and 0.0.14 were shared with collaborators for
+evaluation and were not published.
+
 ### 0.0.15 (November 2026)
 - **`facc` partitioned conservatively at channel splits.** At every one of
   the 2,893 reaches with more than one downstream channel, the area given to
@@ -828,6 +834,10 @@ v17b subgroups); the other formats carry reaches and nodes with geometry.
   combined; each table carries a `region` column).
 - **Checksums:** SHA256 hashes for all distributed files listed in
   `SHA256SUMS.txt`
+- **ID translation (separate archive on the record):**
+  `SWORD_v17b_to_v16_Translation.zip` holds the official reach and node ID
+  translation tables between v17b and v16 for all six regions. v17c keeps
+  v17b IDs, so the tables apply to v17c unchanged.
 
 ---
 
