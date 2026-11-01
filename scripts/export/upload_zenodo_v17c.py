@@ -1,7 +1,7 @@
 """Create a Zenodo new-version draft for SWORD v17c and upload the bundle.
 
-This script NEVER publishes and NEVER modifies the existing v17b record.
-It creates a new-version draft off record 15299138, sets the draft metadata,
+This script NEVER publishes and NEVER modifies the existing published record.
+It creates a new-version draft off record LATEST_RECORD_ID, sets the draft metadata,
 and uploads the six format ZIPs plus both SHA256SUMS manifests to the draft's
 bucket. Publishing is left to a human in the Zenodo web UI.
 
@@ -33,9 +33,9 @@ from pathlib import Path
 import requests
 
 API = "https://zenodo.org/api"
-LATEST_RECORD_ID = 15299138  # v17b — newversion must target the latest version's id
+LATEST_RECORD_ID = 21415370  # v17c (July 2026) — newversion must target the latest version's id
 REPO = Path(__file__).resolve().parents[2]
-STAGING = REPO / "data/exports/v17c_beta/zenodo_v17c"
+STAGING = REPO / "data/exports/v17c_beta/zenodo_v17c_facc_20261027"
 CREATORS_JSON = REPO / "scripts/export/zenodo_creators_v17c.json"
 DESCRIPTION_HTML = REPO / "scripts/export/zenodo_description_v17c.html"
 
@@ -249,7 +249,7 @@ def main() -> None:
     draft_id = draft["id"]
     if draft_id == LATEST_RECORD_ID:
         die("refusing to continue: draft id equals the published record id "
-            "(would edit v17b). Aborting before any change.")
+            "(would edit the published record). Aborting before any change.")
     bucket = draft["links"]["bucket"]
 
     # 2. Set draft metadata.
@@ -264,7 +264,7 @@ def main() -> None:
         return
 
     # 3. Reconcile files. A new-version draft inherits the previous version's
-    #    files (v17b's zips). Remove any file not in the v17c set, then upload
+    #    files (the previous version's zips). Remove any file not in the new set, then upload
     #    the v17c files (skipping any already present at the same size, so a
     #    re-run resumes). The legacy deposit API uses filename/filesize; the
     #    newer representation uses key/size — handle both.
