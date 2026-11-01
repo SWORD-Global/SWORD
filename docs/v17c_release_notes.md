@@ -9,8 +9,9 @@
 Published on Zenodo (concept DOI 10.5281/zenodo.3898569): build 0.0.12 on
 17 July 2026; the same data again on 2 September 2026 with the v17b-to-v16
 ID translation archive added to the record; and build 0.0.15 in November
-2026. Builds 0.0.13 and 0.0.14 were shared with collaborators for
-evaluation and were not published.
+2026. Builds 0.0.13 and 0.0.14 were evaluation builds; 0.0.14 and a
+27 October 2026 candidate built on it were shared with collaborators, and
+none of them was published.
 
 ### 0.0.15 (November 2026)
 - **`facc` partitioned conservatively at channel splits.** At every one of
@@ -20,7 +21,14 @@ evaluation and were not published.
   handed out more than 1 km^2 beyond the parent reach's area; the shares
   now close at all 2,893 (largest residual 9e-10 km^2). Relative to 0.0.14, `facc` changed on
   19,150 reaches and 897,758 nodes: 2,412 reaches raised (median +6%) and
-  16,738 lowered (median -9%).
+  16,738 lowered (median -9%). Most of that change comes from three model
+  revisions made on 20-21 October, before the partition fix: area is
+  carried across splits and rejoins per source instead of being restored
+  at the nearest rejoin; false headwaters and derived lake heads get a
+  floor; and area credits pass through capped channels and ghost spurs.
+  Those revisions alone changed 16,334 reaches (2,968 raised, median +7%;
+  13,366 lowered, median -4%). The conservative partition then lowered
+  6,696 reaches (median -37%) and raised none.
 - **`facc_total` carried unsplit through rejoins.** The whole-river area no
   longer drops where a branch reconnects to another channel. The 314
   downstream drops found by an 18,241-junction test are now 0.
@@ -38,6 +46,15 @@ evaluation and were not published.
   code 1 meant "corrected by the denoise"; the code spaces do not overlap,
   so a July value cannot be misread as a 0.0.15 one, but the meaning has
   changed.
+- **For holders of the 27 October 2026 candidate files** (six NetCDFs with
+  a README, sent for drainage-area testing): the four fields shipped here
+  carry the same values as that candidate on every reach and node, except
+  that one reach and 47 nodes within 3e-14 km^2 of a bound were moved onto
+  it (`1 <= facc <= facc_total`). The candidate's `facc_source` is the
+  suffix of `facc_quality`; its `facc_head`, `facc_total_head`, `facc_class`
+  and `facc_review` are not in this release, and its NetCDF layout (1-D
+  neighbour columns, string codes) differs from the published layout used
+  here.
 - **Two reaches' scalar neighbour columns corrected** (AS 45220300256,
   NA 71382000696). A downstream neighbour stored in `rch_id_up_1` moved to
   `rch_id_dn_1` in the GeoPackage, GeoParquet and DuckDB columns. The
