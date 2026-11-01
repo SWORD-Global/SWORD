@@ -36,21 +36,22 @@ FILL_F8 = np.float64(-9999.0)
 # -- Quality/flag string-to-int mappings ------------------------------------
 # CF-convention: flag_values + flag_meanings attributes document the encoding.
 
-# facc_quality is the string rederived_v2:<facc_source> in DuckDB, GeoPackage
-# and GeoParquet (facc product 0015, release 0.0.14). NetCDF keeps the int32
-# flag variable and encodes code = 2000 + source.
+# facc_quality is the string rederived_v3:<facc_source> in DuckDB, GeoPackage
+# and GeoParquet (facc release 20261027). NetCDF keeps the int32 flag variable
+# and encodes code = 3000 + source. It records the source method, not an
+# accuracy grade; warnings are in facc_flag.
 FACC_QUALITY_SOURCES = {
     "anchor": 1,
     "anchor_proximity": 2,
     "anchor_aligned": 3,
     "interpolated": 4,
     "lake_derived": 5,
-    "partition_rejoin_conserving": 6,
+    "partitioned_arm": 6,
     "fallback_fill": 7,
     "fallback_prior": 8,
 }
 FACC_QUALITY_MAP = {
-    f"rederived_v2:{source}": 2000 + code
+    f"rederived_v3:{source}": 3000 + code
     for source, code in FACC_QUALITY_SOURCES.items()
 }
 FACC_QUALITY_FLAG_ATTRS = {
@@ -60,13 +61,14 @@ FACC_QUALITY_FLAG_ATTRS = {
         for name, _code in sorted(FACC_QUALITY_MAP.items(), key=lambda kv: kv[1])
     ),
     "comment": (
-        "facc provenance, code = 2000 + source. source: 1=anchor (MERIT reach matched), "
+        "facc source method, code = 3000 + source. source: 1=anchor (MERIT reach matched), "
         "2=anchor_proximity (MERIT reach paired by proximity), 3=anchor_aligned "
         "(MERIT reach matched by junction alignment), 4=interpolated, "
         "5=lake_derived (lake reach derived from its inflows), "
-        "6=partition_rejoin_conserving (braid/delta width-share partition), "
+        "6=partitioned_arm (braid/delta width-share partition), "
         "7=fallback_fill (carried from neighbors), 8=fallback_prior (headwater prior). "
-        "String form in DuckDB/GeoPackage/GeoParquet: rederived_v2:<source>"
+        "Not an accuracy grade; see facc_flag. "
+        "String form in DuckDB/GeoPackage/GeoParquet: rederived_v3:<source>"
     ),
 }
 
