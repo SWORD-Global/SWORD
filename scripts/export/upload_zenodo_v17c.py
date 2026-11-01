@@ -28,6 +28,7 @@ import os
 import sys
 import time
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import requests
@@ -86,6 +87,8 @@ def load_metadata() -> tuple[dict, list[str]]:
             "title": TITLE,
             "upload_type": "dataset",
             "version": VERSION_LABEL,
+            # A new-version draft inherits the previous version's date; stamp today.
+            "publication_date": date.today().isoformat(),
             "description": description,
             "creators": creators,
             "license": "cc-by-4.0",
