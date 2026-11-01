@@ -2,7 +2,8 @@
 
 Produces, for each layer (reaches, nodes):
   - one combined GeoParquet (streamed, geo metadata preserved with unioned bbox)
-  - one DuckDB file with a native GEOMETRY column (WKB decoded via ST_GeomFromWKB)
+  - one DuckDB file with a native GEOMETRY column (the spatial extension reads the
+    GeoParquet geometry column natively)
 """
 
 import json
@@ -44,8 +45,7 @@ def build_global_geo_meta(layer: str) -> bytes:
 def combine_parquet(layer: str) -> Path:
     out_path = OUT / f"sword_global_v17c_{layer}.parquet"
     if out_path.exists():
-        print(f"  {out_path} exists, reusing")
-        return out_path
+        out_path.unlink()  # always rebuild from the current per-region files
     geo_meta = build_global_geo_meta(layer)
 
     first = pq.ParquetFile(region_path("AF", layer))

@@ -164,6 +164,8 @@ def export_one(region: str, layer: str, hb: int, select_sql: str) -> str:
     res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if res.returncode != 0:
         raise RuntimeError(f"ogr2ogr failed for {out.name}:\n{res.stderr[-2000:]}")
+    if "truncated" in res.stderr.lower():
+        raise RuntimeError(f"ogr2ogr truncated a field for {out.name}:\n{res.stderr[-2000:]}")
     return out.name
 
 
