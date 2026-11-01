@@ -183,10 +183,8 @@ NetCDF files.
 edit provenance. Values include v17b numeric edit codes (e.g. `1`, `7`),
 the literal string `NaN` (v17b's no-edit placeholder — present on ~126K
 reaches; parsers must treat it as a string, not a float), and v17c tags:
-`facc_denoise_v3` (provenance tag from the superseded 0.0.12 facc
-correction; the values were replaced in 0.0.14), `harp_lake`,
-`lake_sandwich`, `clf_reconcile`, `clf_provisional_river`, `ghost_reclass`,
-`facc_suspect`, `facc_traced`.
+`facc_denoise_v3`, `harp_lake`, `lake_sandwich`, `clf_reconcile`,
+`clf_provisional_river`, `ghost_reclass`, `facc_suspect`, `facc_traced`.
 Multiple tags combine comma-delimited (e.g. `harp_lake,clf_reconcile`).
 In the NetCDF export, the reaches `edit_flag` variable declares a string
 `_FillValue` attribute of `"-9999.0"`, but reaches with no edit tag are

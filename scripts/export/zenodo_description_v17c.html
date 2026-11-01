@@ -965,18 +965,16 @@ is a comma-delimited tag list recording edit provenance. Values include
 v17b numeric edit codes (e.g. <code>1</code>, <code>7</code>), the
 literal string <code>NaN</code> (v17b’s no-edit placeholder — present on
 ~126K reaches; parsers must treat it as a string, not a float), and v17c
-tags: <code>facc_denoise_v3</code> (provenance tag from the superseded
-v17c facc correction; the values were replaced in 0.0.14),
-<code>harp_lake</code>, <code>lake_sandwich</code>,
-<code>clf_reconcile</code>, <code>clf_provisional_river</code>,
-<code>ghost_reclass</code>, <code>facc_suspect</code>,
-<code>facc_traced</code>. Multiple tags combine comma-delimited
-(e.g. <code>harp_lake,clf_reconcile</code>). In the NetCDF export, the
-reaches <code>edit_flag</code> variable declares a string
-<code>_FillValue</code> attribute of <code>"-9999.0"</code>, but reaches
-with no edit tag are stored as empty strings (<code>""</code>), not the
-literal <code>"-9999.0"</code>. Treat an empty string (and the
-<code>NaN</code> placeholder) as “no edit.”</p>
+tags: <code>facc_denoise_v3</code>, <code>harp_lake</code>,
+<code>lake_sandwich</code>, <code>clf_reconcile</code>,
+<code>clf_provisional_river</code>, <code>ghost_reclass</code>,
+<code>facc_suspect</code>, <code>facc_traced</code>. Multiple tags
+combine comma-delimited (e.g. <code>harp_lake,clf_reconcile</code>). In
+the NetCDF export, the reaches <code>edit_flag</code> variable declares
+a string <code>_FillValue</code> attribute of <code>"-9999.0"</code>,
+but reaches with no edit tag are stored as empty strings
+(<code>""</code>), not the literal <code>"-9999.0"</code>. Treat an
+empty string (and the <code>NaN</code> placeholder) as “no edit.”</p>
 <p><strong>Reaches</strong></p>
 <table>
 
