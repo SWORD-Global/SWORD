@@ -588,9 +588,9 @@ shared area is counted once.
 | `facc_quality` | int32 | reaches, nodes | Source method of the `facc` value, coded 3001-3008 (string `rederived_v3:<source>` in the other formats). See §3. |
 
 **Checks on the shipped values.** Along single channels `facc` never
-decreases downstream (v17b: 6,360 decreases on the 205,455 links where a
-reach has one downstream neighbour that has one upstream neighbour, 5,160
-of them away from ghost reaches). In the 18,241-junction test (junctions with two or
+decreases downstream (v17b: 5,754 decreases of more than 0.1% on the
+205,455 links where a reach has one downstream neighbour that has one
+upstream neighbour). In the 18,241-junction test (junctions with two or
 more inflows, none of which itself splits), every exit is at least its
 largest inflow; the 50 connections across which the model transfers no
 channel area lie outside that test, and their 23 receiving reaches are
@@ -812,7 +812,7 @@ Validation checks performed on the v17c data:
 
 | Audit | Finding |
 |-------|---------|
-| **Flow accumulation (facc)** | Every reach and node rebuilt from MERIT-Basins. 0 downstream decreases along single channels (v17b: 6,360); 0 exits below their largest inflow in the 18,241-junction test; the split partition closes at all 2,893 splits; `facc <= facc_total` everywhere. 1,428 junction shortfalls remain, all flagged. The four facc fields in every shipped format match the database on all 248,673 reaches and 11,112,454 nodes; in the Shapefiles the two areas are stored with 8 decimals (DBF `numeric(19,8)`), so they differ from the database by at most 5e-9 km^2. |
+| **Flow accumulation (facc)** | Every reach and node rebuilt from MERIT-Basins. 0 downstream decreases along single channels (v17b: 5,754); 0 exits below their largest inflow in the 18,241-junction test; the split partition closes at all 2,893 splits; `facc <= facc_total` everywhere. 1,428 junction shortfalls remain, all flagged. The four facc fields in every shipped format match the database on all 248,673 reaches and 11,112,454 nodes; in the Shapefiles the two areas are stored with 8 decimals (DBF `numeric(19,8)`), so they differ from the database by at most 5e-9 km^2. |
 | **SWOT observation data (`wse_obs_*`, `width_obs_*`, `slope_obs_*`)** | New SWOT-derived columns aggregated from real overpasses; they do not modify the v17b static `wse`/`width`/`slope`. `slope_obs_p50` populated on 173,732 reaches (9,988 negative, flagged via `slope_obs_quality`); derived from pass-level node-WSE regressions (see §2.2). |
 | **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`) copied from v17b to ensure consistency across all formats. |
 | **Node coordinate continuity** | v17c restores v17b node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` for the 344 previously rederived reaches plus OC reach 51111300061 split-revert residue. Global node coordinate diff vs v17b NetCDF: 0. |
