@@ -538,6 +538,13 @@ widths, and each side channel's share is debited from the main channel, so
 the shares at all 2,893 splits add up to the parent's area. Width-based
 shares are a convention: they are not measured discharge fractions.
 
+Because the values come from a different source, `facc` differs from v17b
+on 248,667 of the 248,673 reaches: raised on 132,337 and lowered on
+116,330. Most changes are small (regional medians +4% to +5% for raises
+and 5% to 12% for decreases); the large ones are at braided and delta
+channels, where v17b gave each channel the whole river's area, and at
+reaches where the D8 raster had been matched to the wrong river.
+
 Two drainage-area numbers are carried. For a 100 km^2 river that splits
 into two channels with no tributary between them, `facc` is 70 and 30 on
 the two arms and `facc_total` stays 100 on both; when the arms rejoin, the
@@ -688,9 +695,9 @@ Example: 5 = negative slope (1) + high variance (4).
   match and take values from their neighbours or a headwater prior.
 
 - **facc open cases:** 29 reaches with an unresolved MERIT placement
-  question, two weak outlets, and one pair of AS reaches (43308000201,
-  43309000191) whose stored routing and node direction labels disagree are
-  all flagged `suspect`. The model assigns zero channel area across 50
+  question, two weak outlets, and the AS reach pair 43308000201 and
+  43309000191, whose stored routing and node direction labels disagree,
+  are all flagged `suspect`. The model assigns zero channel area across 50
   connections; the 23 receiving reaches are flagged `suspect`.
 
 - **Lake sandwich corrections:** 1,252 reaches were reclassified to
