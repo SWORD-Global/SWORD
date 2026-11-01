@@ -285,6 +285,103 @@ class SWORDWorkflow:
 
         return self._sword
 
+    def repair_headwater_neighbor_columns(
+        self,
+        db_path: Union[str, Path],
+        connections: List[tuple[str, int, int]],
+        reason: str,
+    ) -> List[Dict[str, Any]]:
+        """Repair stale scalar neighbour columns without changing the actual graph.
+
+        Each connection is (region, headwater_id, downstream_id). The normalized
+        topology, reciprocal link, counts, main neighbours and distances must
+        already agree. Only a downstream ID misplaced in rch_id_up_1 is repaired.
+        All repairs and their value snapshots commit together. This deliberately
+        avoids loading regional geometry or running schema/backfill migrations.
+        """
+        from .provenance import ProvenanceLogger
+        from .sword_db import SWORDDatabase
+
+        if self.is_loaded:
+            raise RuntimeError("Close the loaded database before this repair.")
+        if not self._enable_provenance or not reason:
+            raise ValueError("This repair requires provenance and a reason.")
+        path = Path(db_path).resolve(strict=True)
+        if "v17b" in path.name.lower():
+            raise ValueError("The v17b reference database is read-only.")
+        if len({(r.upper(), h) for r, h, _ in connections}) != len(connections):
+            raise ValueError("Duplicate headwater connections.")
+
+        changes = []
+        with SWORDDatabase(path, spatial=True) as db:
+            db.execute("BEGIN TRANSACTION")
+            try:
+                provenance = ProvenanceLogger(db, user_id=self._user_id)
+                for region, headwater, downstream in connections:
+                    region = region.upper()
+                    row = db.execute(
+                        "SELECT n_rch_up, n_rch_down, rch_id_up_main, "
+                        "rch_id_dn_main, dist_out, rch_id_up_1, rch_id_dn_1, "
+                        "rch_id_up_2, rch_id_up_3, rch_id_up_4, "
+                        "rch_id_dn_2, rch_id_dn_3, rch_id_dn_4 "
+                        "FROM reaches WHERE region = ? AND reach_id = ?",
+                        [region, headwater],
+                    ).fetchone()
+                    neighbor = db.execute(
+                        "SELECT dist_out FROM reaches WHERE region = ? AND reach_id = ?",
+                        [region, downstream],
+                    ).fetchone()
+                    topology = db.execute(
+                        "SELECT direction, neighbor_rank, neighbor_reach_id "
+                        "FROM reach_topology WHERE region = ? AND reach_id = ?",
+                        [region, headwater],
+                    ).fetchall()
+                    reciprocal = db.execute(
+                        "SELECT COUNT(*) FROM reach_topology WHERE region = ? "
+                        "AND reach_id = ? AND direction = 'up' AND neighbor_reach_id = ?",
+                        [region, downstream, headwater],
+                    ).fetchone()[0]
+                    if (
+                        row is None or neighbor is None
+                        or topology != [("down", 0, downstream)]
+                        or reciprocal != 1 or row[:2] != (0, 1)
+                        or row[2] not in (None, 0) or row[3] != downstream
+                        or row[4] is None or neighbor[0] is None
+                        or row[4] <= neighbor[0]
+                        or any(value not in (None, 0) for value in row[7:])
+                    ):
+                        raise ValueError(f"Direction evidence disagrees for {region}:{headwater}")
+                    if row[5:7] == (0, downstream):
+                        continue
+                    if row[5:7] != (downstream, 0):
+                        raise ValueError(f"Unexpected neighbour columns for {region}:{headwater}")
+                    with provenance.operation(
+                        "UPDATE", table_name="reaches", entity_ids=[headwater],
+                        region=region, reason=reason,
+                        affected_columns=["rch_id_up_1", "rch_id_dn_1"],
+                        details={"canonical_topology_unchanged": True,
+                                 "downstream_reach_id": downstream},
+                    ) as operation_id:
+                        provenance.log_value_change(
+                            operation_id, "reaches", headwater, "rch_id_up_1", downstream, 0
+                        )
+                        provenance.log_value_change(
+                            operation_id, "reaches", headwater, "rch_id_dn_1", 0, downstream
+                        )
+                        db.execute(
+                            "UPDATE reaches SET rch_id_up_1 = 0, rch_id_dn_1 = ? "
+                            "WHERE region = ? AND reach_id = ?",
+                            [downstream, region, headwater],
+                        )
+                    changes.append({"region": region, "reach_id": headwater,
+                                    "downstream_reach_id": downstream,
+                                    "operation_id": operation_id})
+                db.execute("COMMIT")
+            except Exception:
+                db.execute("ROLLBACK")
+                raise
+        return changes
+
     def close(self, save: bool = True) -> None:
         """
         Close the current SWORD database connection.

@@ -49,6 +49,8 @@ REACHES_COLUMN_ORDER: tuple[str, ...] = (
     # Hydrology & Distance
     "facc",
     "facc_quality",
+    "facc_total",
+    "facc_flag",
     "dist_out",
     "dist_out_dijkstra",
     "hydro_dist_out",
@@ -166,6 +168,8 @@ NODES_COLUMN_ORDER: tuple[str, ...] = (
     # Hydrology & Distance
     "facc",
     "facc_quality",
+    "facc_total",
+    "facc_flag",
     "dist_out",
     # SWOT Search Parameters
     "wth_coef",
