@@ -86,7 +86,7 @@ STRING_WIDTHS = {
     "river_name_local": 100,
     "edit_flag": 60,
     "swot_obs_source": 8,
-    "facc_quality": 12,
+    "facc_quality": 32,  # rederived_v3:<source>, longest 29 chars
     "slope_obs_quality": 24,
     "version": 16,
     "region": 4,
