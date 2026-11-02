@@ -9,8 +9,8 @@ import duckdb
 
 
 def _load_export_sword_module():
-    module_path = Path(
-        "/Users/jakegearon/projects/SWORD/scripts/maintenance/export_sword.py"
+    module_path = (
+        Path(__file__).resolve().parents[1] / "scripts/maintenance/export_sword.py"
     )
     spec = importlib.util.spec_from_file_location("export_sword", module_path)
     assert spec is not None

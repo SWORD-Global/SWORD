@@ -874,151 +874,37 @@ class SWORD:
         gdf.to_file(shp_path, driver="ESRI Shapefile")
         logger.info(f"Saved nodes to {gpkg_path} and {shp_path}")
 
-    def save_nc(self, output_path: Optional[str] = None) -> None:
+    def save_nc(
+        self,
+        output_path: Optional[str] = None,
+        *,
+        v17b_nc_dir: Optional[Union[str, Path]] = None,
+        overwrite: bool = False,
+    ) -> Path:
+        """Export the published layout using a complete original v17b template.
+
+        Prefer SWORDWorkflow.export(formats=["netcdf"], ...). This entry point
+        uses that same validated writer; it cannot emit the old partial layout.
         """
-        Export data to NetCDF format for backward compatibility.
+        from .netcdf import export_region
 
-        Parameters
-        ----------
-        output_path : str, optional
-            Output file path. If not provided, uses default naming.
-        """
-        try:
-            import netCDF4 as nc
-        except ImportError:
-            raise ImportError(
-                "netCDF4 is required for save_nc(). Install with: pip install netCDF4"
-            )
-
-        if output_path is None:
-            output_path = f"sword_{self.region}_{self.version}.nc"
-
-        # Create NetCDF file
-        with nc.Dataset(output_path, "w", format="NETCDF4") as ds:
-            # Global attributes
-            ds.title = f"SWORD {self.version} - {self.region}"
-            ds.created = datetime.now().isoformat()
-            ds.source = "Exported from DuckDB"
-
-            # Centerlines group
-            cl_grp = ds.createGroup("centerlines")
-            n_cl = len(self._centerlines)
-            cl_grp.createDimension("num_centerlines", n_cl)
-            cl_grp.createDimension("num_neighbors", 4)
-
-            cl_grp.createVariable("cl_id", "i8", ("num_centerlines",))[:] = (
-                self._centerlines.cl_id
-            )
-            cl_grp.createVariable("x", "f8", ("num_centerlines",))[:] = (
-                self._centerlines.x
-            )
-            cl_grp.createVariable("y", "f8", ("num_centerlines",))[:] = (
-                self._centerlines.y
-            )
-            cl_grp.createVariable(
-                "reach_id", "i8", ("num_neighbors", "num_centerlines")
-            )[:] = self._centerlines.reach_id
-            cl_grp.createVariable(
-                "node_id", "i8", ("num_neighbors", "num_centerlines")
-            )[:] = self._centerlines.node_id
-
-            # Nodes group
-            nd_grp = ds.createGroup("nodes")
-            n_nd = len(self._nodes)
-            nd_grp.createDimension("num_nodes", n_nd)
-            nd_grp.createDimension("num_cl_bounds", 2)
-
-            nd_grp.createVariable("node_id", "i8", ("num_nodes",))[:] = self._nodes.id
-            nd_grp.createVariable("x", "f8", ("num_nodes",))[:] = self._nodes.x
-            nd_grp.createVariable("y", "f8", ("num_nodes",))[:] = self._nodes.y
-            nd_grp.createVariable("reach_id", "i8", ("num_nodes",))[:] = (
-                self._nodes.reach_id
-            )
-            nd_grp.createVariable("cl_id", "i8", ("num_cl_bounds", "num_nodes"))[:] = (
-                self._nodes.cl_id
-            )
-            nd_grp.createVariable("len", "f8", ("num_nodes",))[:] = self._nodes.len
-            nd_grp.createVariable("wse", "f8", ("num_nodes",))[:] = self._nodes.wse
-            nd_grp.createVariable("wse_var", "f8", ("num_nodes",))[:] = (
-                self._nodes.wse_var
-            )
-            nd_grp.createVariable("wth", "f8", ("num_nodes",))[:] = self._nodes.wth
-            nd_grp.createVariable("wth_var", "f8", ("num_nodes",))[:] = (
-                self._nodes.wth_var
-            )
-            nd_grp.createVariable("max_wth", "f8", ("num_nodes",))[:] = (
-                self._nodes.max_wth
-            )
-            nd_grp.createVariable("facc", "f8", ("num_nodes",))[:] = self._nodes.facc
-            nd_grp.createVariable("dist_out", "f8", ("num_nodes",))[:] = (
-                self._nodes.dist_out
-            )
-            nd_grp.createVariable("grod", "i4", ("num_nodes",))[:] = self._nodes.grod
-            nd_grp.createVariable("lakeflag", "i4", ("num_nodes",))[:] = (
-                self._nodes.lakeflag
-            )
-            nd_grp.createVariable("strm_order", "i4", ("num_nodes",))[:] = (
-                self._nodes.strm_order
-            )
-            nd_grp.createVariable("end_rch", "i4", ("num_nodes",))[:] = (
-                self._nodes.end_rch
-            )
-
-            # Reaches group
-            rch_grp = ds.createGroup("reaches")
-            n_rch = len(self._reaches)
-            rch_grp.createDimension("num_reaches", n_rch)
-            rch_grp.createDimension("num_rch_neighbors", 4)
-            rch_grp.createDimension("num_cl_bounds", 2)
-            rch_grp.createDimension("num_orbits", 75)
-            rch_grp.createDimension("num_days", 366)
-
-            rch_grp.createVariable("reach_id", "i8", ("num_reaches",))[:] = (
-                self._reaches.id
-            )
-            rch_grp.createVariable("x", "f8", ("num_reaches",))[:] = self._reaches.x
-            rch_grp.createVariable("y", "f8", ("num_reaches",))[:] = self._reaches.y
-            rch_grp.createVariable("cl_id", "i8", ("num_cl_bounds", "num_reaches"))[
-                :
-            ] = self._reaches.cl_id
-            rch_grp.createVariable("len", "f8", ("num_reaches",))[:] = self._reaches.len
-            rch_grp.createVariable("wse", "f8", ("num_reaches",))[:] = self._reaches.wse
-            rch_grp.createVariable("wth", "f8", ("num_reaches",))[:] = self._reaches.wth
-            rch_grp.createVariable("slope", "f8", ("num_reaches",))[:] = (
-                self._reaches.slope
-            )
-            rch_grp.createVariable("facc", "f8", ("num_reaches",))[:] = (
-                self._reaches.facc
-            )
-            rch_grp.createVariable("dist_out", "f8", ("num_reaches",))[:] = (
-                self._reaches.dist_out
-            )
-            rch_grp.createVariable("n_rch_up", "i4", ("num_reaches",))[:] = (
-                self._reaches.n_rch_up
-            )
-            rch_grp.createVariable("n_rch_down", "i4", ("num_reaches",))[:] = (
-                self._reaches.n_rch_down
-            )
-            rch_grp.createVariable(
-                "rch_id_up", "i8", ("num_rch_neighbors", "num_reaches")
-            )[:] = self._reaches.rch_id_up
-            rch_grp.createVariable(
-                "rch_id_down", "i8", ("num_rch_neighbors", "num_reaches")
-            )[:] = self._reaches.rch_id_down
-            rch_grp.createVariable("orbits", "i8", ("num_orbits", "num_reaches"))[:] = (
-                self._reaches.orbits
-            )
-            rch_grp.createVariable("iceflag", "i4", ("num_days", "num_reaches"))[:] = (
-                self._reaches.iceflag
-            )
-            rch_grp.createVariable("strm_order", "i4", ("num_reaches",))[:] = (
-                self._reaches.strm_order
-            )
-            rch_grp.createVariable("end_rch", "i4", ("num_reaches",))[:] = (
-                self._reaches.end_rch
-            )
-
-        logger.info(f"Exported to {output_path}")
+        if v17b_nc_dir is None:
+            raise ValueError("v17b_nc_dir is required for a complete NetCDF export")
+        if self.db.is_postgres:
+            raise ValueError("NetCDF export currently requires a DuckDB backend")
+        output = (
+            Path(output_path)
+            if output_path is not None
+            else Path(f"{self.region.lower()}_sword_v17c.nc")
+        )
+        return export_region(
+            self.db.conn,
+            self.region,
+            Path(v17b_nc_dir),
+            output.parent,
+            output_path=output,
+            overwrite=overwrite,
+        )
 
     def validate_reach_id(self, reach_id: int) -> bool:
         """

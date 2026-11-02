@@ -1,0 +1,7 @@
+# Small reproducible environment for the NetCDF compatibility workflow.
+duckdb==1.3.2
+netCDF4==1.7.4
+numpy==2.0.2
+pandas==2.2.3
+pytest==8.3.3
+networkx==3.4.2

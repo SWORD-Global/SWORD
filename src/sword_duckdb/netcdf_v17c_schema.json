@@ -1,0 +1,2142 @@
+{
+  "schema_id": "sword-v17c-published-20261101",
+  "source_record": "https://zenodo.org/records/23870877",
+  "source_file": "netcdf/af_sword_v17c.nc",
+  "source_sha256": "e26d67be62bcb1d0c993be75b4750973f205659928b243bc9a765ff37a225d79",
+  "schema": {
+    "dimensions": {},
+    "variables": {},
+    "groups": {
+      "centerlines": {
+        "dimensions": {
+          "num_points": null,
+          "num_domains": 4
+        },
+        "variables": {
+          "cl_id": {
+            "dimensions": [
+              "num_points"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "x": {
+            "dimensions": [
+              "num_points"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "y": {
+            "dimensions": [
+              "num_points"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "reach_id": {
+            "dimensions": [
+              "num_domains",
+              "num_points"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "node_id": {
+            "dimensions": [
+              "num_domains",
+              "num_points"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          }
+        },
+        "groups": {}
+      },
+      "nodes": {
+        "dimensions": {
+          "num_nodes": null,
+          "num_ids": 2
+        },
+        "variables": {
+          "node_id": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "x": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "y": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "node_length": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "reach_id": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "wse": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "wse_var": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "width": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "width_var": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "n_chan_max": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "n_chan_mod": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "obstr_type": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "grod_id": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "hfalls_id": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "dist_out": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "wth_coef": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "ext_dist_coef": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "facc": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "lakeflag": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "max_width": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "meander_length": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "sinuosity": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "node_order": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "manual_add": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "trib_flag": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "path_freq": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "path_order": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "path_segs": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "stream_order": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "main_side": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "end_reach": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "network": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "subnetwork_id": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "best_headwater": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "best_outlet": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "hydro_dist_out": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "hydro_dist_hw": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "dist_out_dijkstra": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "pathlen_hw": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "pathlen_out": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p10": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p20": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p30": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p40": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p50": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p60": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p70": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p80": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p90": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_range": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_mad": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p10": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p20": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p30": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p40": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p50": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p60": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p70": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p80": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p90": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_range": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_mad": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "n_obs": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "facc_quality": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "facc_total": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "facc_flag": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "version": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "add_flag": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "river_name": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17b"
+          },
+          "edit_flag": {
+            "dimensions": [
+              "num_nodes"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17b"
+          },
+          "cl_ids": {
+            "dimensions": [
+              "num_ids",
+              "num_nodes"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          }
+        },
+        "groups": {}
+      },
+      "reaches": {
+        "dimensions": {
+          "num_reaches": null,
+          "num_ids": 2,
+          "num_domains": 4,
+          "julian_day": 366,
+          "orbits": 75,
+          "nCoeffs": 2,
+          "nReg": 3
+        },
+        "variables": {
+          "reach_id": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "x": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "x_min": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "x_max": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "y": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "y_min": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "y_max": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "reach_length": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "n_nodes": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "wse": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "wse_var": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "width": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "width_var": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "facc": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "n_chan_max": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "n_chan_mod": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "obstr_type": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "grod_id": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "hfalls_id": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "slope": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "dist_out": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "n_rch_up": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "n_rch_down": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "lakeflag": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "type": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "swot_obs": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "max_width": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "low_slope_flag": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "trib_flag": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "path_freq": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "path_order": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "path_segs": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "stream_order": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "main_side": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "end_reach": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "network": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "dn_node_id": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "up_node_id": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "dist_out_dijkstra": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "hydro_dist_out": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "hydro_dist_hw": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "rch_id_up_main": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "rch_id_dn_main": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "subnetwork_id": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "main_path_id": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "is_mainstem": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "best_headwater": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "best_outlet": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "pathlen_hw": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "pathlen_out": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "facc_quality": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "facc_total": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "facc_flag": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "dl_grod_id": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "wse_obs_p10": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p20": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p30": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p40": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p50": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p60": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p70": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p80": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_p90": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_range": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "wse_obs_mad": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p10": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p20": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p30": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p40": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p50": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p60": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p70": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p80": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_p90": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_range": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "width_obs_mad": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p10": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p20": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p30": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p40": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p50": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p60": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p70": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p80": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_p90": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_range": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_mad": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_adj": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_slopeF": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "float64",
+            "fill_value": "-9999.0",
+            "introduced": "v17c"
+          },
+          "slope_obs_reliable": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "slope_obs_quality": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "slope_obs_n": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "slope_obs_n_passes": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "slope_obs_q": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "n_obs": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17c"
+          },
+          "river_name_local": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "river_name_en": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "version": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "add_flag": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "swot_obs_source": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17c"
+          },
+          "river_name": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "str",
+            "fill_value": null,
+            "introduced": "v17b"
+          },
+          "edit_flag": {
+            "dimensions": [
+              "num_reaches"
+            ],
+            "dtype": "str",
+            "fill_value": "-9999.0",
+            "introduced": "v17b"
+          },
+          "cl_ids": {
+            "dimensions": [
+              "num_ids",
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "rch_id_up": {
+            "dimensions": [
+              "num_domains",
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "rch_id_dn": {
+            "dimensions": [
+              "num_domains",
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "iceflag": {
+            "dimensions": [
+              "julian_day",
+              "num_reaches"
+            ],
+            "dtype": "int32",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          },
+          "swot_orbits": {
+            "dimensions": [
+              "orbits",
+              "num_reaches"
+            ],
+            "dtype": "int64",
+            "fill_value": "-9999",
+            "introduced": "v17b"
+          }
+        },
+        "groups": {
+          "area_fits": {
+            "dimensions": {},
+            "variables": {
+              "h_break": {
+                "dimensions": [
+                  "num_domains",
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "w_break": {
+                "dimensions": [
+                  "num_domains",
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "h_variance": {
+                "dimensions": [
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "w_variance": {
+                "dimensions": [
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "hw_covariance": {
+                "dimensions": [
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "h_err_stdev": {
+                "dimensions": [
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "w_err_stdev": {
+                "dimensions": [
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "h_w_nobs": {
+                "dimensions": [
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "fit_coeffs": {
+                "dimensions": [
+                  "nCoeffs",
+                  "nReg",
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              },
+              "med_flow_area": {
+                "dimensions": [
+                  "num_reaches"
+                ],
+                "dtype": "float64",
+                "fill_value": "-9999.0",
+                "introduced": "v17b"
+              }
+            },
+            "groups": {},
+            "template_dimensions": {
+              "nCoeffs": 2,
+              "nReg": 3,
+              "num_domains": 4
+            }
+          },
+          "discharge_models": {
+            "dimensions": {},
+            "variables": {},
+            "groups": {
+              "unconstrained": {
+                "dimensions": {},
+                "variables": {},
+                "groups": {
+                  "MetroMan": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "Abar_stdev": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "ninf": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "ninf_stdev": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "p": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "p_stdev": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "ninf_p_cor": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "p_Abar_cor": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "ninf_Abar_cor": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "BAM": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "n": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "HiVDI": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "alpha": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "beta": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "MOMMA": {
+                    "dimensions": {},
+                    "variables": {
+                      "B": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "H": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "Save": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "SADS": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "n": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "SIC4DVar": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "n": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  }
+                }
+              },
+              "constrained": {
+                "dimensions": {},
+                "variables": {},
+                "groups": {
+                  "MetroMan": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "Abar_stdev": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "ninf": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "ninf_stdev": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "p": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "p_stdev": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "ninf_p_cor": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "p_Abar_cor": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "ninf_Abar_cor": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "BAM": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "n": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "HiVDI": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "alpha": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "beta": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "MOMMA": {
+                    "dimensions": {},
+                    "variables": {
+                      "B": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "H": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "Save": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "SADS": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "n": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  },
+                  "SIC4DVar": {
+                    "dimensions": {},
+                    "variables": {
+                      "Abar": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "n": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      },
+                      "sbQ_rel": {
+                        "dimensions": [
+                          "num_reaches"
+                        ],
+                        "dtype": "float64",
+                        "fill_value": "-9999.0",
+                        "introduced": "v17b"
+                      }
+                    },
+                    "groups": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "template_dimensions": {
+          "num_reaches": null,
+          "num_ids": 2,
+          "num_domains": 4,
+          "julian_day": 366,
+          "orbits": 75
+        }
+      }
+    }
+  },
+  "template_record": "https://zenodo.org/records/15299138"
+}

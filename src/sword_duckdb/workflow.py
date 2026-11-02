@@ -2224,6 +2224,7 @@ class SWORDWorkflow:
         version: Optional[str] = None,
         overwrite: bool = False,
         reason: str = None,
+        v17b_nc_dir: Optional[Union[str, Path]] = None,
     ) -> Dict[str, Path]:
         """
         Export the SWORD database to various formats.
@@ -2231,7 +2232,7 @@ class SWORDWorkflow:
         Parameters
         ----------
         formats : list of str
-            Export formats. Supported: 'geopackage', 'geoparquet', 'postgres'
+            Export formats. Supported: 'geopackage', 'geoparquet', 'postgres', 'netcdf'
         output_dir : str or Path
             Directory to write exported files
         version : str, optional
@@ -2240,6 +2241,10 @@ class SWORDWorkflow:
             If True, overwrite existing files
         reason : str, optional
             Reason for export (logged to provenance)
+
+        v17b_nc_dir : str or Path, optional
+            Required original v17b NetCDF templates for the netcdf format.
+            Only complete published-layout v17c exports are accepted.
 
         Returns
         -------
@@ -2253,6 +2258,14 @@ class SWORDWorkflow:
             logger.warning(
                 "Exporting with uncommitted changes. Consider calling commit() first."
             )
+
+        if any(fmt.lower() == "netcdf" for fmt in formats):
+            if v17b_nc_dir is None:
+                raise ValueError("v17b_nc_dir is required for a complete NetCDF export")
+            if version not in (None, "v17c"):
+                raise ValueError(
+                    "Published-layout NetCDF export currently supports v17c only"
+                )
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -2273,11 +2286,11 @@ class SWORDWorkflow:
                 details={"formats": formats, "output_dir": str(output_dir)},
             ):
                 results = self._do_export(
-                    formats, output_dir, version_str, overwrite, export
+                    formats, output_dir, version_str, overwrite, export, v17b_nc_dir
                 )
         else:
             results = self._do_export(
-                formats, output_dir, version_str, overwrite, export
+                formats, output_dir, version_str, overwrite, export, v17b_nc_dir
             )
 
         logger.info(f"Export complete: {list(results.keys())}")
@@ -2290,6 +2303,7 @@ class SWORDWorkflow:
         version_str: str,
         overwrite: bool,
         export_module,
+        v17b_nc_dir=None,
     ) -> Dict[str, Path]:
         """Perform the actual export operations."""
         results = {}
@@ -2325,6 +2339,13 @@ class SWORDWorkflow:
                 )
                 results["geoparquet"] = output_path
 
+            elif fmt_lower == "netcdf":
+                results["netcdf"] = self._sword.save_nc(
+                    str(output_dir / f"{self._region.lower()}_sword_v17c.nc"),
+                    v17b_nc_dir=v17b_nc_dir,
+                    overwrite=overwrite,
+                )
+
             elif fmt_lower == "postgres":
                 logger.info("Exporting to PostgreSQL")
                 export_module.export_to_postgres(self._sword.db, self._region)
@@ -2333,7 +2354,7 @@ class SWORDWorkflow:
             else:
                 raise ValueError(
                     f"Unsupported export format: {fmt}. "
-                    f"Supported: geopackage, geoparquet, postgres"
+                    f"Supported: geopackage, geoparquet, postgres, netcdf"
                 )
 
         return results

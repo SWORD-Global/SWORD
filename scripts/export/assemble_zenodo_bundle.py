@@ -24,6 +24,8 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "src"))
+
 DOCS = REPO / "docs"
 REGIONS = ["af", "as", "eu", "na", "oc", "sa"]
 REGIONS_UP = ["AF", "AS", "EU", "NA", "OC", "SA"]
@@ -36,6 +38,14 @@ DOC_FILES = {
     "v17c_variable_reference.pdf": DOCS / "v17c_variable_reference.pdf",
 }
 DOC_NAMES = list(DOC_FILES)
+
+
+def validate_netcdf_exports(directory: Path) -> None:
+    """No candidate or release may be packaged with a divergent NetCDF layout."""
+    from sword_duckdb.netcdf_schema import validate_file
+
+    for region in REGIONS:
+        validate_file(directory / "netcdf" / f"{region}_sword_v17c.nc")
 
 
 def clone(src: Path, dst: Path) -> None:
@@ -81,11 +91,16 @@ def main() -> None:
     if not src.is_dir():
         sys.exit(f"source staging missing: {src}")
 
+    # Reject incompatible staging before creating a bundle, including files
+    # made by external overlays that did not use our canonical writer.
+    validate_netcdf_exports(src)
+
     # 1. Clone every data file.
     rels = expected_files(src)
     for rel in rels:
         clone(src / rel, dst / rel)
     print(f"cloned {len(rels)} data files")
+    validate_netcdf_exports(dst)
 
     # 2. Docs at bundle root.
     for name, path in DOC_FILES.items():

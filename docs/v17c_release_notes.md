@@ -54,9 +54,13 @@ none of them was published.
   it (`1 <= facc <= facc_total`). The candidate's `facc_source` equals
   `facc_quality` here (the candidate's `facc_quality` strings carry a
   `rederived_v3:` prefix that this release drops); its `facc_head`, `facc_total_head`, `facc_class`
-  and `facc_review` are not in this release, and its NetCDF layout (1-D
-  neighbour columns, string codes) differs from the published layout used
-  here.
+  and `facc_review` are not in this release. The candidate used different
+  dimension names for orbit and neighbour arrays, omitted node/reach `cl_ids`,
+  and stored scalar reach ice flags and 1-D centerline membership. AF, AS and
+  SA also lacked `area_fits` and `discharge_models`. The published files restore
+  the original dimensions, variables, array shapes and subgroups. Renaming the
+  candidate dimensions alone does not restore these missing fields. Use all
+  six published NetCDFs together; see the [NetCDF export guide](technical/netcdf_export.md).
 - **Two reaches' scalar neighbour columns corrected** (AS 45220300256,
   NA 71382000696). A downstream neighbour stored in `rch_id_up_1` moved to
   `rch_id_dn_1` in the GeoPackage, GeoParquet and DuckDB columns. The

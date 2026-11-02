@@ -1,0 +1,61 @@
+name: NetCDF compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'src/sword_duckdb/**'
+      - 'scripts/export/**'
+      - 'scripts/maintenance/export_sword.py'
+      - 'tests/test_netcdf_export.py'
+      - 'tests/test_export_sword.py'
+      - 'requirements-netcdf-test.txt'
+      - 'pytest.ini'
+      - '.github/workflows/netcdf-compatibility.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/sword_duckdb/**'
+      - 'scripts/export/**'
+      - 'scripts/maintenance/export_sword.py'
+      - 'tests/test_netcdf_export.py'
+      - 'tests/test_export_sword.py'
+      - 'requirements-netcdf-test.txt'
+      - 'pytest.ini'
+      - '.github/workflows/netcdf-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  published-layout-and-setfinder:
+    runs-on: ubuntu-latest
+    env:
+      SWORD_SETFINDER_SOURCE: /tmp/sword-setfinder-sets.py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-netcdf-test.txt
+      - name: Install compatibility test dependencies
+        run: python -m pip install -r requirements-netcdf-test.txt
+      - name: Fetch and verify the pinned actual setfinder reader
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          from urllib.request import urlopen
+
+          url = 'https://raw.githubusercontent.com/tedlanghorst/setfinder/d0b30ca7276ebf01137521828152f4632ec0c822/sets/sets.py'
+          with urlopen(url, timeout=60) as response:
+              source = response.read()
+          expected = '114bda32952aac68a605f805a9445cd9c8464eceebce17601322699c406f932e'
+          if hashlib.sha256(source).hexdigest() != expected:
+              raise SystemExit('Pinned setfinder source checksum mismatch')
+          Path(os.environ['SWORD_SETFINDER_SOURCE']).write_bytes(source)
+          PY
+      - name: Check every export entry point and reject historical schema failures
+        run: python -m pytest tests/test_netcdf_export.py tests/test_export_sword.py -v
