@@ -1,4 +1,4 @@
-"""Export SWORD v17c 0.0.12 shapefiles from the staged GeoPackages.
+"""Export SWORD v17c shapefiles from the staged GeoPackages.
 
 Shapefiles follow the v17b distribution convention: split by HydroBASINS
 Pfafstetter level-2 basin (first two digits of reach_id/node_id) within
@@ -12,7 +12,7 @@ are cast to numeric(17,8) and BIGINT to numeric(14,0) to keep the largest
 basin (SA hb62, Amazon: 1.13M nodes) safely under the 2 GB DBF limit.
 
 Usage:
-    uv run python scripts/export/export_shapefiles_0_0_12.py [--region OC]
+    uv run python scripts/export/export_shapefiles.py --staging data/exports/v17c_beta/<staging> [--region OC]
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ from pathlib import Path
 
 import duckdb
 
-STAGING = Path("data/exports/v17c_beta/zenodo_0.0.12")
-GPKG_DIR = STAGING / "gpkg"
-PARQUET_DIR = STAGING / "parquet"
-OUT_DIR = STAGING / "shp"
+STAGING = Path()
+GPKG_DIR = Path()
+PARQUET_DIR = Path()
+OUT_DIR = Path()
 
 REGIONS = ["AF", "AS", "EU", "NA", "OC", "SA"]
 
@@ -86,7 +86,7 @@ STRING_WIDTHS = {
     "river_name_local": 100,
     "edit_flag": 60,
     "swot_obs_source": 8,
-    "facc_quality": 12,
+    "facc_quality": 32,  # rederived_v3:<source>, longest 29 chars
     "slope_obs_quality": 24,
     "version": 16,
     "region": 4,
@@ -133,7 +133,7 @@ def build_select(layer: str, columns: list[tuple[str, str]]) -> tuple[str, dict]
 
 def layer_columns(con: duckdb.DuckDBPyConnection, region: str, layer: str):
     rows = con.execute(
-        f"DESCRIBE SELECT * FROM '{PARQUET_DIR}/sword_{region}_v17c_0.0.12_{layer}.parquet'"
+        f"DESCRIBE SELECT * FROM '{PARQUET_DIR}/sword_{region}_v17c_{layer}.parquet'"
     ).fetchall()
     return [(r[0], r[1].split("(")[0]) for r in rows]
 
@@ -141,15 +141,15 @@ def layer_columns(con: duckdb.DuckDBPyConnection, region: str, layer: str):
 def region_basins(con: duckdb.DuckDBPyConnection, region: str) -> list[int]:
     rows = con.execute(
         f"SELECT DISTINCT reach_id // {REACH_HB_DIV} AS hb "
-        f"FROM '{PARQUET_DIR}/sword_{region}_v17c_0.0.12_reaches.parquet' ORDER BY hb"
+        f"FROM '{PARQUET_DIR}/sword_{region}_v17c_reaches.parquet' ORDER BY hb"
     ).fetchall()
     return [int(r[0]) for r in rows]
 
 
 def export_one(region: str, layer: str, hb: int, select_sql: str) -> str:
-    gpkg = GPKG_DIR / f"sword_{region}_v17c_0.0.12.gpkg"
+    gpkg = GPKG_DIR / f"sword_{region}_v17c.gpkg"
     reg = region.lower()
-    out = OUT_DIR / f"{reg}_sword_{layer}_hb{hb}_v17c_0.0.12.shp"
+    out = OUT_DIR / f"{reg}_sword_{layer}_hb{hb}_v17c.shp"
     id_col = "reach_id" if layer == "reaches" else "node_id"
     div = REACH_HB_DIV if layer == "reaches" else NODE_HB_DIV
     lo, hi = hb * div, (hb + 1) * div
@@ -161,18 +161,25 @@ def export_one(region: str, layer: str, hb: int, select_sql: str) -> str:
         "-dialect", "OGRSQL", "-sql", sql,
         "-lco", "ENCODING=UTF-8", "-overwrite",
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if res.returncode != 0:
         raise RuntimeError(f"ogr2ogr failed for {out.name}:\n{res.stderr[-2000:]}")
+    if "truncated" in res.stderr.lower():
+        raise RuntimeError(f"ogr2ogr truncated a field for {out.name}:\n{res.stderr[-2000:]}")
     return out.name
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--staging", required=True, type=Path,
+                    help="staging dir holding gpkg/ and parquet/; shapefiles go to shp/")
     ap.add_argument("--region", choices=REGIONS, help="single region (default: all)")
     ap.add_argument("--workers", type=int, default=5)
     args = ap.parse_args()
     regions = [args.region] if args.region else REGIONS
+    global STAGING, GPKG_DIR, PARQUET_DIR, OUT_DIR
+    STAGING = args.staging
+    GPKG_DIR, PARQUET_DIR, OUT_DIR = STAGING / "gpkg", STAGING / "parquet", STAGING / "shp"
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
@@ -224,13 +231,13 @@ def main() -> None:
         reg = region.lower()
         for layer in ("reaches", "nodes"):
             expected = con.execute(
-                f"SELECT COUNT(*) FROM '{PARQUET_DIR}/sword_{region}_v17c_0.0.12_{layer}.parquet'"
+                f"SELECT COUNT(*) FROM '{PARQUET_DIR}/sword_{region}_v17c_{layer}.parquet'"
             ).fetchone()[0]
             total = 0
-            for shp in sorted(OUT_DIR.glob(f"{reg}_sword_{layer}_hb*_v17c_0.0.12.shp")):
+            for shp in sorted(OUT_DIR.glob(f"{reg}_sword_{layer}_hb*_v17c.shp")):
                 out = subprocess.run(
                     ["ogrinfo", "-ro", "-so", str(shp), shp.stem],
-                    capture_output=True, text=True,
+                    capture_output=True, text=True, check=False,
                 )
                 for line in out.stdout.splitlines():
                     if line.startswith("Feature Count:"):

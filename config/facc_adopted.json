@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "id": "facc_release_20261027",
+  "status": "adopted_working_product",
+  "adopted_on": "2026-11-01",
+  "supersedes": "facc_bifurcation_20261026",
+  "shipped_fields": [
+    "facc",
+    "facc_total",
+    "facc_flag",
+    "facc_quality"
+  ],
+  "products": {
+    "numeric": {
+      "fields": [
+        "facc",
+        "facc_total"
+      ],
+      "manifest": "output/facc_detection/variants/unsplit_total_propagation_routed_20261027/product/MANIFEST.json",
+      "manifest_sha256": "003b6bd9041db12dfc88dc804f249c1032639895404c7b5827c8249963757320",
+      "note": "facc is bit-identical to data/derived/facc/bifurcation_20261026 (conservative bifurcations); facc_total adds the 27 October unsplit whole-area propagation (309 traced downstream drops resolved)"
+    },
+    "metadata": {
+      "fields": [
+        "facc_flag",
+        "facc_quality"
+      ],
+      "manifest": "output/facc_detection/variants/facc_metadata_reassessed_20261027/product/MANIFEST.json",
+      "manifest_sha256": "c050d6571535130468396fa6a8d32503ebd08496385fdab0178d84378a29a9d7",
+      "note": "every reach reassessed from current values; facc_quality is the source-method name (the product strings carry a rederived_v3: prefix that the install drops), not an accuracy grade"
+    }
+  },
+  "verified_candidate": {
+    "path": "data/exports/v17c_beta/candidates/bifurcation_unsplit_total_reassessed_20261027_yushan",
+    "manifest_sha256": "c0c3279d648d7f4f47cc34ced264312128754836872f29788420025a56278448",
+    "note": "six NetCDFs built from the same two products and independently read back; the database install is verified against them"
+  },
+  "fields_not_shipped": [
+    "facc_head",
+    "facc_total_head",
+    "facc_source",
+    "facc_class",
+    "facc_review"
+  ],
+  "SWORD_widths_changed": false,
+  "topology_changed": false,
+  "direction_followup": [
+    43308000201,
+    43309000191
+  ],
+  "tracking": [
+    "https://github.com/SWORD-Global/SWORD/issues/231",
+    "https://github.com/SWORD-Global/SWORD/issues/233",
+    "https://github.com/SWORD-Global/SWORD/issues/234",
+    "https://github.com/SWORD-Global/SWORD/issues/235",
+    "https://github.com/SWORD-Global/SWORD/issues/236",
+    "https://github.com/SWORD-Global/SWORD/issues/238",
+    "https://github.com/SWORD-Global/SWORD/issues/239"
+  ]
+}

@@ -1,7 +1,7 @@
 """Create a Zenodo new-version draft for SWORD v17c and upload the bundle.
 
-This script NEVER publishes and NEVER modifies the existing v17b record.
-It creates a new-version draft off record 15299138, sets the draft metadata,
+This script NEVER publishes and NEVER modifies the existing published record.
+It creates a new-version draft off record LATEST_RECORD_ID, sets the draft metadata,
 and uploads the six format ZIPs plus both SHA256SUMS manifests to the draft's
 bucket. Publishing is left to a human in the Zenodo web UI.
 
@@ -28,14 +28,17 @@ import os
 import sys
 import time
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import requests
 
 API = "https://zenodo.org/api"
-LATEST_RECORD_ID = 15299138  # v17b — newversion must target the latest version's id
+LATEST_RECORD_ID = 22259077  # v17c (2 Sep 2026 version) — newversion must target the latest version's id
 REPO = Path(__file__).resolve().parents[2]
-STAGING = REPO / "data/exports/v17c_beta/zenodo_v17c"
+# Default bundle location; override with --bundle (the worktree may hold no data/).
+DEFAULT_BUNDLE = REPO / "data/exports/v17c_beta/zenodo_v17c_facc_20261027"
+STAGING = DEFAULT_BUNDLE
 CREATORS_JSON = REPO / "scripts/export/zenodo_creators_v17c.json"
 DESCRIPTION_HTML = REPO / "scripts/export/zenodo_description_v17c.html"
 
@@ -63,7 +66,14 @@ UPLOAD_FILES = [
     "SWORD_v17c_global.zip",
     "SHA256SUMS.txt",
     "SHA256SUMS_files.txt",
+    # Loose copies at the record root, readable without unzipping.
+    "v17c_release_notes.md",
+    "v17c_release_notes.pdf",
+    "v17c_variable_reference.md",
+    "v17c_variable_reference.pdf",
 ]
+# Inherited from the previous version and kept as-is: neither deleted nor re-uploaded.
+KEEP_INHERITED = {"SWORD_v17b_to_v16_Translation.zip"}
 
 
 def die(msg: str) -> None:
@@ -86,6 +96,8 @@ def load_metadata() -> tuple[dict, list[str]]:
             "title": TITLE,
             "upload_type": "dataset",
             "version": VERSION_LABEL,
+            # A new-version draft inherits the previous version's date; stamp today.
+            "publication_date": date.today().isoformat(),
             "description": description,
             "creators": creators,
             "license": "cc-by-4.0",
@@ -160,8 +172,19 @@ def put_file_with_retry(s: requests.Session, url: str, path: Path, attempts: int
             time.sleep(wait)
 
 
+def md5_file(path: Path) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def main() -> None:
+    global STAGING
     ap = argparse.ArgumentParser()
+    ap.add_argument("--bundle", type=Path, default=DEFAULT_BUNDLE,
+                    help="assembled bundle directory (assemble_zenodo_bundle.py --dst)")
     ap.add_argument("--execute", action="store_true",
                     help="actually create the draft and upload (default: dry run)")
     ap.add_argument("--draft-id", type=int, default=None,
@@ -171,6 +194,7 @@ def main() -> None:
                     help="update draft metadata (description/creators/references) "
                          "only; do not touch files. Requires --draft-id.")
     args = ap.parse_args()
+    STAGING = args.bundle.resolve()
     if args.metadata_only and not args.draft_id:
         die("--metadata-only requires --draft-id")
 
@@ -211,7 +235,7 @@ def main() -> None:
     stale = stale_bundle_docs()
     if stale:
         print(f"\n⚠️  bundle docs stale vs docs/: {stale}"
-              "\n    Run: uv run python scripts/export/refresh_bundle_docs.py")
+              f"\n    Run: uv run python scripts/export/refresh_bundle_docs.py --bundle {STAGING}")
 
     if not args.execute:
         print("\nDRY RUN — no draft created, nothing uploaded. Re-run with --execute to proceed.")
@@ -221,7 +245,7 @@ def main() -> None:
         die(f"cannot upload while affiliations are placeholders: {pending}. Fill them in first.")
     if stale and not args.metadata_only:
         die(f"cannot upload stale bundle docs: {stale}. "
-            "Run scripts/export/refresh_bundle_docs.py first.")
+            f"Run scripts/export/refresh_bundle_docs.py --bundle {STAGING} first.")
 
     # 1. Get the new-version draft. With --draft-id, resume that draft (robust
     #    path for a re-run: Zenodo returns 400 from newversion when an
@@ -249,7 +273,7 @@ def main() -> None:
     draft_id = draft["id"]
     if draft_id == LATEST_RECORD_ID:
         die("refusing to continue: draft id equals the published record id "
-            "(would edit v17b). Aborting before any change.")
+            "(would edit the published record). Aborting before any change.")
     bucket = draft["links"]["bucket"]
 
     # 2. Set draft metadata.
@@ -264,36 +288,51 @@ def main() -> None:
         return
 
     # 3. Reconcile files. A new-version draft inherits the previous version's
-    #    files (v17b's zips). Remove any file not in the v17c set, then upload
-    #    the v17c files (skipping any already present at the same size, so a
-    #    re-run resumes). The legacy deposit API uses filename/filesize; the
-    #    newer representation uses key/size — handle both.
+    #    files. Keep KEEP_INHERITED as they are; delete every other inherited
+    #    file whose md5 differs from the local copy (same-named zips and the
+    #    fixed-width SHA256SUMS manifests have the same name and may even have
+    #    the same size as last time, so size is not a usable resume key); keep a
+    #    file whose md5 matches (a re-run resumes). The legacy deposit API uses
+    #    filename/checksum; the newer representation uses key and "md5:<hex>".
     def _fname(f: dict):
         return f.get("key") or f.get("filename")
 
-    def _fsize(f: dict):
-        return f.get("size") if f.get("size") is not None else f.get("filesize")
+    def _fmd5(f: dict):
+        c = f.get("checksum") or ""
+        return c.split(":", 1)[1] if c.startswith("md5:") else c
 
+    def _delete(f: dict) -> None:
+        link = f.get("links", {}).get("self")
+        resp = (s.delete(link) if link
+                else s.delete(f"{API}/deposit/depositions/{draft_id}/files/{f['id']}"))
+        resp.raise_for_status()
+
+    print("Hashing local files (md5)...", flush=True)
+    local_md5 = {p.name: md5_file(p) for p in files}
     wanted = set(UPLOAD_FILES)
-    existing = {}
+    present = set()
     for f in draft.get("files", []):
         nm = _fname(f)
         if nm is None:
             continue
-        if nm not in wanted:
-            link = f.get("links", {}).get("self")
-            resp = (s.delete(link) if link
-                    else s.delete(f"{API}/deposit/depositions/{draft_id}/files/{f['id']}"))
-            resp.raise_for_status()
-            print(f"  removed inherited file: {nm}")
+        if nm in KEEP_INHERITED:
+            print(f"  keeping inherited file: {nm}")
+            present.add(nm)
+        elif nm in wanted and _fmd5(f) == local_md5[nm]:
+            print(f"  skip (already uploaded, md5 matches): {nm}")
+            present.add(nm)
         else:
-            existing[nm] = _fsize(f)
+            _delete(f)
+            print(f"  removed {'inherited' if nm in wanted else 'unwanted'} file: {nm}")
+
+    missing_kept = KEEP_INHERITED - present
+    if missing_kept:
+        die(f"draft did not inherit {sorted(missing_kept)}; import or upload them before publishing")
 
     for p in files:
-        size = p.stat().st_size
-        if existing.get(p.name) == size:
-            print(f"  skip (already uploaded): {p.name}")
+        if p.name in present:
             continue
+        size = p.stat().st_size
         print(f"  uploading {p.name} ({size / 1e9:.2f} GB)...", flush=True)
         put_file_with_retry(s, f"{bucket}/{p.name}", p)
     print("All files uploaded.")

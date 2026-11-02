@@ -36,11 +36,37 @@ FILL_F8 = np.float64(-9999.0)
 # -- Quality/flag string-to-int mappings ------------------------------------
 # CF-convention: flag_values + flag_meanings attributes document the encoding.
 
-FACC_QUALITY_MAP = {"denoise_v3": 1}
+# facc_quality is the plain source-method name (anchor, interpolated, ...) in
+# DuckDB, GeoPackage and GeoParquet (facc release 20261027). NetCDF keeps the
+# int32 flag variable and encodes code = 3000 + source. It records the source
+# method, not an accuracy grade; warnings are in facc_flag.
+FACC_QUALITY_SOURCES = {
+    "anchor": 1,
+    "anchor_proximity": 2,
+    "anchor_aligned": 3,
+    "interpolated": 4,
+    "lake_derived": 5,
+    "partitioned_arm": 6,
+    "fallback_fill": 7,
+    "fallback_prior": 8,
+}
+FACC_QUALITY_MAP = {source: 3000 + code for source, code in FACC_QUALITY_SOURCES.items()}
 FACC_QUALITY_FLAG_ATTRS = {
-    "flag_values": np.array([1], dtype=np.int32),
-    "flag_meanings": "denoise_v3",
-    "comment": "1=corrected by facc denoising v3; fill_value=not flagged",
+    "flag_values": np.array(sorted(FACC_QUALITY_MAP.values()), dtype=np.int32),
+    "flag_meanings": " ".join(
+        name.replace(":", "_")
+        for name, _code in sorted(FACC_QUALITY_MAP.items(), key=lambda kv: kv[1])
+    ),
+    "comment": (
+        "facc source method, code = 3000 + source. source: 1=anchor (MERIT reach matched), "
+        "2=anchor_proximity (MERIT reach paired by proximity), 3=anchor_aligned "
+        "(MERIT reach matched by junction alignment), 4=interpolated, "
+        "5=lake_derived (lake reach derived from its inflows), "
+        "6=partitioned_arm (braid/delta width-share partition), "
+        "7=fallback_fill (carried from neighbors), 8=fallback_prior (headwater prior). "
+        "Not an accuracy grade; see facc_flag. "
+        "String form in DuckDB/GeoPackage/GeoParquet: the source name"
+    ),
 }
 
 SLOPE_OBS_QUALITY_MAP = {
@@ -162,6 +188,8 @@ def _v17c_reach_scalar_specs():
         ("pathlen_hw", "f8", FILL_F8, "pathlen_hw", {"units": "meters"}),
         ("pathlen_out", "f8", FILL_F8, "pathlen_out", {"units": "meters"}),
         ("facc_quality", "i4", FILL_I4, "facc_quality", {}),  # VARCHAR→i4
+        ("facc_total", "f8", FILL_F8, "facc_total", {"units": "km^2"}),
+        ("facc_flag", "str", None, "facc_flag", {}),
         ("dl_grod_id", "i8", FILL_I8, "dl_grod_id", {}),
         # WSE obs percentiles
         ("wse_obs_p10", "f8", FILL_F8, "wse_obs_p10", {"units": "meters"}),
@@ -364,6 +392,8 @@ def _v17c_node_scalar_specs():
         ("width_obs_mad", "f8", FILL_F8, "width_obs_mad", {"units": "meters"}),
         ("n_obs", "i4", FILL_I4, "n_obs", {}),
         ("facc_quality", "i4", FILL_I4, "facc_quality", {}),  # VARCHAR→i4
+        ("facc_total", "f8", FILL_F8, "facc_total", {"units": "km^2"}),
+        ("facc_flag", "str", None, "facc_flag", {}),
         # Metadata
         ("version", "str", None, "version", {}),
         ("add_flag", "str", None, "add_flag", {}),
@@ -424,12 +454,28 @@ def _is_valid(v) -> bool:
     return True
 
 
-def _convert_varchar_col(arr: np.ndarray, mapping: dict) -> np.ndarray:
-    """Convert VARCHAR column to i4 using mapping dict. Unmapped → -9999."""
+def _convert_varchar_col(
+    arr: np.ndarray, mapping: dict, strict: bool = False
+) -> np.ndarray:
+    """Convert VARCHAR column to i4 using mapping dict.
+
+    Unmapped values become -9999, unless *strict*, in which case any non-null
+    value missing from *mapping* raises ValueError.
+    """
     out = np.full(len(arr), FILL_I4, dtype=np.int32)
+    unmapped: set = set()
     for i, v in enumerate(arr):
-        if _is_valid(v) and v in mapping:
+        if not _is_valid(v):
+            continue
+        if v in mapping:
             out[i] = mapping[v]
+        elif strict:
+            unmapped.add(v)
+    if unmapped:
+        raise ValueError(
+            f"Values with no NetCDF code: {sorted(unmapped)[:10]} "
+            f"({len(unmapped)} distinct); extend the mapping before exporting"
+        )
     return out
 
 
@@ -582,8 +628,12 @@ VARCHAR_INT_COLS = {
     "facc_quality": FACC_QUALITY_MAP,
     "slope_obs_quality": SLOPE_OBS_QUALITY_MAP,
 }
+# Every facc_quality string must have a code; slope_obs_quality keeps the
+# documented behaviour of exporting below_noise as fill.
+STRICT_VARCHAR_INT_COLS = {"facc_quality"}
 STRING_COLS = {
     "river_name",
+    "facc_flag",
     "edit_flag",
     "river_name_local",
     "river_name_en",
@@ -609,7 +659,11 @@ def _write_scalar_var(grp, nc_name, nc_type, fill_value, data, attrs, dim_name):
         if nc_name in BOOL_COLS:
             var[:] = _convert_bool_col(data)
         elif nc_name in VARCHAR_INT_COLS:
-            var[:] = _convert_varchar_col(data, VARCHAR_INT_COLS[nc_name])
+            var[:] = _convert_varchar_col(
+                data,
+                VARCHAR_INT_COLS[nc_name],
+                strict=nc_name in STRICT_VARCHAR_INT_COLS,
+            )
         else:
             var[:] = _null_to_fill(data, fill_value)
     for attr_name, attr_val in attrs.items():
@@ -629,7 +683,7 @@ def export_region(
     """Export a single region to NetCDF."""
     region_lower = region.lower()
     v17b_path = v17b_dir / f"{region_lower}_sword_v17b.nc"
-    out_path = output_dir / f"{region_lower}_sword_v17c_beta.nc"
+    out_path = output_dir / f"{region_lower}_sword_v17c.nc"
 
     if not v17b_path.exists():
         raise FileNotFoundError(f"v17b NetCDF not found: {v17b_path}")

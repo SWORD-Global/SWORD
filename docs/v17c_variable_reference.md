@@ -87,7 +87,9 @@ single-scalar `dist_out` gaps.
 | best_outlet | i8 | | -9999 | | Width-prioritized downstream outlet reach ID |
 | pathlen_hw | f8 | meters | -9999.0 | | Cumulative reach_length sum from best_headwater to the downstream end of the reach (headwater = 0, increases downstream) |
 | pathlen_out | f8 | meters | -9999.0 | | Cumulative reach_length sum toward best_outlet (outlet = 0, increases upstream) |
-| facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
+| facc_total | f8 | km^2 | -9999.0 | | Whole-river drainage area at this point, all channels combined. Equals `facc` except in braided and delta reaches; use it for gauge and basin comparisons |
+| facc_flag | string | | | ok, suspect, same_river, braid_share, delta_arm, filled | One label per reach, copied to its nodes; see release notes §3 |
+| facc_quality | i4 | | -9999 | 3001=anchor (a MERIT-Basins reach was matched to this reach); 3002=anchor_proximity (matched by proximity); 3003=anchor_aligned (matched by aligning junctions); 3004=interpolated (between matched reaches along the channel); 3005=lake_derived (lake reach, from its inflows); 3006=partitioned_arm (side channel or distributary with a width-based share); 3007=fallback_fill (no match; from neighbouring reaches); 3008=fallback_prior (headwater with no match; prior estimate) | How the `facc` value was obtained. GeoPackage, GeoParquet, DuckDB and Shapefile store the name. Not an accuracy grade; see `facc_flag` |
 | dl_grod_id | i8 | | -9999 | | DL-GROD (Deep Learning Global River Obstruction Database; He et al. 2025) dam/obstruction ID |
 | wse_obs_p10 | f8 | meters | -9999.0 | | SWOT WSE 10th percentile |
 | wse_obs_p20 | f8 | meters | -9999.0 | | SWOT WSE 20th percentile |
@@ -166,7 +168,9 @@ single-scalar `dist_out` gaps.
 | width_obs_range | f8 | meters | -9999.0 | | SWOT width range (p90 - p10) |
 | width_obs_mad | f8 | meters | -9999.0 | | SWOT width median absolute deviation |
 | n_obs | i4 | | -9999 | | Total number of SWOT observations |
-| facc_quality | i4 | | -9999 | 1=denoise_v3 | Flow accumulation correction flag |
+| facc_total | f8 | km^2 | -9999.0 | | Whole-river drainage area at this point, all channels combined. Equals `facc` except in braided and delta reaches; use it for gauge and basin comparisons |
+| facc_flag | string | | | ok, suspect, same_river, braid_share, delta_arm, filled | One label per reach, copied to its nodes; see release notes §3 |
+| facc_quality | i4 | | -9999 | 3001=anchor (a MERIT-Basins reach was matched to this reach); 3002=anchor_proximity (matched by proximity); 3003=anchor_aligned (matched by aligning junctions); 3004=interpolated (between matched reaches along the channel); 3005=lake_derived (lake reach, from its inflows); 3006=partitioned_arm (side channel or distributary with a width-based share); 3007=fallback_fill (no match; from neighbouring reaches); 3008=fallback_prior (headwater with no match; prior estimate) | How the `facc` value was obtained, copied from the parent reach. GeoPackage, GeoParquet, DuckDB and Shapefile store the name. Not an accuracy grade; see `facc_flag` |
 
 ## v17b Variables
 
@@ -204,7 +208,7 @@ string (and the `NaN` placeholder) as "no edit."
 | wse_var | f8 | meters^2 | -9999.0 | WSE variance |
 | width | f8 | meters | -9999.0 | River width (GRWL) |
 | width_var | f8 | meters^2 | -9999.0 | Width variance |
-| facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |
+| facc | f8 | km^2 | -9999.0 | Drainage area of this channel. Rebuilt in v17c from MERIT-Basins (v17b: MERIT Hydro D8 accumulation); at splits, width-partitioned among channels. Reach value is at the downstream end |
 | n_chan_max | i4 | | -9999 | Max number of channels at any node |
 | n_chan_mod | i4 | | -9999 | Modal number of channels |
 | obstr_type | i4 | | -9999 | Obstruction type (0=none, 1=dam, 2=lock, 3=low-head, 4=falls) |
@@ -259,7 +263,7 @@ string (and the `NaN` placeholder) as "no edit."
 | dist_out | f8 | meters | -9999.0 | Distance to network outlet. Interpolated from reach `dist_out` using node_length midpoint offsets (same formula as `hydro_dist_out` and `dist_out_dijkstra`). On single-path networks all three are exactly equal |
 | wth_coef | f8 | | -9999.0 | Width coefficient |
 | ext_dist_coef | f8 | | -9999.0 | Extraction distance coefficient |
-| facc | f8 | km^2 | -9999.0 | Flow accumulation (MERIT Hydro) |
+| facc | f8 | km^2 | -9999.0 | Drainage area of this channel. Rebuilt in v17c from MERIT-Basins (v17b: MERIT Hydro D8 accumulation); at splits, width-partitioned among channels. Reach value is at the downstream end |
 | lakeflag | i8 | | -9999 | Water body type (0=river, 1=lake, 2=canal, 3=tidal). Propagated from parent reach lakeflag per JPL request. |
 | max_width | f8 | meters | -9999.0 | Maximum width |
 | meander_length | f8 | | -9999.0 | Meander wavelength |

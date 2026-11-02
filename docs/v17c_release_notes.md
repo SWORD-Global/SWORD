@@ -1,12 +1,95 @@
 # SWORD v17c Release Notes
 
-**Version:** v17c
-**Date:** July 2026 (data exported May 2026)
+**Version:** v17c (build 0.0.15)
+**Date:** November 2026 (data exported 1 November 2026); first v17c release July 2026
 **Base version:** SWORD v17b (March 2025, UNC)
 
 ## Changelog
 
-### 0.0.12 (May 2026)
+Published on Zenodo (concept DOI 10.5281/zenodo.3898569): build 0.0.12 on
+17 July 2026; the same data again on 2 September 2026 with the v17b-to-v16
+ID translation archive added to the record; and build 0.0.15 in November
+2026. Builds 0.0.13 and 0.0.14 were evaluation builds; 0.0.14 and a
+27 October 2026 candidate built on it were shared with collaborators, and
+none of them was published.
+
+### 0.0.15 (November 2026)
+- **`facc` partitioned conservatively at channel splits.** At every one of
+  the 2,893 reaches with more than one downstream channel, the area given to
+  a side channel is now debited from the main channel, including
+  distributaries that never rejoin. Before the fix, 903 of the 2,893 splits
+  handed out more than 1 km^2 beyond the parent reach's area; the shares
+  now close at all 2,893 (largest residual 9e-10 km^2). Relative to 0.0.14, `facc` changed on
+  19,150 reaches and 897,758 nodes: 2,412 reaches raised (median +6%) and
+  16,738 lowered (median -9%). Most of that change comes from three model
+  revisions made on 20-21 October, before the partition fix: area is
+  carried across splits and rejoins per source instead of being restored
+  at the nearest rejoin; false headwaters and derived lake heads get a
+  floor; and area credits pass through capped channels and ghost spurs.
+  Those revisions alone changed 16,334 reaches (2,968 raised, median +7%;
+  13,366 lowered, median -4%). The conservative partition then lowered
+  6,696 reaches (median -37%) and raised none.
+- **`facc_total` carried unsplit through rejoins.** The whole-river area no
+  longer drops where a branch reconnects to another channel. The 314
+  downstream drops found by an 18,241-junction test are now 0.
+  `facc_total` changed on 2,114 reaches and 79,852 nodes. Agreement with
+  reference drainage areas is unchanged to within six comparisons (see
+  §2.3).
+- **`facc_flag` and `facc_quality` reassessed from the current values.**
+  Every reach was re-labelled from fresh source and topology calculations
+  in all 60 basins; nodes copy their reach. 9,513 reach flags changed. All
+  1,428 junctions where outgoing `facc` is below the sum of its inflows
+  now carry a non-`ok` flag (1,421 `suspect`, 7 `same_river`).
+  `facc_quality` now names the source method (`anchor`, `interpolated`,
+  `fallback_fill`, ...; NetCDF codes 3001-3008) and nothing else; it is not
+  an accuracy grade. The
+  variable keeps the name and int32 type of the July 2026 release, where
+  code 1 meant "corrected by the denoise"; the code spaces do not overlap,
+  so a July value cannot be misread as a 0.0.15 one, but the meaning has
+  changed.
+- **For holders of the 27 October 2026 candidate files** (six NetCDFs with
+  a README, sent for drainage-area testing): the four fields shipped here
+  carry the same values as that candidate on every reach and node, except
+  that one reach and 47 nodes within 3e-14 km^2 of a bound were moved onto
+  it (`1 <= facc <= facc_total`). The candidate's `facc_source` equals
+  `facc_quality` here (the candidate's `facc_quality` strings carry a
+  `rederived_v3:` prefix that this release drops); its `facc_head`, `facc_total_head`, `facc_class`
+  and `facc_review` are not in this release, and its NetCDF layout (1-D
+  neighbour columns, string codes) differs from the published layout used
+  here.
+- **Two reaches' scalar neighbour columns corrected** (AS 45220300256,
+  NA 71382000696). A downstream neighbour stored in `rch_id_up_1` moved to
+  `rch_id_dn_1` in the GeoPackage, GeoParquet and DuckDB columns. The
+  NetCDF `rch_id_up`/`rch_id_dn` arrays already had the right connections.
+- **Exports regenerated in all six formats** from one database state and
+  checked against it field by field (the four facc fields on every reach
+  and node in every format). Apart from the four facc fields and the two
+  reaches above, every value is identical to the 0.0.14 NetCDF, GeoPackage
+  and GeoParquet files; the Shapefile, DuckDB and global files, absent from
+  0.0.14, were built from the same database state.
+
+### 0.0.14 (October 2026)
+- **`facc` rebuilt from MERIT-Basins.** SWORD reaches were matched to the
+  MERIT-Basins river network and its drainage areas copied onto them,
+  replacing the 0.0.12 denoise of MERIT Hydro D8 values. Along a single
+  channel `facc` never decreases downstream, and in an 18,241-junction test
+  every junction exit is at least its largest inflow.
+- **`facc_total` added** (reaches and nodes, km^2): the whole river's
+  drainage area at that point, all channels combined. It equals `facc`
+  except in braided and delta reaches.
+- **`facc_flag` added** (reaches and nodes): one label per reach (`ok`,
+  `same_river`, `braid_share`, `delta_arm`, `filled`, `suspect`).
+- **Accuracy against reference areas** (share within 20%, on
+  `facc_total`): HydroBASINS outlets 84.8% (v17b 72.7%), SVS gauges 92.4%
+  (v17b 77.6%), USGS gauges 97.0% (v17b 76.2%).
+
+### 0.0.13 (October 2026)
+- **`facc` rederived on all nodes and reaches** from MERIT Hydro sections
+  matched to SWORD (`facc_quality = rederived_v1:<source>:<tier>`). The
+  v17b values 0.0.12 kept on uncorrected reaches left the product.
+  Superseded by the MERIT-Basins matching in 0.0.14.
+
+### 0.0.12 (built May 2026, published July 2026)
 - **Node coordinates restored to v17b for SWOT D0-D2 continuity.** The
   344 reaches whose nodes were rederived in 0.0.8 and 0.0.10 now use v17b
   node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` values again.
@@ -329,9 +412,11 @@ existing variables are the specific corrections noted below (`facc`, node
 2. **Computed mainstem topology and routing** (new): mainstem identification,
    best-headwater/outlet routing, new distance metrics, and a globally
    unique `subnetwork_id`.
-3. **One correction to an existing v17b variable**: a global
-   flow-accumulation (`facc`) denoise that fixes systematic MERIT Hydro D8
-   routing artifacts on 95,880 reaches (38.6%).
+3. **One correction to an existing v17b variable**: flow accumulation
+   (`facc`) rebuilt on every reach and node from MERIT-Basins drainage
+   areas matched to the SWORD network, with the area partitioned among
+   channels at splits. Two companion columns are new: `facc_total`, the
+   whole-river area, and `facc_flag`, a per-reach label.
 
 Alongside these, v17c ships data-quality fixes to v17b-inherited fields
 (node geolocation and ordering repairs, lakeflag/type reconciliation). No
@@ -471,33 +556,62 @@ median slope, flagged via `slope_obs_quality` / `slope_obs_q`.
 | `slope_obs_n_passes` | int32 | — | Number of SWOT passes used |
 | `slope_obs_q` | int32 | — | Bitfield quality flag (see Section 3) |
 
-### 2.3 Flow Accumulation Corrections
+### 2.3 Flow Accumulation
 
-A two-stage denoise pipeline corrected flow accumulation (`facc`) values
-to address three systematic error modes in MERIT Hydro's D8
-(eight-direction flow routing) upstream area: bifurcation cloning,
-junction inflation, and raster-vector misalignment. In the v17c database,
-95,880 of 248,673 reaches (38.6%) carry corrected values
-(`facc_quality = denoise_v3`). Uncorrected reaches retain v17b values.
+v17b took `facc` from MERIT Hydro's D8 flow accumulation raster, which
+gives every channel of a braided or delta reach the whole river's area and
+mislabels reaches where the raster and the vector network disagree. v17c
+replaces every `facc` value. SWORD reaches are matched to the MERIT-Basins
+river network and take its drainage areas; reaches with no usable match
+are interpolated along the channel, derived from their inflows (lakes), or
+filled from neighbours. At every reach with more than one downstream
+channel, the area is partitioned among the channels in proportion to their
+widths, and each side channel's share is debited from the main channel, so
+the shares at all 2,893 splits add up to the parent's area. Width-based
+shares are a convention: they are not measured discharge fractions.
 
-Relative to v17b, the correction raised `facc` on 80,538 reaches
-(median +60%) and lowered it on 15,342 (median 30% decrease). The largest changes
-are at bifurcation children, which under D8 each inherit the full parent
-drainage area; v17c splits that area width-proportionally among the
-distributary branches. See
-[facc_correction_methodology.md](technical/facc_correction_methodology.md)
-for the full algorithm description.
+Because the values come from a different source, `facc` differs from v17b
+on 248,667 of the 248,673 reaches (relative tolerance 1e-6): raised on
+132,337 and lowered on 116,330. Most changes are small (regional medians
++4% to +5% for raises and 6% to 12% for decreases); the large ones are at braided and delta
+channels, where v17b gave each channel the whole river's area, and at
+reaches where the D8 raster had been matched to the wrong river.
+
+Two drainage-area numbers are carried. For a 100 km^2 river that splits
+into two channels with no tributary between them, `facc` is 70 and 30 on
+the two arms and `facc_total` stays 100 on both; when the arms rejoin, the
+shared area is counted once.
 
 | Variable | Type | Group | Description |
 |----------|------|-------|-------------|
-| `facc` | float64 | reaches, nodes | Flow accumulation (km^2). Corrected values where applicable; v17b values otherwise. |
-| `facc_quality` | int32 | reaches, nodes | 1 = corrected by denoise_v3; fill_value = not flagged |
+| `facc` | float64 | reaches, nodes | Drainage area of this channel (km^2). The reach value is at its downstream end; node values are interpolated along the reach. |
+| `facc_total` | float64 | reaches, nodes | Whole-river drainage area at this point, all channels combined (km^2). Equals `facc` away from splits. Use it to compare with gauges and basins. |
+| `facc_flag` | string | reaches, nodes | One label per reach, copied to its nodes: `ok`, `suspect`, `same_river`, `braid_share`, `delta_arm`, `filled`. See §3. |
+| `facc_quality` | int32 | reaches, nodes | Source method of the `facc` value, coded 3001-3008 (the source name as a string in the other formats). See §3. |
 
-After correction, junction conservation violations (downstream facc < sum
-of upstream facc) are resolved in all regions. (In 0.0.2, facc was
-additionally recomputed at 807 then-flow-corrected reaches via topological
-propagation; the flow-correction topology itself was fully reverted to
-v17b in 0.0.9.)
+**Checks on the shipped values.** Along single channels `facc` never
+decreases downstream (v17b: 5,754 decreases of more than 0.1% on the
+205,455 links where a reach has one downstream neighbour that has one
+upstream neighbour). In the 18,241-junction test (junctions with two or
+more inflows, none of which itself splits), every exit is at least its
+largest inflow; the 50 connections across which the model transfers no
+channel area lie outside that test, and their 23 receiving reaches are
+flagged `suspect` (§4). The partition closes at all 2,893 splits. `facc`
+never exceeds `facc_total`, and 1,851 reaches sit at the 1 km^2 floor. At
+1,428 junctions the outgoing `facc` is below the sum of its inflows; every
+one of them is flagged (§4). An `ok` flag does not mean the reach is
+unsplit: 7,490 `ok` reaches have `facc` below `facc_total`, because the
+main channel below a split is debited by the side channels' shares and is
+not itself flagged.
+
+**Agreement with reference drainage areas**, scored on `facc_total` at
+every reach with a reference:
+
+| Reference | Within 20% | Median absolute error | v17b within 20% |
+|---|---:|---:|---:|
+| HydroBASINS outlets (6,262) | 5,310 (84.8%) | 0.96% | 72.7% |
+| SVS gauges (2,297) | 2,119 (92.3%) | 1.62% | 77.6% |
+| USGS gauges (101) | 98 (97.0%) | 1.80% | 76.2% |
 
 ### 2.4 Other New or Updated Variables
 
@@ -515,14 +629,39 @@ Learning Global River Obstruction Database; He et al. 2025), populated on
 
 ## 3. Flag Encoding Reference
 
+### facc_flag
+
+String variable on reaches and nodes; a node carries its reach's label.
+Only the highest-priority label is stored, in the order listed.
+
+| Value | Reaches | Meaning |
+|-------|--------:|---------|
+| `suspect` | 6,282 | A check failed or a known case is unresolved: outgoing `facc` below the sum of inflows, a width/area screen, no valid width for the check, an unresolved MERIT placement or direction question. |
+| `same_river` | 1,328 | Inflows at this junction may share drainage area, so summing them can count area twice. Not a claim that each channel carries the whole river. |
+| `delta_arm` | 8,718 | Contains an unvalidated distributary share, or the estimate was limited by the model. Not a geographic delta label. |
+| `braid_share` | 12,562 | Contains a width-based channel share that has not been independently measured. |
+| `filled` | 5,534 | Filled from neighbouring reaches, a headwater prior, or a replacement for a rejected MERIT match. The weakest values. |
+| `ok` | 214,249 | No check or processing category was triggered. Not proof of accuracy. |
+
 ### facc_quality
 
-| Value | Meaning |
-|-------|---------|
-| 1 | `denoise_v3` — corrected by the facc denoising pipeline |
-| -9999 (fill) | Not flagged; facc unchanged from v17b |
+Source method of the `facc` value. NetCDF stores the code; GeoPackage,
+GeoParquet, DuckDB and Shapefile store the name. It is not an accuracy
+grade; use `facc_flag` for warnings.
 
-CF attributes: `flag_values = [1]`, `flag_meanings = "denoise_v3"`.
+| Code | Name | Reaches | Meaning |
+|-----:|------|--------:|---------|
+| 3001 | `anchor` | 189,450 | A MERIT-Basins reach was matched to this reach; the value is read from it |
+| 3002 | `anchor_proximity` | 4,377 | Matched to a MERIT-Basins reach by proximity rather than along the network |
+| 3003 | `anchor_aligned` | 152 | Matched to a MERIT-Basins reach by aligning junctions |
+| 3004 | `interpolated` | 7,246 | Interpolated along the channel between matched reaches |
+| 3005 | `lake_derived` | 28,593 | Lake reach; derived from its inflows |
+| 3006 | `partitioned_arm` | 9,066 | Side channel or distributary carrying a width-based share |
+| 3007 | `fallback_fill` | 8,302 | No usable match; carried from neighbouring reaches |
+| 3008 | `fallback_prior` | 1,487 | Headwater with no match; a prior estimate |
+
+CF attributes: `flag_values = [3001, ..., 3008]`, `flag_meanings` lists the
+names in the same order.
 
 ### slope_obs_quality
 
@@ -582,9 +721,25 @@ Example: 5 = negative slope (1) + high variance (4).
 - **SWOT observation coverage:** SWOT statistics are fill_value (-9999) for
   reaches and nodes lacking SWOT data.
 
-- **facc correction scope:** 95,880 reaches corrected (38.6%); the
-  remaining 152,793 retain v17b values. Node-level facc propagates from
-  the parent reach.
+- **facc junction shortfalls:** at 1,428 junctions the outgoing `facc` is
+  below the sum of its inflows (0.0.14: 2,660). Of these, 76 are new and
+  140 grew by more than 1 km^2 when the split partition was made
+  conservative. Some inflow sums count shared drainage twice; others are
+  junctions where MERIT-Basins places the confluence somewhere other than
+  SWORD does. All 1,428 are flagged `suspect` or `same_river`.
+
+- **facc width shares are a convention:** at splits the area is divided by
+  channel width, not by measured discharge. Reaches carrying such a share
+  are `braid_share` or `delta_arm` (21,280 reaches).
+
+- **facc fills:** 5,534 reaches (`filled`) have no usable MERIT-Basins
+  match and take values from their neighbours or a headwater prior.
+
+- **facc open cases:** 29 reaches with an unresolved MERIT placement
+  question, two weak outlets, and the AS reach pair 43308000201 and
+  43309000191, whose stored routing and node direction labels disagree,
+  are all flagged `suspect`. The model assigns zero channel area across 50
+  connections; the 23 receiving reaches are flagged `suspect`.
 
 - **Lake sandwich corrections:** 1,252 reaches were reclassified to
   `lakeflag = 1` where a narrow, shorter-than-neighbor reach sat between
@@ -610,13 +765,11 @@ Example: 5 = negative slope (1) + high variance (4).
   raw arrays against v17b, or that treats `0` as "no neighbor," should account
   for this.
 
-- **Swapped neighbor vectors on two reaches (GeoParquet/DuckDB only):** Reaches
-  45220300256 (AS) and 71382000696 (NA) have their denormalized
-  `rch_id_up_1..4` / `rch_id_dn_1..4` columns swapped in the GeoParquet and
-  DuckDB exports (the single downstream neighbor appears in `rch_id_up_1`, and
-  `rch_id_dn_1..4` are 0). The canonical NetCDF `rch_id_up`/`rch_id_dn` arrays
-  and the topology table are correct for both reaches; only the denormalized
-  vector columns in these two formats are affected.
+- **Swapped neighbor vectors on two reaches, corrected in 0.0.15:** in the
+  July and September 2026 GeoPackage, GeoParquet and DuckDB files, reaches
+  45220300256 (AS) and 71382000696 (NA) carry their single downstream
+  neighbor in `rch_id_up_1` with `rch_id_dn_1..4` = 0. The NetCDF
+  `rch_id_up`/`rch_id_dn` arrays were correct in every version.
 
 - **area_fits and discharge_models:** Direct copies from v17b. Not
   recomputed against v17c facc or SWOT values.
@@ -661,7 +814,7 @@ Validation checks performed on the v17c data:
 
 | Audit | Finding |
 |-------|---------|
-| **Flow accumulation (facc)** | 95,880 reaches (38.6%) corrected via the denoise pipeline (`facc_quality = denoise_v3`); the flag exactly matches the set whose `facc` differs from v17b (0 flagged-but-unchanged, 0 changed-but-unflagged). Raised on 80,538 reaches (median +60%), lowered on 15,342 (median 30% decrease). Junction-conservation (F006) and downstream-monotonicity (T003) violations resolved in all regions. |
+| **Flow accumulation (facc)** | Every reach and node rebuilt from MERIT-Basins. 0 downstream decreases along single channels (v17b: 5,754); 0 exits below their largest inflow in the 18,241-junction test; the split partition closes at all 2,893 splits; `facc <= facc_total` everywhere. 1,428 junction shortfalls remain, all flagged. The four facc fields in every shipped format match the database on all 248,673 reaches and 11,112,454 nodes; in the Shapefiles the two areas are stored with 8 decimals (DBF `numeric(19,8)`), so they differ from the database by at most 5e-9 km^2. |
 | **SWOT observation data (`wse_obs_*`, `width_obs_*`, `slope_obs_*`)** | New SWOT-derived columns aggregated from real overpasses; they do not modify the v17b static `wse`/`width`/`slope`. `slope_obs_p50` populated on 173,732 reaches (9,988 negative, flagged via `slope_obs_quality`); derived from pass-level node-WSE regressions (see §2.2). |
 | **Geometry** | DuckDB geometries (rebuilt from NetCDF) lack endpoint overlap vertices present in v17b (210,533 reaches affected: 173K +1 point, 37K +2 points). `reach_length` unchanged. Reach coordinate columns (`x`, `y`, `x_min`, `x_max`, `y_min`, `y_max`) copied from v17b to ensure consistency across all formats. |
 | **Node coordinate continuity** | v17c restores v17b node `x`/`y`, `node_length`, `cl_id_min`, and `cl_id_max` for the 344 previously rederived reaches plus OC reach 51111300061 split-revert residue. Global node coordinate diff vs v17b NetCDF: 0. |
@@ -683,7 +836,8 @@ For POM (Pierre-Olivier Malaterre) validation results, see
 
 ## 6. File Formats
 
-v17c is distributed in five formats. The NetCDF files are the
+v17c is distributed as six packages, five formats plus whole-planet
+global files. The NetCDF files are the
 canonical release artifact (full group structure including centerlines and
 v17b subgroups); the other formats carry reaches and nodes with geometry.
 
@@ -712,8 +866,13 @@ v17b subgroups); the other formats carry reaches and nodes with geometry.
   merged tables are provided as `sword_global_v17c_{reaches,nodes}.parquet`
   and `sword_global_v17c_{reaches,nodes}.duckdb` (all six regions
   combined; each table carries a `region` column).
-- **Checksums:** SHA256 hashes for all distributed files listed in
-  `SHA256SUMS.txt`
+- **Checksums:** `SHA256SUMS.txt` lists the six ZIPs as uploaded;
+  `SHA256SUMS_files.txt` lists every file inside them, for checking after
+  unzipping.
+- **ID translation (separate archive on the record):**
+  `SWORD_v17b_to_v16_Translation.zip` holds the official reach and node ID
+  translation tables between v17b and v16 for all six regions. v17c keeps
+  v17b IDs, so the tables apply to v17c unchanged.
 
 ---
 
@@ -721,7 +880,6 @@ v17b subgroups); the other formats carry reaches and nodes with geometry.
 
 | Document | Description |
 |----------|-------------|
-| [facc_correction_methodology.md](technical/facc_correction_methodology.md) | Facc denoise algorithm, detection rules, correction model |
 | [pom_requests_summary.md](technical/pom_requests_summary.md) | POM validation check tracker (19 checks, production results) |
 | [pom_validation_report.md](technical/pom_validation_report.md) | POM validation production results |
 | [v17c_variable_reference.md](v17c_variable_reference.md) | Complete variable catalog for NetCDF export |

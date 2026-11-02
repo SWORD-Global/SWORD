@@ -123,6 +123,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     -- Hydrology & Distance
     facc DOUBLE,                 -- flow accumulation (km^2)
     facc_quality VARCHAR,        -- facc correction status flag (v17c)
+    facc_total DOUBLE,           -- river total drainage area, all channels (km^2, v17c)
+    facc_flag VARCHAR,           -- facc reliability label (v17c)
     dist_out DOUBLE,             -- distance from outlet (m)
 
     -- SWOT search parameters
@@ -233,6 +235,8 @@ CREATE TABLE IF NOT EXISTS reaches (
     -- Hydrology & Distance
     facc DOUBLE,                 -- flow accumulation (km^2)
     facc_quality VARCHAR,        -- facc correction status flag (v17c)
+    facc_total DOUBLE,           -- river total drainage area, all channels (km^2, v17c)
+    facc_flag VARCHAR,           -- facc reliability label (v17c)
     dist_out DOUBLE,             -- distance from outlet (m)
     dist_out_dijkstra DOUBLE,    -- Dijkstra shortest-path distance to any outlet (m)
     hydro_dist_out DOUBLE,       -- mainstem distance to best_outlet via rch_id_dn_main (m)
@@ -877,6 +881,8 @@ def add_v17c_columns(db) -> bool:
         ("dist_out_dijkstra", "DOUBLE"),
         ("subnetwork_id", "INTEGER"),  # weakly connected component ID
         ("facc_quality", "VARCHAR"),  # facc correction status flag
+        ("facc_total", "DOUBLE"),  # river total drainage area (km^2)
+        ("facc_flag", "VARCHAR"),  # facc reliability label
     ]
 
     # v17c columns for reaches table
@@ -895,6 +901,8 @@ def add_v17c_columns(db) -> bool:
         # NOTE: swot_slope columns removed - pipeline incomplete (Issue #117)
         ("subnetwork_id", "INTEGER"),  # weakly connected component ID
         ("facc_quality", "VARCHAR"),  # facc correction status flag
+        ("facc_total", "DOUBLE"),  # river total drainage area (km^2)
+        ("facc_flag", "VARCHAR"),  # facc reliability label
     ]
 
     # Rename is_mainstem_edge -> is_mainstem (v17c 0.0.2)

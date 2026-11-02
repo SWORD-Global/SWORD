@@ -52,7 +52,7 @@ def main() -> None:
 
     res = subprocess.run(
         ["pandoc", str(VAR_REF), "-f", "markdown", "-t", "html", "--no-highlight"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     if res.returncode != 0:
         sys.exit(f"pandoc failed:\n{res.stderr}")

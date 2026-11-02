@@ -17,6 +17,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import networkx as nx
 import duckdb
+import os
 from pathlib import Path
 from typing import List
 
@@ -24,6 +25,15 @@ from typing import List
 st.set_page_config(
     page_title="SWORD Topology Investigator", page_icon="🔍", layout="wide"
 )
+
+# Planet Basemaps API key for the satellite basemap. Read once at startup so a
+# missing key fails before any data is loaded.
+PLANET_API_KEY = os.environ.get("PLANET_API_KEY", "").strip()
+if not PLANET_API_KEY:
+    raise RuntimeError(
+        "PLANET_API_KEY is not set. Export it or add it to .env (see .env.example) "
+        "before launching the topology investigator."
+    )
 
 
 # Cache data loading
@@ -714,8 +724,7 @@ if len(filtered) > 0:
                 )
 
                 # Planet satellite basemap
-                planet_api_key = "PLAKe691b336e29e445ca4ecc9490148e47d"
-                planet_tile_url = f"https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_09_mosaic/gmap/{{z}}/{{x}}/{{y}}.png?api_key={planet_api_key}"
+                planet_tile_url = f"https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_09_mosaic/gmap/{{z}}/{{x}}/{{y}}.png?api_key={PLANET_API_KEY}"
 
                 fig_map.update_layout(
                     mapbox=dict(

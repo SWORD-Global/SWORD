@@ -593,6 +593,7 @@ def export_netcdf(
     }
     _STRING_COLS = {
         "river_name",
+        "facc_flag",
         "river_name_en",
         "river_name_local",
         "edit_flag",
