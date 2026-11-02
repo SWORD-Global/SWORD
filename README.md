@@ -49,7 +49,7 @@ All original v17b variables are retained. See the release notes for the full lis
 ## How to Download
 
 - [**SWORD Explorer**](https://www.swordexplorer.com/) — explore and download the current version interactively
-- [**Zenodo**](https://doi.org/10.5281/zenodo.21415370) — versioned archive with a DOI for citation
+- [**Zenodo**](https://doi.org/10.5281/zenodo.23870877) — versioned archive with a DOI for citation
 
 Available formats: NetCDF, GeoPackage, ESRI Shapefile, GeoParquet, and DuckDB, per continent and as global merged files.
 
@@ -57,7 +57,7 @@ Available formats: NetCDF, GeoPackage, ESRI Shapefile, GeoParquet, and DuckDB, p
 
 Please cite the Zenodo record:
 
-> James H. Gearon, Elizabeth H. Altenau, Tamlin M. Pavelsky, Michael T. Durand, Niek Collot d'Escury, Xiao Yang, Pierre-Olivier Malaterre, Renato P. d. M. Frasson, & Liam Bendezu. (2026). SWOT River Database (SWORD) (Version v17c) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.21415370
+> James H. Gearon, Elizabeth H. Altenau, Tamlin M. Pavelsky, Michael T. Durand, Niek Collot d'Escury, Xiao Yang, Pierre-Olivier Malaterre, Renato P. d. M. Frasson, & Liam Bendezu. (2026). SWOT River Database (SWORD) (Version v17c) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.23870877
 
 Alternatively, or in addition, cite the development publication:
 
