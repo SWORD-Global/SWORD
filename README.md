@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="docs/figures /SWORD_Logo.png" width="300">
+    <img src="docs/figures/SWORD_Logo.png" width="300">
 </p>
 
 # SWOT River Database (SWORD)
@@ -12,7 +12,7 @@ The [Surface Water and Ocean Topography (SWOT) satellite mission](https://swot.j
 
 ## Current Version: v17c
 
-Before using SWORD, please read the [SWORD Product Description Document](https://drive.google.com/file/d/1_1qmuJhL_Yd6ThW2QE4gW0G1eHH_XAer/view?usp=sharing). For questions, email **sword.riverdb@gmail.com**.
+For detailed variable descriptions, release notes, and downloads, see the [**Zenodo record**](https://doi.org/10.5281/zenodo.21415370). Before using SWORD, please also read the [SWORD Product Description Document](https://drive.google.com/file/d/1_1qmuJhL_Yd6ThW2QE4gW0G1eHH_XAer/view?usp=sharing). For questions, email **james.gearon@unc.edu**.
 
 v17c preserves the topology and reach/node definitions of v17b and adds observation-based and routing variables:
 
@@ -71,5 +71,5 @@ This repository holds the code used to develop, validate, and maintain SWORD. Se
 
 ---
 
-![Fig1](docs/figures /global_map_dist_out_legend_basins_rch_numbers.png)
+![Fig1](docs/figures/global_map_dist_out_legend_basins_rch_numbers.png)
 *SWORD reach numbers per continent. Colors display distance from outlet calculated from shortest paths between outlets and headwaters.*
