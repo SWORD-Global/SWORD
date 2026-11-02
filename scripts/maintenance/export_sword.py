@@ -39,11 +39,10 @@ import argparse
 import logging
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
-import numpy as np
 import pandas as pd
 
 logging.basicConfig(
@@ -362,455 +361,18 @@ def export_parquet(
 # ---------------------------------------------------------------------------
 
 
-def _copy_nc_variable(src_var, dst_group, dims, idx_map: np.ndarray | None = None):
-    """Copy a single NetCDF variable into *dst_group* with given *dims*.
-
-    If *idx_map* is provided it is a v17b-index → v17c-index permutation array
-    used to reorder the last (reach) axis.  When None the data is copied as-is.
-    """
-
-    fill = float(src_var._FillValue) if hasattr(src_var, "_FillValue") else -9999.0
-    dst_var = dst_group.createVariable(
-        src_var.name, src_var.dtype, dims, fill_value=fill
-    )
-    data = src_var[:]
-    if idx_map is not None:
-        # Reorder along the last axis (num_reaches)
-        data = data[..., idx_map]
-    dst_var[:] = data
-
-
-def _passthrough_v17b_subgroups(
-    ds_out,
-    region: str,
-    v17c_reach_ids: np.ndarray,
-    v17b_nc_dir: Path = V17B_NC_DIR,
-) -> None:
-    """Copy area_fits and discharge_models from v17b NetCDF into *ds_out*.
-
-    Handles potential reach-order differences by building an index mapping.
-    """
-    import netCDF4  # noqa: F811
-
-    v17b_path = v17b_nc_dir / f"{region.lower()}_sword_v17b.nc"
-    if not v17b_path.exists():
-        logger.warning(
-            f"v17b NetCDF not found at {v17b_path} — skipping area_fits/discharge_models"
-        )
-        return
-
-    ds_src = netCDF4.Dataset(str(v17b_path), "r")
-    try:
-        src_rch = ds_src.groups["reaches"]
-        if (
-            "area_fits" not in src_rch.groups
-            and "discharge_models" not in src_rch.groups
-        ):
-            logger.warning(f"v17b {region} has no area_fits or discharge_models")
-            return
-
-        src_reach_ids = np.array(src_rch.variables["reach_id"][:])
-
-        # Build index mapping: for each v17c position, which v17b index to read
-        if np.array_equal(src_reach_ids, v17c_reach_ids):
-            idx_map = None  # same order — no remapping needed
-        else:
-            v17b_id_to_idx = {int(rid): i for i, rid in enumerate(src_reach_ids)}
-            idx_map = np.array(
-                [v17b_id_to_idx[int(rid)] for rid in v17c_reach_ids], dtype=np.intp
-            )
-
-        rch_grp = ds_out.groups["reaches"]
-
-        # --- area_fits ---
-        if "area_fits" in src_rch.groups:
-            src_af = src_rch.groups["area_fits"]
-            dst_af = rch_grp.createGroup("area_fits")
-
-            # Create extra dimensions needed by area_fits variables
-            if "num_domains" not in rch_grp.dimensions:
-                rch_grp.createDimension("num_domains", 4)
-            if "nCoeffs" not in rch_grp.dimensions:
-                rch_grp.createDimension("nCoeffs", 2)
-            if "nReg" not in rch_grp.dimensions:
-                rch_grp.createDimension("nReg", 3)
-
-            # Map source dimension names to (parent_group, dim_name) for the output
-            _DIM_MAP = {
-                "num_reaches": ("num_reaches",),
-                "num_domains": ("num_domains",),
-                "nCoeffs": ("nCoeffs",),
-                "nReg": ("nReg",),
-            }
-
-            for vname in src_af.variables:
-                src_var = src_af.variables[vname]
-                out_dims = tuple(_DIM_MAP.get(d, (d,))[0] for d in src_var.dimensions)
-                _copy_nc_variable(src_var, dst_af, out_dims, idx_map)
-
-            logger.info(
-                f"  [{region}] Copied area_fits ({len(src_af.variables)} vars) from v17b"
-            )
-
-        # --- discharge_models ---
-        if "discharge_models" in src_rch.groups:
-            src_dm = src_rch.groups["discharge_models"]
-            dst_dm = rch_grp.createGroup("discharge_models")
-
-            for constraint_name in src_dm.groups:  # unconstrained, constrained
-                src_cg = src_dm.groups[constraint_name]
-                dst_cg = dst_dm.createGroup(constraint_name)
-
-                for model_name in src_cg.groups:  # MetroMan, BAM, ...
-                    src_mg = src_cg.groups[model_name]
-                    dst_mg = dst_cg.createGroup(model_name)
-
-                    for vname in src_mg.variables:
-                        src_var = src_mg.variables[vname]
-                        out_dims = tuple(
-                            "num_reaches" if d == "num_reaches" else d
-                            for d in src_var.dimensions
-                        )
-                        _copy_nc_variable(src_var, dst_mg, out_dims, idx_map)
-
-            n_models = sum(len(src_dm.groups[c].groups) for c in src_dm.groups)
-            logger.info(
-                f"  [{region}] Copied discharge_models ({n_models} models) from v17b"
-            )
-
-    finally:
-        ds_src.close()
-
-
-def _pad_array_2d(values: list[list], max_dim: int, fill: int = 0) -> np.ndarray:
-    """Pad ragged lists into a fixed [max_dim, N] array."""
-    n = len(values)
-    arr = np.full((max_dim, n), fill, dtype=np.int64)
-    for i, row in enumerate(values):
-        for j, val in enumerate(row[:max_dim]):
-            arr[j, i] = val
-    return arr
-
-
 def export_netcdf(
     con: duckdb.DuckDBPyConnection,
     region: str,
     output_dir: Path,
-    v17b_nc_dir: Path | None = V17B_NC_DIR,
+    v17b_nc_dir: Path = V17B_NC_DIR,
+    *,
+    overwrite: bool = False,
 ) -> Path:
-    """Export one region to NetCDF4 format."""
-    import netCDF4
+    """Use the single validated published-layout NetCDF writer."""
+    from sword_duckdb.netcdf import export_region
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    out_path = output_dir / f"{region.lower()}_sword_v17c.nc"
-
-    logger.info(f"  [{region}] Querying data for NetCDF...")
-
-    # --- Query tables and downcast nullable dtypes for numpy/netCDF4 ---
-    reaches_df = _query_region(con, "reaches", region, geom_as_wkb=False)
-    if "geom" in reaches_df.columns:
-        reaches_df = reaches_df.drop(columns=["geom"])
-    reaches_df = _downcast_nullable_dtypes(reaches_df)
-
-    nodes_df = _query_region(con, "nodes", region, geom_as_wkb=False)
-    if "geom" in nodes_df.columns:
-        nodes_df = nodes_df.drop(columns=["geom"])
-    nodes_df = _downcast_nullable_dtypes(nodes_df)
-
-    centerlines_df = _query_region(con, "centerlines", region, geom_as_wkb=False)
-    if "geom" in centerlines_df.columns:
-        centerlines_df = centerlines_df.drop(columns=["geom"])
-    centerlines_df = _downcast_nullable_dtypes(centerlines_df)
-
-    # Topology
-    topo_df = _query_region(con, "reach_topology", region, geom_as_wkb=False)
-
-    # SWOT orbits (if table exists)
-    try:
-        orbits_df = _query_region(con, "reach_swot_orbits", region, geom_as_wkb=False)
-    except duckdb.CatalogException:
-        orbits_df = None
-
-    # Ice flags (if table exists)
-    try:
-        ice_df = _query_region(con, "reach_ice_flags", region, geom_as_wkb=False)
-    except duckdb.CatalogException:
-        ice_df = None
-
-    num_reaches = len(reaches_df)
-    num_nodes = len(nodes_df)
-    num_points = len(centerlines_df)
-
-    logger.info(
-        f"  [{region}] reaches={num_reaches:,}  nodes={num_nodes:,}  "
-        f"centerlines={num_points:,}"
-    )
-
-    # --- Create NetCDF file ---
-    ds = netCDF4.Dataset(str(out_path), "w", format="NETCDF4")
-
-    # Global attributes
-    ds.Name = region
-    ds.production_date = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ds.source = "SWORD v17c (DuckDB export)"
-    ds.Conventions = "CF-1.6"
-
-    if num_reaches > 0:
-        ds.x_min = (
-            float(reaches_df["x_min"].min()) if "x_min" in reaches_df.columns else 0.0
-        )
-        ds.x_max = (
-            float(reaches_df["x_max"].max()) if "x_max" in reaches_df.columns else 0.0
-        )
-        ds.y_min = (
-            float(reaches_df["y_min"].min()) if "y_min" in reaches_df.columns else 0.0
-        )
-        ds.y_max = (
-            float(reaches_df["y_max"].max()) if "y_max" in reaches_df.columns else 0.0
-        )
-
-    # --- Reaches group ---
-    rch_grp = ds.createGroup("reaches")
-    rch_grp.createDimension("num_reaches", num_reaches)
-    rch_grp.createDimension("num_rch_neighbors", 4)
-
-    # Build reach_id → index mapping for topology reconstruction
-    reach_ids = reaches_df["reach_id"].values
-    reach_id_to_idx = {int(rid): i for i, rid in enumerate(reach_ids)}
-
-    # Write scalar reach variables
-    # Skip region (internal) and rch_id_up/dn_1..4 (redundant with [4,N] matrices)
-    _SKIP_COLS = {
-        "region",
-        "rch_id_up_1",
-        "rch_id_up_2",
-        "rch_id_up_3",
-        "rch_id_up_4",
-        "rch_id_dn_1",
-        "rch_id_dn_2",
-        "rch_id_dn_3",
-        "rch_id_dn_4",
-    }
-    _STRING_COLS = {
-        "river_name",
-        "facc_flag",
-        "river_name_en",
-        "river_name_local",
-        "edit_flag",
-        "version",
-    }
-    # Columns that must stay i4 (int32) to match v17b NetCDF types
-    _I4_COLS = {
-        "n_nodes",
-        "n_chan_max",
-        "n_chan_mod",
-        "obstr_type",
-        "n_rch_up",
-        "n_rch_down",
-        "lakeflag",
-        "iceflag",
-        "swot_obs",
-        "low_slope_flag",
-        "trib_flag",
-        "stream_order",
-        "main_side",
-        "end_reach",
-        "network",
-        "subnetwork_id",
-        "n_obs",
-        "facc_quality",
-        "node_order",
-    }
-    for col in reaches_df.columns:
-        if col in _SKIP_COLS:
-            continue
-        vals = reaches_df[col].values
-        if col in _STRING_COLS or reaches_df[col].dtype == object:
-            var = rch_grp.createVariable(col, str, ("num_reaches",))
-            # Convert to string, replacing None/NaN with ""
-            str_vals = pd.Series(vals).fillna("").astype(str).values
-            for i, s in enumerate(str_vals):
-                var[i] = s
-        elif np.issubdtype(vals.dtype, np.integer):
-            nc_type = "i4" if col in _I4_COLS else "i8"
-            var = rch_grp.createVariable(
-                col, nc_type, ("num_reaches",), fill_value=-9999
-            )
-            var[:] = np.where(pd.isna(reaches_df[col]), -9999, vals)
-        elif np.issubdtype(vals.dtype, np.floating):
-            var = rch_grp.createVariable(
-                col, "f8", ("num_reaches",), fill_value=-9999.0
-            )
-            var[:] = np.where(pd.isna(reaches_df[col]), -9999.0, vals)
-        elif np.issubdtype(vals.dtype, np.bool_):
-            var = rch_grp.createVariable(col, "i1", ("num_reaches",), fill_value=0)
-            var[:] = vals.astype(np.int8)
-        else:
-            # Fallback: write as string
-            var = rch_grp.createVariable(col, str, ("num_reaches",))
-            str_vals = pd.Series(vals).fillna("").astype(str).values
-            for i, s in enumerate(str_vals):
-                var[i] = s
-
-    # Reconstruct rch_id_up[4, N] and rch_id_dn[4, N] from topology table
-    if not topo_df.empty:
-        up_neighbors: list[list[int]] = [[] for _ in range(num_reaches)]
-        dn_neighbors: list[list[int]] = [[] for _ in range(num_reaches)]
-
-        for _, row in topo_df.iterrows():
-            rid = int(row["reach_id"])
-            idx = reach_id_to_idx.get(rid)
-            if idx is None:
-                continue
-            nbr = int(row["neighbor_reach_id"])
-            if row["direction"] == "up":
-                up_neighbors[idx].append(nbr)
-            else:
-                dn_neighbors[idx].append(nbr)
-
-        rch_id_up = _pad_array_2d(up_neighbors, 4)
-        rch_id_dn = _pad_array_2d(dn_neighbors, 4)
-
-        var_up = rch_grp.createVariable(
-            "rch_id_up", "i8", ("num_rch_neighbors", "num_reaches"), fill_value=0
-        )
-        var_up[:] = rch_id_up
-
-        var_dn = rch_grp.createVariable(
-            "rch_id_dn", "i8", ("num_rch_neighbors", "num_reaches"), fill_value=0
-        )
-        var_dn[:] = rch_id_dn
-
-    # SWOT orbits [75, num_reaches] — int64 to match v17b format
-    if orbits_df is not None and not orbits_df.empty:
-        max_orbits = 75
-        rch_grp.createDimension("num_orbits", max_orbits)
-        orbit_arr = np.zeros((max_orbits, num_reaches), dtype=np.int64)
-
-        for _, row in orbits_df.iterrows():
-            rid = int(row["reach_id"])
-            idx = reach_id_to_idx.get(rid)
-            if idx is None:
-                continue
-            orbit_idx = int(row.get("orbit_index", row.get("orbit_rank", 0)))
-            if 0 <= orbit_idx < max_orbits:
-                raw = row.get("pass_tile", row.get("orbit_id", 0))
-                try:
-                    orbit_arr[orbit_idx, idx] = int(raw)
-                except (ValueError, TypeError):
-                    orbit_arr[orbit_idx, idx] = 0
-
-        var_orb = rch_grp.createVariable(
-            "swot_orbits", "i8", ("num_orbits", "num_reaches"), fill_value=0
-        )
-        var_orb[:] = orbit_arr
-
-    # Ice flags [366, num_reaches]
-    if ice_df is not None and not ice_df.empty:
-        rch_grp.createDimension("julian_day", 366)
-        ice_arr = np.full((366, num_reaches), -9999, dtype=np.int16)
-
-        for _, row in ice_df.iterrows():
-            rid = int(row["reach_id"])
-            idx = reach_id_to_idx.get(rid)
-            if idx is None:
-                continue
-            day = int(row.get("day_of_year", row.get("julian_day", 0)))
-            if 1 <= day <= 366:
-                ice_arr[day - 1, idx] = int(
-                    row.get("ice_flag", row.get("iceflag", -9999))
-                )
-
-        var_ice = rch_grp.createVariable(
-            "iceflag_daily", "i2", ("julian_day", "num_reaches"), fill_value=-9999
-        )
-        var_ice[:] = ice_arr
-
-    # --- Nodes group ---
-    node_grp = ds.createGroup("nodes")
-    node_grp.createDimension("num_nodes", num_nodes)
-
-    # Node-level i4 columns (match v17b types)
-    _NODE_I4_COLS = {
-        "n_chan_max",
-        "n_chan_mod",
-        "obstr_type",
-        # lakeflag is i8 on nodes (i4 on reaches) in v17b
-        "trib_flag",
-        "stream_order",
-        "main_side",
-        "end_reach",
-        "network",
-        "subnetwork_id",
-        "manual_add",
-        "node_order",
-        "n_obs",
-        "facc_quality",
-    }
-    for col in nodes_df.columns:
-        if col in _SKIP_COLS:
-            continue
-        vals = nodes_df[col].values
-        if col in _STRING_COLS or nodes_df[col].dtype == object:
-            var = node_grp.createVariable(col, str, ("num_nodes",))
-            str_vals = pd.Series(vals).fillna("").astype(str).values
-            for i, s in enumerate(str_vals):
-                var[i] = s
-        elif np.issubdtype(vals.dtype, np.integer):
-            nc_type = "i4" if col in _NODE_I4_COLS else "i8"
-            var = node_grp.createVariable(
-                col, nc_type, ("num_nodes",), fill_value=-9999
-            )
-            var[:] = np.where(pd.isna(nodes_df[col]), -9999, vals)
-        elif np.issubdtype(vals.dtype, np.floating):
-            var = node_grp.createVariable(col, "f8", ("num_nodes",), fill_value=-9999.0)
-            var[:] = np.where(pd.isna(nodes_df[col]), -9999.0, vals)
-        elif np.issubdtype(vals.dtype, np.bool_):
-            var = node_grp.createVariable(col, "i1", ("num_nodes",), fill_value=0)
-            var[:] = vals.astype(np.int8)
-        else:
-            var = node_grp.createVariable(col, str, ("num_nodes",))
-            str_vals = pd.Series(vals).fillna("").astype(str).values
-            for i, s in enumerate(str_vals):
-                var[i] = s
-
-    # --- Centerlines group ---
-    cl_grp = ds.createGroup("centerlines")
-    cl_grp.createDimension("num_points", num_points)
-
-    for col in centerlines_df.columns:
-        if col in _SKIP_COLS:
-            continue
-        vals = centerlines_df[col].values
-        if col in _STRING_COLS or centerlines_df[col].dtype == object:
-            var = cl_grp.createVariable(col, str, ("num_points",))
-            str_vals = pd.Series(vals).fillna("").astype(str).values
-            for i, s in enumerate(str_vals):
-                var[i] = s
-        elif np.issubdtype(vals.dtype, np.integer):
-            var = cl_grp.createVariable(col, "i8", ("num_points",), fill_value=-9999)
-            var[:] = np.where(pd.isna(centerlines_df[col]), -9999, vals)
-        elif np.issubdtype(vals.dtype, np.floating):
-            var = cl_grp.createVariable(col, "f8", ("num_points",), fill_value=-9999.0)
-            var[:] = np.where(pd.isna(centerlines_df[col]), -9999.0, vals)
-        else:
-            var = cl_grp.createVariable(col, str, ("num_points",))
-            str_vals = pd.Series(vals).fillna("").astype(str).values
-            for i, s in enumerate(str_vals):
-                var[i] = s
-
-    # --- Passthrough area_fits + discharge_models from v17b ---
-    if v17b_nc_dir is not None:
-        _passthrough_v17b_subgroups(ds, region, reach_ids, v17b_nc_dir=v17b_nc_dir)
-
-    ds.close()
-    logger.info(f"  [{region}] Wrote {out_path}")
-    return out_path
-
-
-# ---------------------------------------------------------------------------
-# PostgreSQL export (delegate to load_from_duckdb.py)
-# ---------------------------------------------------------------------------
+    return export_region(con, region, v17b_nc_dir, output_dir, overwrite=overwrite)
 
 
 def export_postgres(
@@ -925,12 +487,10 @@ Examples:
         "--v17b-nc-dir",
         type=Path,
         default=V17B_NC_DIR,
-        help="Directory containing v17b NetCDF files (for area_fits/discharge_models passthrough)",
+        help="Directory containing the required complete v17b NetCDF templates",
     )
     parser.add_argument(
-        "--no-v17b-passthrough",
-        action="store_true",
-        help="Skip copying area_fits/discharge_models from v17b into NetCDF export",
+        "--overwrite", action="store_true", help="Replace validated NetCDF files"
     )
     parser.add_argument("--verbose", "-v", action="store_true")
 
@@ -960,7 +520,13 @@ Examples:
 
     # --- File-based formats: connect DuckDB and export ---
     start = datetime.now()
-    con = _connect_duckdb(str(source_path))
+    if fmt == "netcdf":
+        from sword_duckdb.netcdf_schema import validate_templates
+
+        validate_templates(args.v17b_nc_dir, regions)
+        con = duckdb.connect(str(source_path), read_only=True)
+    else:
+        con = _connect_duckdb(str(source_path))
 
     try:
         for region in regions:
@@ -973,8 +539,13 @@ Examples:
             elif fmt == "parquet":
                 export_parquet(con, region, args.tables, output_dir)
             elif fmt == "netcdf":
-                v17b_dir = None if args.no_v17b_passthrough else args.v17b_nc_dir
-                export_netcdf(con, region, output_dir, v17b_nc_dir=v17b_dir)
+                export_netcdf(
+                    con,
+                    region,
+                    output_dir,
+                    v17b_nc_dir=args.v17b_nc_dir,
+                    overwrite=args.overwrite,
+                )
     finally:
         con.close()
 

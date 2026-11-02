@@ -69,6 +69,10 @@ Concept DOI (always resolves to the latest version): https://doi.org/10.5281/zen
 
 This repository holds the code used to develop, validate, and maintain SWORD. See [`docs/`](docs/) for technical documentation.
 
+Use the [NetCDF export guide](docs/technical/netcdf_export.md) for the shared
+export path, required original templates, and compatibility checks for release
+files and collaborator candidates.
+
 ---
 
 ![Fig1](docs/figures /global_map_dist_out_legend_basins_rch_numbers.png)

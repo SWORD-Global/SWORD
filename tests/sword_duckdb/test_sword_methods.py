@@ -159,33 +159,6 @@ class TestAppendNodes:
         assert callable(sword_readonly.append_nodes)
 
 
-class TestSaveNc:
-    """Test save_nc method."""
-
-    def test_save_nc_creates_file(self, temp_sword):
-        """Test save_nc creates a NetCDF file."""
-        try:
-            import netCDF4
-        except ImportError:
-            pytest.skip("netCDF4 not installed")
-
-        temp_dir = tempfile.mkdtemp()
-        try:
-            output_path = os.path.join(temp_dir, "test_output.nc")
-            temp_sword.save_nc(output_path)
-
-            assert os.path.exists(output_path)
-
-            # Verify it's a valid NetCDF
-            with netCDF4.Dataset(output_path, "r") as ds:
-                assert "centerlines" in ds.groups
-                assert "nodes" in ds.groups
-                assert "reaches" in ds.groups
-
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-
 class TestContextManager:
     """Test context manager protocol."""
 
